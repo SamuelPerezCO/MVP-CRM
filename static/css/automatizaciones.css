@@ -1,0 +1,196 @@
+/* ==========================================================================
+   Automatizaciones screen — secondary nav + Academy banner + Flujos panel.
+   Reuses the tokens from sidebar.css and the shared `.side-nav` block from
+   embudos.css; new here are the collapsible nav row, the banner and the
+   minimal empty state.
+   ========================================================================== */
+
+:root {
+  /* Track sampled from the reference; the fill only shows above 0%. */
+  --progress-track: #e9e5f4;
+}
+
+/* --- Shell ---------------------------------------------------------------- */
+
+.autom {
+  display: flex;
+  height: 100vh;
+}
+
+/* ==========================================================================
+   Column 2 — collapsible extension of the shared `.side-nav`
+
+   Flat rows come straight from embudos.css. Expandable rows ("MIA Agentes
+   con IA") wrap in <details>, with the summary styled as a normal row plus a
+   trailing chevron — same disclosure language as the CRM tree.
+   ========================================================================== */
+
+.side-nav__section { display: block; }
+
+.side-nav__row--summary {
+  cursor: pointer;
+  list-style: none;              /* hide the default disclosure triangle */
+}
+
+.side-nav__row--summary::-webkit-details-marker { display: none; }
+
+/* One chevron glyph, flipped to point up while the row is open. */
+.side-nav__chevron {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform var(--speed) ease;
+}
+
+.side-nav__chevron .icon { width: 15px; height: 15px; }
+
+[open] > .side-nav__row--summary .side-nav__chevron { transform: rotate(180deg); }
+
+/* Sub-item slot — empty until View.children is filled in. */
+.side-nav__children {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-inline-start: 25px;    /* indent under the parent's label */
+}
+
+.side-nav__row--child { display: block; }
+
+/* ==========================================================================
+   Column 3 — Academy banner on top, Flujos header, then the (empty) list
+   ========================================================================== */
+
+.autom__panel {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Stretches so the empty state below can center itself in the leftover space. */
+.flows {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* --- Academy banner ------------------------------------------------------- */
+
+.academy {
+  flex-shrink: 0;
+  border-block-end: 1px solid var(--sidebar-border);
+  background: #fff;
+}
+
+.academy__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 18px 8px;
+}
+
+.academy__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  margin-block-start: 1px;
+  color: var(--accent);
+}
+
+.academy__icon .icon { width: 18px; height: 18px; }
+
+.academy__text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* "Academy:" sits bold and dark, the description flows after it in grey. */
+.academy__brand {
+  display: block;                /* own line, like the reference */
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.academy__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.academy__status {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.academy__status strong { font-weight: 600; }
+
+.academy__toggle { width: 34px; height: 30px; }
+
+/* Thin full-width progress bar along the banner's bottom edge. */
+.academy__track {
+  height: 5px;
+  background: var(--progress-track);
+  overflow: hidden;
+}
+
+.academy__fill { height: 100%; background: var(--accent); }
+
+/* --- Page header row ------------------------------------------------------ */
+
+.flows__head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 22px 26px 14px;
+}
+
+.flows__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.flows__add { margin-inline-start: auto; height: 36px; white-space: nowrap; }
+
+/* --- Empty state ---------------------------------------------------------- */
+
+/* Deliberately minimal: just the text, centered in the remaining space. */
+.flows-empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.flows-empty__text {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.flow-list { list-style: none; margin: 0; padding: 0 26px; }
+
+/* --- Placeholder panels --------------------------------------------------- */
+
+/* The shared white `.card` needs a grey field behind it on this white panel. */
+.autom-placeholder {
+  flex: 1;
+  background: var(--page-gray);
+  padding: 16px;
+}

@@ -1,0 +1,69 @@
+{% comment %}
+  Automatizaciones column 2 -- secondary navigation.
+
+  A flat list on the same `.side-nav` classes as Embudos, with one twist:
+  expandable rows ("MIA Agentes con IA") render as <details>/<summary> like the
+  CRM tree, so the chevron toggles natively -- keyboard operable, announced to
+  assistive tech, and working with JS off. The summary *also* swaps column 3
+  (the row is a destination in its own right), so it carries the same hx-*
+  wiring as its flat siblings. Its child slot loops over view.children, which
+  is empty until the sub-items are defined in core.automatizaciones.
+
+  Rows come from core.automatizaciones.VIEWS. Each flat row is a real link
+  that HTMX upgrades into a swap of column 3 only.
+
+  Context: autom_nav, active_view
+{% endcomment %}
+
+<nav class="side-nav" aria-label="Mi cuenta">
+  <p class="side-nav__heading">Mi cuenta</p>
+
+  {# data-nav-group scopes the active-pill behaviour in shell.js to this list. #}
+  <div class="side-nav__scroll" data-nav-group>
+    {% for view in autom_nav %}
+      {% if view.expandable %}
+        <details class="side-nav__section">
+          <summary class="side-nav__row side-nav__row--summary{% if view.key == active_view %} is-active{% endif %}"
+                   hx-get="{% url 'automatizaciones_panel' view.key %}"
+                   hx-target="#autom-panel"
+                   hx-swap="innerHTML"
+                   hx-push-url="{% url 'section' 'automatizaciones' %}?view={{ view.key }}"
+                   data-nav-item
+                   {% if view.key == active_view %}aria-current="true"{% endif %}>
+            <span class="side-nav__icon">{% include view.icon_template %}</span>
+            <span class="side-nav__label">{{ view.label }}</span>
+            <span class="side-nav__chevron">{% include "icons/chevron-down.svg" %}</span>
+          </summary>
+
+          {# Sub-items land here once they exist -- see View.children. #}
+          <div class="side-nav__children">
+            {% for child in view.children %}
+              <a class="side-nav__row side-nav__row--child{% if child.key == active_view %} is-active{% endif %}"
+                 href="{% url 'section' 'automatizaciones' %}?view={{ child.key }}"
+                 hx-get="{% url 'automatizaciones_panel' child.key %}"
+                 hx-target="#autom-panel"
+                 hx-swap="innerHTML"
+                 hx-push-url="{% url 'section' 'automatizaciones' %}?view={{ child.key }}"
+                 data-nav-item
+                 {% if child.key == active_view %}aria-current="true"{% endif %}>
+                {{ child.label }}
+              </a>
+            {% endfor %}
+          </div>
+        </details>
+      {% else %}
+        <a class="side-nav__row{% if view.key == active_view %} is-active{% endif %}"
+           href="{% url 'section' 'automatizaciones' %}?view={{ view.key }}"
+           hx-get="{% url 'automatizaciones_panel' view.key %}"
+           hx-target="#autom-panel"
+           hx-swap="innerHTML"
+           hx-push-url="{% url 'section' 'automatizaciones' %}?view={{ view.key }}"
+           data-nav-item
+           {% if view.key == active_view %}aria-current="true"{% endif %}>
+          <span class="side-nav__icon">{% include view.icon_template %}</span>
+          <span class="side-nav__label">{{ view.label }}</span>
+        </a>
+      {% endif %}
+    {% endfor %}
+  </div>
+</nav>

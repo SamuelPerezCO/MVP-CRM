@@ -68,3 +68,43 @@ class Client(models.Model):
         """wa.me link for the phone number, digits only."""
         digits = "".join(char for char in self.phone if char.isdigit())
         return f"https://wa.me/{digits}"
+
+
+class Product(models.Model):
+    """A product in the Mi comercio catalogue.
+
+    Fields map directly onto the Productos table columns. Categoría and Marca
+    are plain text for now -- they become foreign keys once the Categorías and
+    Marcas pages define real models. "Sincronizado con" (the sales channels a
+    product is synced to) deliberately has *no* field yet: it will be an M2M to
+    a SalesChannel model once channel integrations exist, and the table renders
+    an empty cell until then.
+    """
+
+    # Keys double as the ?tab= slugs on the Productos table, so a status and
+    # the tab that filters by it refer to the same thing.
+    STATUS_CHOICES = [
+        ("activo", "Activo"),
+        ("inactivo", "Inactivo"),
+    ]
+
+    name = models.CharField("nombre", max_length=120)
+    stock = models.PositiveIntegerField("stock", default=0)
+    price = models.DecimalField("precio", max_digits=10, decimal_places=2)
+
+    category = models.CharField("categoría", max_length=80, blank=True)
+    brand = models.CharField("marca", max_length=80, blank=True)
+
+    status = models.CharField(
+        "estado", max_length=10, choices=STATUS_CHOICES, default="activo"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "producto"
+        verbose_name_plural = "productos"
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name

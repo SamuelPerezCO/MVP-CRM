@@ -1,0 +1,47 @@
+{% comment %}
+  Automatizaciones column 3 -- the Chatbots de flujo (Flujos) page.
+
+  This is what core.views.automatizaciones_panel returns on its own when
+  "Chatbots de flujo" is picked in the secondary nav, and what the full page
+  renders inside #autom-panel on first load.
+
+  Stacked top to bottom: Academy banner, page header, then the flow list --
+  which branches on `flows` (core.automatizaciones.get_flows): empty renders
+  the minimal "Sin flujos" state, non-empty is where the real list goes once a
+  Flow model exists. Only that {% if %} needs filling in -- the view, URL and
+  nav wiring already work either way.
+
+  Context: flows
+{% endcomment %}
+
+<div class="flows">
+  {% include "partials/automatizaciones/academy_banner.html" %}
+
+  <header class="flows__head">
+    <h1 class="flows__title">
+      Flujos
+      {# Tooltip copy still TBD -- the label is what assistive tech reads. #}
+      <span class="info-dot" role="img" aria-label="Información sobre flujos">
+        {% include "icons/info.svg" %}
+      </span>
+    </h1>
+
+    {# Wired to a placeholder route; the creation flow itself is not built yet. #}
+    <a class="btn-primary flows__add"
+       href="{% url 'flujo_create' %}"
+       hx-get="{% url 'flujo_create' %}"
+       hx-target="#autom-panel"
+       hx-swap="innerHTML">+ Añadir flujo</a>
+  </header>
+
+  {% if flows %}
+    {# The flow list gets built here. Deliberately not implemented yet. #}
+    <ul class="flow-list">
+      {% for flow in flows %}
+        <li class="flow-list__row">{{ flow }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    {% include "partials/automatizaciones/flows_empty.html" %}
+  {% endif %}
+</div>

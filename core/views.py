@@ -22,7 +22,7 @@ from django.template.loader import get_template, render_to_string
 
 from django.core.paginator import Paginator
 
-from . import crm, embudos, inbox
+from . import automatizaciones, comercio, crm, embudos, inbox
 from .models import Client
 from .nav import (
     DEFAULT_SECTION,
@@ -153,11 +153,99 @@ def _embudos_context(request) -> dict:
     return context
 
 
+def _automatizaciones_panel_context(request) -> dict:
+    """Data for the Chatbots de flujo (Flujos) panel.
+
+    ``flows`` is what the panel branches on: empty renders the "Sin flujos"
+    state, non-empty is where the flow list will go.
+    """
+    return {"flows": automatizaciones.get_flows()}
+
+
+#: Automatizaciones view key -> callable(request) -> dict. Views without an
+#: entry need no data.
+AUTOM_PANEL_CONTEXT = {
+    "chatbots-flujo": _automatizaciones_panel_context,
+}
+
+
+def _automatizaciones_context(request) -> dict:
+    """Extra context for the Automatizaciones screen.
+
+    ``?view=`` selects the active row in the secondary nav. An unknown value
+    falls back to the default rather than 404-ing, so a stale bookmark opens.
+    """
+    view_key = request.GET.get("view", automatizaciones.DEFAULT_VIEW)
+    if view_key not in automatizaciones.VIEW_BY_KEY:
+        view_key = automatizaciones.DEFAULT_VIEW
+
+    context = {
+        "autom_nav": automatizaciones.VIEWS,
+        "active_view": view_key,
+        "autom_view": automatizaciones.VIEW_BY_KEY[view_key],
+        "panel_template": automatizaciones.panel_template(view_key),
+    }
+    builder = AUTOM_PANEL_CONTEXT.get(view_key)
+    if builder is not None:
+        context.update(builder(request))
+    return context
+
+
+def _productos_context(request) -> dict:
+    """Data for the Productos panel: the tab row and the filtered queryset.
+
+    ``?tab=`` selects the active tab. An unknown value falls back to the
+    default rather than 404-ing, so a stale bookmark still opens.
+    """
+    tab_key = request.GET.get("tab", comercio.DEFAULT_TAB)
+    if tab_key not in comercio.TAB_BY_KEY:
+        tab_key = comercio.DEFAULT_TAB
+
+    return {
+        "tabs": comercio.TABS,
+        "active_tab": tab_key,
+        "columns": comercio.TABLE_COLUMNS,
+        "products": comercio.get_products(tab_key),
+    }
+
+
+#: Mi comercio view key -> callable(request) -> dict. Views without an entry
+#: need no data.
+COMERCIO_PANEL_CONTEXT = {
+    "productos": _productos_context,
+}
+
+
+def _comercio_context(request) -> dict:
+    """Extra context for the Mi comercio screen.
+
+    ``?view=`` selects the active row in the secondary nav. An unknown value
+    falls back to the default rather than 404-ing, so a stale bookmark opens.
+    """
+    view_key = request.GET.get("view", comercio.DEFAULT_VIEW)
+    if view_key not in comercio.VIEW_BY_KEY:
+        view_key = comercio.DEFAULT_VIEW
+
+    context = {
+        "comercio_sections": comercio.SECTIONS,
+        "comercio_single": comercio.STANDALONE,
+        "active_view": view_key,
+        "comercio_view": comercio.VIEW_BY_KEY[view_key],
+        "panel_template": comercio.panel_template(view_key),
+    }
+    builder = COMERCIO_PANEL_CONTEXT.get(view_key)
+    if builder is not None:
+        context.update(builder(request))
+    return context
+
+
 #: section key -> callable(request) -> dict of extra template context.
 SECTION_CONTEXT = {
     "inbox": _inbox_context,
     "crm": _crm_context,
     "embudos": _embudos_context,
+    "automatizaciones": _automatizaciones_context,
+    "mi-comercio": _comercio_context,
 }
 
 
@@ -297,4 +385,109 @@ def embudo_create(request):
     """
     return HttpResponse(
         render_to_string("partials/embudos/panels/_nuevo.html", {}, request=request)
+    )
+
+
+def automatizaciones_panel(request, view_key: str):
+    """Return just the Automatizaciones column 3 for one secondary-nav view.
+
+    Targeted by the nav panel's HTMX requests so picking a page re-renders only
+    the panel, leaving the nav (and its expanded/collapsed state) untouched.
+    """
+    if view_key not in automatizaciones.VIEW_BY_KEY:
+        raise Http404(f"Unknown Automatizaciones view: {view_key!r}")
+
+    context = {
+        "active_view": view_key,
+        "autom_view": automatizaciones.VIEW_BY_KEY[view_key],
+    }
+    builder = AUTOM_PANEL_CONTEXT.get(view_key)
+    if builder is not None:
+        context.update(builder(request))
+
+    return HttpResponse(
+        render_to_string(
+            automatizaciones.panel_template(view_key), context, request=request
+        )
+    )
+
+
+def flujo_create(request):
+    """Placeholder destination for the "+ Añadir flujo" button.
+
+    Wired so the button goes somewhere real; the creation flow itself is not
+    built yet.
+    """
+    return HttpResponse(
+        render_to_string(
+            "partials/automatizaciones/panels/_nuevo_flujo.html", {}, request=request
+        )
+    )
+
+
+def comercio_panel(request, view_key: str):
+    """Return just the Mi comercio column 3 for one secondary-nav view.
+
+    Targeted by the nav panel's HTMX requests so picking a page re-renders only
+    the panel, leaving the nav (and its collapsed/expanded state) untouched.
+    """
+    if view_key not in comercio.VIEW_BY_KEY:
+        raise Http404(f"Unknown Mi comercio view: {view_key!r}")
+
+    context = {
+        "active_view": view_key,
+        "comercio_view": comercio.VIEW_BY_KEY[view_key],
+    }
+    builder = COMERCIO_PANEL_CONTEXT.get(view_key)
+    if builder is not None:
+        context.update(builder(request))
+
+    return HttpResponse(
+        render_to_string(comercio.panel_template(view_key), context, request=request)
+    )
+
+
+def productos_table(request, tab_key: str):
+    """Return just the tabbed table region (tabs + rows) for one Productos tab.
+
+    Targeted by the tab row's HTMX requests so picking a tab re-renders only
+    #product-table -- the title and toolbar above it stay put, like the CRM
+    pager swapping #client-table.
+    """
+    if tab_key not in comercio.TAB_BY_KEY:
+        raise Http404(f"Unknown Productos tab: {tab_key!r}")
+
+    return HttpResponse(
+        render_to_string(
+            "partials/comercio/product_table.html",
+            {
+                "tabs": comercio.TABS,
+                "active_tab": tab_key,
+                "columns": comercio.TABLE_COLUMNS,
+                "products": comercio.get_products(tab_key),
+            },
+            request=request,
+        )
+    )
+
+
+def producto_create(request):
+    """Placeholder destination for the "Crear +" button.
+
+    Wired so the button goes somewhere real; the creation flow itself is not
+    built yet.
+    """
+    return HttpResponse(
+        render_to_string("partials/comercio/panels/_crear.html", {}, request=request)
+    )
+
+
+def producto_import(request):
+    """Placeholder destination for the "Importar" button.
+
+    Wired so the button goes somewhere real; the import flow itself is not
+    built yet.
+    """
+    return HttpResponse(
+        render_to_string("partials/comercio/panels/_importar.html", {}, request=request)
     )

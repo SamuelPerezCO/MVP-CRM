@@ -1,0 +1,46 @@
+{% comment %}
+  Academy banner -- the strip across the top of the Flujos panel.
+
+  Dismissible: the X button hides it and records the key from
+  [data-dismissible] in localStorage (see the "Dismissible banners" section of
+  shell.js), so it stays hidden across reloads and HTMX swaps. The server
+  always renders it; the client hides it again right after each swap.
+
+  The chevron button is inert for now -- the reference collapses the banner to
+  a slim strip, but that behaviour is not specified yet.
+
+  The progress bar is hardcoded at 0% until Academy progress is real data;
+  wiring it up later is just interpolating a percentage into the two spots
+  marked below.
+{% endcomment %}
+
+<aside class="academy" data-dismissible="academy-flujos" aria-label="Academy">
+  <div class="academy__row">
+    <span class="academy__icon">{% include "icons/graduation-cap.svg" %}</span>
+
+    <p class="academy__text">
+      <strong class="academy__brand">Academy:</strong>
+      Aprende qué son los WhatsApp Flows, cómo crearlos en Meta Business Manager
+      y cómo sincronizarlos, enviarlos y gestionar respuestas desde Mercately.
+    </p>
+
+    <span class="academy__controls">
+      {# Progress spot #1: the visible percentage. #}
+      <span class="academy__status"><strong>0%</strong> Completado</span>
+
+      <button type="button" class="icon-btn academy__toggle" aria-label="Expandir lecciones">
+        {% include "icons/chevron-down.svg" %}
+      </button>
+
+      <button type="button" class="icon-btn icon-btn--bare" data-dismiss aria-label="Cerrar banner">
+        {% include "icons/x.svg" %}
+      </button>
+    </span>
+  </div>
+
+  {# Progress spot #2: the fill width. At 0% only the track shows. #}
+  <div class="academy__track" role="progressbar" aria-label="Progreso del curso"
+       aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+    <div class="academy__fill" style="width: 0%"></div>
+  </div>
+</aside>
