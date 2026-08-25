@@ -1,0 +1,154 @@
+/* ==========================================================================
+   Mi comercio screen — multi-section secondary nav + Productos table.
+   Reuses the tokens from sidebar.css, the shared `.side-nav` block from
+   embudos.css and its collapsible extension from automatizaciones.css, plus
+   `.table` / `.field` / buttons from crm.css and inbox.css. New here are the
+   tabs, the table card and the standalone nav row.
+   ========================================================================== */
+
+/* --- Shell ---------------------------------------------------------------- */
+
+.comercio {
+  display: flex;
+  height: 100vh;
+}
+
+/* ==========================================================================
+   Column 2 — extensions to the shared `.side-nav`
+   ========================================================================== */
+
+/* Breathing room between one collapsed/expanded group and the next. */
+.side-nav__scroll .side-nav__section + .side-nav__section { margin-block-start: 4px; }
+
+/* Standalone row ("Configuración del comercio"): section-header look — icon,
+   label, trailing caret — but a plain link. The label is wider than the panel
+   and relies on .side-nav__label's ellipsis; title= carries the full text. */
+.side-nav__row--single { margin-block-start: 4px; }
+
+/* ==========================================================================
+   Column 3 — Productos: header + toolbar, then the tabbed table card
+   ========================================================================== */
+
+.comercio__panel {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.productos {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 16px 22px 28px;
+}
+
+/* --- Header row ----------------------------------------------------------- */
+
+.productos__head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-block-end: 16px;
+}
+
+.productos__title {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.productos__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+.productos__toolbar .icon-btn { width: 36px; height: 36px; }
+.productos__toolbar .btn-ghost { height: 36px; text-decoration: none; }
+.productos__create { height: 36px; white-space: nowrap; }
+
+/* Grey variant of crm.css's blue info-dot, for toolbar/table-header hints. */
+.info-dot--muted { color: var(--muted); }
+.info-dot--muted .icon { width: 14px; height: 14px; }
+
+/* --- Tabbed table card ---------------------------------------------------- */
+
+/* One bordered, rounded container holds the tabs and the table, like the
+   reference. min-height keeps the blank body visible when there are no rows. */
+.product-card {
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  min-height: 220px;
+  overflow: hidden;              /* clips the square table corners */
+}
+
+/* --- Tabs ----------------------------------------------------------------- */
+
+/* The bottom border runs the full card width; the active tab's underline
+   sits on top of it. */
+.product-tabs {
+  display: flex;
+  border-block-end: 1px solid var(--sidebar-border);
+}
+
+.product-tabs__tab {
+  padding: 12px 22px;
+  margin-block-end: -1px;        /* underline overlaps the row's border */
+  border-block-end: 2px solid transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--speed) ease, color var(--speed) ease;
+}
+
+.product-tabs__tab:hover { background: var(--hover-bg); }
+
+.product-tabs__tab.is-active {
+  color: var(--accent);
+  font-weight: 600;
+  border-block-end-color: var(--accent);
+}
+
+.product-tabs__tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* --- Table tweaks --------------------------------------------------------- */
+
+/* Header cells inherit `.table` from crm.css; the card supplies the radius,
+   so the per-cell radii there are harmless here. */
+.product-table__col {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.product-table__check {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.product-table__check input {
+  display: block;
+  margin: 0 auto;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* --- Placeholder panels --------------------------------------------------- */
+
+/* The shared white `.card` needs a grey field behind it on this white panel. */
+.comercio-placeholder {
+  flex: 1;
+  background: var(--page-gray);
+  padding: 16px;
+}

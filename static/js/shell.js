@@ -98,4 +98,55 @@
 
   document.addEventListener("htmx:afterSwap", syncTitle);
   document.addEventListener("htmx:historyRestore", syncTitle);
+
+  /* -------------------------------------------------------------------------
+   * Dismissible banners.
+   *
+   * Any element with [data-dismissible="<key>"] can contain a [data-dismiss]
+   * button. Clicking it hides the element and records the key in localStorage,
+   * so the banner stays gone across reloads -- and across HTMX swaps, which
+   * re-render it fresh from the server: after every swap the stored keys are
+   * re-applied before the user sees the frame settle.
+   *
+   * localStorage access is wrapped because it can throw (private windows,
+   * blocked site data); in that case the banner simply returns next page load.
+   * ---------------------------------------------------------------------- */
+
+  var DISMISS_PREFIX = "dismissed:";
+
+  function isDismissed(key) {
+    try { return window.localStorage.getItem(DISMISS_PREFIX + key) === "1"; }
+    catch (e) { return false; }
+  }
+
+  function rememberDismissed(key) {
+    try { window.localStorage.setItem(DISMISS_PREFIX + key, "1"); }
+    catch (e) { /* no persistence available -- hide for this view only */ }
+  }
+
+  /** Hide every banner in `root` the user has already dismissed. */
+  function hideDismissed(root) {
+    (root || document).querySelectorAll("[data-dismissible]").forEach(function (el) {
+      if (isDismissed(el.dataset.dismissible)) el.hidden = true;
+    });
+  }
+
+  document.addEventListener("click", function (event) {
+    var btn = event.target.closest("[data-dismiss]");
+    if (!btn) return;
+    var banner = btn.closest("[data-dismissible]");
+    if (!banner) return;
+    banner.hidden = true;
+    rememberDismissed(banner.dataset.dismissible);
+  });
+
+  document.addEventListener("htmx:afterSwap", function (event) {
+    hideDismissed(event.target);
+  });
+  document.addEventListener("htmx:historyRestore", function () {
+    hideDismissed(document);
+  });
+
+  // First paint: the script is deferred, so the DOM is already parsed.
+  hideDismissed(document);
 })();

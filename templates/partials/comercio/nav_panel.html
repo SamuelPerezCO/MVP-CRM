@@ -1,0 +1,42 @@
+{% comment %}
+  Mi comercio column 2 -- secondary navigation.
+
+  Four independent collapsible sections, each an include of the shared
+  partials/side_nav_section.html component, plus one standalone row below them
+  ("Configuración del comercio"). That row's full label is wider than the
+  panel on purpose: `.side-nav__label` truncates it with an ellipsis and the
+  title attribute carries the whole thing as a hover tooltip -- no hardcoded
+  cut-off string.
+
+  Sections come from core.comercio.SECTIONS, the standalone row from
+  core.comercio.STANDALONE.
+
+  Context: comercio_sections, comercio_single, active_view
+{% endcomment %}
+
+<nav class="side-nav" aria-label="Mi cuenta">
+  <p class="side-nav__heading">Mi cuenta</p>
+
+  {# data-nav-group scopes the active-pill behaviour in shell.js to this list. #}
+  <div class="side-nav__scroll" data-nav-group>
+    {% for section in comercio_sections %}
+      {% include "partials/side_nav_section.html" with section=section active_view=active_view section_key="mi-comercio" panel_url_name="comercio_panel" panel_target="comercio-panel" %}
+    {% endfor %}
+
+    {# Standalone row: looks like a section header (icon + caret) but is a
+       plain link -- there is nothing to collapse. #}
+    <a class="side-nav__row side-nav__row--single{% if comercio_single.key == active_view %} is-active{% endif %}"
+       href="{% url 'section' 'mi-comercio' %}?view={{ comercio_single.key }}"
+       title="{{ comercio_single.label }}"
+       hx-get="{% url 'comercio_panel' comercio_single.key %}"
+       hx-target="#comercio-panel"
+       hx-swap="innerHTML"
+       hx-push-url="{% url 'section' 'mi-comercio' %}?view={{ comercio_single.key }}"
+       data-nav-item
+       {% if comercio_single.key == active_view %}aria-current="true"{% endif %}>
+      <span class="side-nav__icon">{% include comercio_single.icon_template %}</span>
+      <span class="side-nav__label">{{ comercio_single.label }}</span>
+      <span class="side-nav__chevron">{% include "icons/chevron-down.svg" %}</span>
+    </a>
+  </div>
+</nav>

@@ -1,0 +1,18 @@
+{% comment %}
+  Fallback panel for any Automatizaciones view without its own template yet.
+
+  core.automatizaciones.panel_template picks
+  `partials/automatizaciones/panels/<key>.html` when that file exists and lands
+  here otherwise -- so building one out means adding the file, nothing else.
+
+  Context: autom_view
+{% endcomment %}
+<div class="autom-placeholder">
+  <div class="card">
+    <h1 class="card__title">{{ autom_view.label }} — próximamente</h1>
+    <p class="card__text">
+      Crea <code>templates/partials/automatizaciones/panels/{{ autom_view.key }}.html</code>
+      para construir esta sección.
+    </p>
+  </div>
+</div>

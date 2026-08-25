@@ -1,0 +1,72 @@
+{% comment %}
+  The tab row plus the product table -- the swappable region inside
+  #product-table. The tabs live inside the region (like the CRM pager lives
+  inside #client-table) so picking one re-renders its own active state along
+  with the rows; nothing outside the region is touched.
+
+  Iterates the real Product queryset (filtered by tab in core.comercio
+  .get_products). No seed rows: with an empty database the header renders over
+  a blank body, which is exactly the reference's empty state -- no message by
+  design, unlike the decorated empty states on other screens.
+
+  Context: tabs, active_tab, products
+{% endcomment %}
+
+<div class="product-card">
+
+  <div class="product-tabs" role="tablist" aria-label="Filtrar productos por estado">
+    {% for tab in tabs %}
+      <a class="product-tabs__tab{% if tab.key == active_tab %} is-active{% endif %}"
+         href="{% url 'section' 'mi-comercio' %}?view=productos&tab={{ tab.key }}"
+         hx-get="{% url 'productos_table' tab.key %}"
+         hx-target="#product-table"
+         hx-swap="innerHTML"
+         hx-push-url="{% url 'section' 'mi-comercio' %}?view=productos&tab={{ tab.key }}"
+         {% if tab.key == active_tab %}aria-current="true"{% endif %}>
+        {{ tab.label }}
+      </a>
+    {% endfor %}
+  </div>
+
+  <table class="table product-table">
+    <thead>
+      <tr>
+        <th scope="col" class="product-table__check">
+          <input type="checkbox" aria-label="Seleccionar todos los productos">
+        </th>
+        {% for column in columns %}
+          <th scope="col">
+            <span class="product-table__col">
+              {{ column }}
+              {# Tooltip copy still TBD -- the label is what assistive tech reads. #}
+              <span class="info-dot info-dot--muted" role="img"
+                    aria-label="Información sobre {{ column|lower }}">
+                {% include "icons/info.svg" %}
+              </span>
+            </span>
+          </th>
+        {% endfor %}
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for product in products %}
+        <tr>
+          <td class="product-table__check">
+            <input type="checkbox" aria-label="Seleccionar {{ product.name }}">
+          </td>
+          <td class="table__name">{{ product.name }}</td>
+          <td>{{ product.stock }}</td>
+          <td>{{ product.price }}</td>
+          <td>{{ product.category }}</td>
+          <td>{{ product.brand }}</td>
+          <td>{{ product.get_status_display }}</td>
+          {# Empty until products sync to sales channels -- the future M2M
+             (see the Product model docstring) renders its channel list here. #}
+          <td></td>
+        </tr>
+      {% endfor %}
+      {# Zero rows: the body simply stays blank, per the reference. #}
+    </tbody>
+  </table>
+</div>

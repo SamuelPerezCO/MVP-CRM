@@ -1,0 +1,56 @@
+{% comment %}
+  Mi comercio column 3 -- the Productos page: title, toolbar and the tabbed
+  product table.
+
+  This is what core.views.comercio_panel returns on its own when "Productos"
+  is picked in the secondary nav, and what the full page renders inside
+  #comercio-panel on first load. Only #product-table below is replaced when a
+  tab is picked -- the toolbar above stays put.
+
+  Context: tabs, active_tab, products
+{% endcomment %}
+
+<div class="productos">
+
+  <header class="productos__head">
+    <h1 class="productos__title">Productos</h1>
+
+    <div class="productos__toolbar">
+      <div class="field field--wide">
+        <span class="field__icon">{% include "icons/search.svg" %}</span>
+        <input class="field__input" type="search"
+               placeholder="Buscar productos..."
+               aria-label="Buscar productos">
+      </div>
+
+      <button type="button" class="icon-btn" aria-label="Filtrar">
+        {% include "icons/list-filter.svg" %}
+      </button>
+
+      {# Both wired to placeholder routes; the flows themselves are not built yet. #}
+      <a class="btn-ghost"
+         href="{% url 'producto_import' %}"
+         hx-get="{% url 'producto_import' %}"
+         hx-target="#comercio-panel"
+         hx-swap="innerHTML">
+        <span>Importar</span>
+        {# Tooltip copy still TBD -- the label is what assistive tech reads. #}
+        <span class="info-dot info-dot--muted" role="img" aria-label="Información sobre importar">
+          {% include "icons/info.svg" %}
+        </span>
+      </a>
+
+      <a class="btn-primary productos__create"
+         href="{% url 'producto_create' %}"
+         hx-get="{% url 'producto_create' %}"
+         hx-target="#comercio-panel"
+         hx-swap="innerHTML">Crear +</a>
+    </div>
+  </header>
+
+  {# HTMX swap target for the tabs -- core.views.productos_table returns this
+     whole region (tabs + table) so the active tab re-renders server-side. #}
+  <div id="product-table">
+    {% include "partials/comercio/product_table.html" %}
+  </div>
+</div>

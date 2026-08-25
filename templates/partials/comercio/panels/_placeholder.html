@@ -1,0 +1,18 @@
+{% comment %}
+  Fallback panel for any Mi comercio view without its own template yet.
+
+  core.comercio.panel_template picks `partials/comercio/panels/<key>.html`
+  when that file exists and lands here otherwise -- so building one out means
+  adding the file, nothing else.
+
+  Context: comercio_view
+{% endcomment %}
+<div class="comercio-placeholder">
+  <div class="card">
+    <h1 class="card__title">{{ comercio_view.label }} — próximamente</h1>
+    <p class="card__text">
+      Crea <code>templates/partials/comercio/panels/{{ comercio_view.key }}.html</code>
+      para construir esta sección.
+    </p>
+  </div>
+</div>
