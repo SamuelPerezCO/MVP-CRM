@@ -1,0 +1,23 @@
+{% comment %}
+  Fallback body for any section without its own template yet.
+
+  core.views._section_template picks `sections/<key>.html` when that file exists
+  and lands here otherwise -- so building out a real section means adding the
+  file, nothing else.
+
+  Everything a swap should replace lives inside this fragment (header included),
+  which is why the heading updates along with the body.
+{% endcomment %}
+<div class="page">
+  <header class="page-head">
+    <h1 class="page-head__title">{{ item.label }}</h1>
+  </header>
+
+  <div class="panel panel--empty">
+    <div class="panel__icon">{% include item.icon_template %}</div>
+    <p class="panel__title">{{ item.label }} — próximamente</p>
+    <p class="panel__hint">
+      Crea <code>templates/sections/{{ item.key }}.html</code> para construir esta sección.
+    </p>
+  </div>
+</div>

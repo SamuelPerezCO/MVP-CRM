@@ -1,0 +1,342 @@
+/* ==========================================================================
+   CRM screen — secondary nav + client table.
+   Reuses the tokens and components from sidebar.css / inbox.css; the only new
+   values here are this screen's column width and the table surfaces.
+   ========================================================================== */
+
+:root {
+  --crm-nav-w: 212px;
+  --table-head-bg: #f7f9fb;
+  --wa-green: #25a35a;
+}
+
+/* --- Shell ---------------------------------------------------------------- */
+
+.crm {
+  display: flex;
+  height: 100vh;
+}
+
+/* ==========================================================================
+   Column 2 — secondary nav
+   ========================================================================== */
+
+.crm-nav {
+  width: var(--crm-nav-w);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-inline-end: 1px solid var(--sidebar-border);
+}
+
+.crm-nav__heading {
+  margin: 0;
+  padding: 18px 16px 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.crm-nav__scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 16px;
+}
+
+.crm-nav__section + .crm-nav__section { margin-top: 6px; }
+
+/* --- Collapsible header --------------------------------------------------- */
+
+.crm-nav__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;              /* hide the default disclosure triangle */
+  transition: background-color var(--speed) ease;
+}
+
+.crm-nav__summary::-webkit-details-marker { display: none; }
+.crm-nav__summary:hover { background: var(--hover-bg); }
+.crm-nav__summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.crm-nav__summary-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--text);
+}
+
+.crm-nav__summary-icon .icon { width: 16px; height: 16px; }
+
+.crm-nav__summary-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One chevron glyph, flipped to point up while the section is open. */
+.crm-nav__chevron {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform var(--speed) ease;
+}
+
+.crm-nav__chevron .icon { width: 15px; height: 15px; }
+
+[open] > .crm-nav__summary .crm-nav__chevron { transform: rotate(180deg); }
+
+/* --- Child rows ----------------------------------------------------------- */
+
+.crm-nav__items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 2px 12px;       /* indent under the section header */
+}
+
+.crm-nav__row {
+  display: block;
+  padding: 7px 10px;
+  border-radius: 7px;
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background-color var(--speed) ease, color var(--speed) ease;
+}
+
+.crm-nav__row:hover { background: var(--hover-bg); }
+
+/* Same active language as the sidebar pill and the Inbox nav row. */
+.crm-nav__row.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.crm-nav__row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ==========================================================================
+   Column 3 — the active panel
+   ========================================================================== */
+
+.crm__panel {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  background: #fff;
+}
+
+.crm-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 18px 22px 28px;
+}
+
+.crm-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.crm-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Small blue info circle beside the title. */
+.info-dot {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  cursor: help;
+}
+
+.info-dot .icon { width: 15px; height: 15px; }
+
+.crm-panel__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+.field--wide { width: 380px; max-width: 40vw; }
+.field--wide .field__input { height: 36px; }
+
+/* Neutral dropdown button ("Acciones"). */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--speed) ease;
+}
+
+.btn-ghost:hover { background: var(--hover-bg); }
+.btn-ghost .icon { width: 15px; height: 15px; color: var(--muted); }
+.btn-ghost:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* The toolbar's buttons are taller than the Inbox defaults. */
+.crm-panel__toolbar .icon-btn { width: 36px; height: 36px; }
+.crm-panel__toolbar .btn-primary { height: 36px; white-space: nowrap; }
+
+/* ==========================================================================
+   Client table
+   ========================================================================== */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table thead th {
+  padding: 12px 16px;
+  background: var(--table-head-bg);
+  color: var(--muted);
+  font-weight: 500;
+  text-align: start;
+  white-space: nowrap;
+  border-block-end: 1px solid var(--sidebar-border);
+}
+
+.table thead th:first-child { border-start-start-radius: 10px; }
+.table thead th:last-child { border-start-end-radius: 10px; }
+
+.table tbody td {
+  padding: 14px 16px;
+  border-block-end: 1px solid var(--sidebar-border);
+  vertical-align: middle;
+}
+
+.table tbody tr:hover { background: #fbfcfd; }
+
+.table__name { font-weight: 500; }
+.table__muted { color: var(--muted); }
+.table__actions-col { text-align: end; width: 1%; white-space: nowrap; }
+
+/* --- Cell contents -------------------------------------------------------- */
+
+/* Block-level so the WhatsApp link below it starts on a new line. */
+.phone {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.phone__flag {
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* Vendored SVG flags get a hairline so pale bands stay visible on white. */
+.phone__flag .flag {
+  display: block;
+  width: 18px;
+  height: 12px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgb(18 38 63 / 12%);
+}
+
+/* Green WhatsApp affordance under the number. */
+.wa-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-block-start: 5px;
+  color: var(--wa-green);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.wa-link:hover { text-decoration: underline; }
+.wa-link .icon { width: 15px; height: 15px; }
+.wa-link:focus-visible { outline: 2px solid var(--wa-green); outline-offset: 2px; border-radius: 3px; }
+
+.channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Borderless variant used for the per-row eye / pencil buttons. */
+.icon-btn--bare {
+  width: 30px;
+  height: 30px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.icon-btn--bare:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+/* ==========================================================================
+   Pager
+   ========================================================================== */
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 4px 0;
+  font-size: 13px;
+}
+
+.pager__status { color: var(--muted); }
+
+.pager__link {
+  padding: 6px 12px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+  transition: background-color var(--speed) ease;
+}
+
+.pager__link:hover { background: var(--hover-bg); }
+.pager__link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Empty state filling the panel rather than a narrow column. */
+.empty--panel { padding: 64px 24px; }

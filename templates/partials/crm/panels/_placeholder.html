@@ -1,0 +1,20 @@
+{% comment %}
+  Fallback panel for any CRM view without its own template yet.
+
+  core.crm.panel_template picks `partials/crm/panels/<key>.html` when that file
+  exists and lands here otherwise -- so building one out means adding the file.
+
+  Context: crm_view
+{% endcomment %}
+<div class="crm-panel">
+  <header class="crm-panel__head">
+    <h1 class="crm-panel__title">{{ crm_view.label }}</h1>
+  </header>
+
+  <div class="empty">
+    <p class="empty__title">{{ crm_view.label }} — próximamente</p>
+    <p class="empty__text">
+      Crea <code>templates/partials/crm/panels/{{ crm_view.key }}.html</code> para construir esta sección.
+    </p>
+  </div>
+</div>

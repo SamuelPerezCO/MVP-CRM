@@ -1,0 +1,35 @@
+{% comment %}
+  Inbox column 3 -- search / filter chrome plus the swappable list region.
+
+  Only #conv-list is replaced when a nav filter is picked; the search box and
+  the filter pills above it stay put.
+{% endcomment %}
+
+<section class="list-panel" aria-label="Conversaciones">
+
+  <div class="list-panel__search">
+    <div class="field">
+      <span class="field__icon">{% include "icons/search.svg" %}</span>
+      <input class="field__input" type="search" placeholder="Buscar" aria-label="Buscar conversaciones">
+    </div>
+    <button type="button" class="icon-btn" aria-label="Ordenar">{% include "icons/list-filter.svg" %}</button>
+    <button type="button" class="icon-btn" aria-label="Filtrar">{% include "icons/funnel.svg" %}</button>
+  </div>
+
+  <div class="list-panel__filters">
+    <input class="checkbox" type="checkbox" aria-label="Seleccionar todas las conversaciones">
+
+    {# Static pills for now -- they become real selects once there's data to sort. #}
+    <button type="button" class="pill">
+      <span>Actividad</span>{% include "icons/chevron-down.svg" %}
+    </button>
+    <button type="button" class="pill">
+      <span>Por resolver</span>{% include "icons/chevron-down.svg" %}
+    </button>
+  </div>
+
+  {# HTMX swap target for core.views.inbox_list. #}
+  <div class="list-panel__body" id="conv-list">
+    {% include "partials/inbox/conversation_list.html" %}
+  </div>
+</section>

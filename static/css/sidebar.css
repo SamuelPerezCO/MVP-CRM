@@ -1,0 +1,276 @@
+/* ==========================================================================
+   MVP CRM — sidebar shell
+   Colours sampled from the Mercately reference screenshots.
+   ========================================================================== */
+
+:root {
+  /* Layout */
+  --sidebar-w: 64px;          /* icon-only rail */
+  --nav-hit: 40px;            /* min click/touch target (icon glyph is 21px) */
+
+  /* Surfaces */
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e9edf2;
+  --content-bg: #f7f9fc;
+  --panel-bg: #ffffff;
+
+  /* Ink */
+  --icon-idle: #1b2a41;       /* dark navy of the unselected icons */
+  --text: #12263f;
+  --muted: #6b7c93;
+
+  /* Accent — the blue of the "Crear embudo" / "Activar Mercately" buttons */
+  --accent: #2f80ed;
+  --accent-ink: #ffffff;
+  --hover-bg: #f1f4f8;
+
+  --badge: #f5333f;           /* Academy notification dot */
+  --tip-bg: #12263f;
+
+  --radius-pill: 10px;
+  --speed: 140ms;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--content-bg);
+  color: var(--text);
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app { min-height: 100vh; }
+
+/* ==========================================================================
+   Sidebar
+   Fixed to the viewport so it never scrolls with the content area.
+   ========================================================================== */
+
+.sidebar {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--sidebar-w);
+  z-index: 100;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0 12px;
+
+  background: var(--sidebar-bg);
+  border-inline-end: 1px solid var(--sidebar-border);
+  box-shadow: 1px 0 3px rgb(18 38 63 / 4%);
+}
+
+/* --- Brand mark ----------------------------------------------------------- */
+
+.brand {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 18px;   /* keeps the blue brand from merging with an active blue pill */
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+/* --- Nav lists ------------------------------------------------------------ */
+
+.sidebar__nav { width: 100%; }
+
+/* Secondary group sits at the bottom, with a hairline divider above it. */
+.sidebar__nav--secondary {
+  margin-top: auto;
+  padding-top: 10px;
+  position: relative;
+}
+
+.sidebar__nav--secondary::before {
+  content: "";
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 14px;
+  height: 1px;
+  background: var(--sidebar-border);
+}
+
+.nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Row is the positioning context for the tooltip. */
+.nav-list__row { position: relative; }
+
+/* --- Nav item ------------------------------------------------------------- */
+
+.nav-item {
+  position: relative;
+  display: grid;
+  place-items: center;
+
+  /* Hit area stays 40x40 regardless of the 21px glyph inside it. */
+  width: var(--nav-hit);
+  height: var(--nav-hit);
+
+  border-radius: var(--radius-pill);
+  color: var(--icon-idle);
+  text-decoration: none;
+  transition: background-color var(--speed) ease, color var(--speed) ease;
+}
+
+.nav-item:hover { background: var(--hover-bg); }
+
+/* Active: solid blue pill, white glyph — matches the reference's primary blue. */
+.nav-item.is-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.nav-item__icon { display: block; }
+
+/* Notification dot (Academy). */
+.nav-item__badge {
+  position: absolute;
+  inset-block-start: 6px;
+  inset-inline-end: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--badge);
+  box-shadow: 0 0 0 2px var(--sidebar-bg);
+}
+
+/* --- Tooltip -------------------------------------------------------------- */
+/* The rail is icon-only, so hover/focus reveals the Spanish label. */
+
+.nav-item__tip {
+  position: absolute;
+  inset-inline-start: calc(100% + 10px);
+  inset-block-start: 50%;
+  transform: translateY(-50%) translateX(-4px);
+
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: var(--tip-bg);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgb(18 38 63 / 18%);
+
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--speed) ease, transform var(--speed) ease;
+  z-index: 200;
+}
+
+/* Little arrow pointing back at the icon. */
+.nav-item__tip::before {
+  content: "";
+  position: absolute;
+  inset-inline-end: 100%;
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-inline-end-color: var(--tip-bg);
+}
+
+.nav-item:hover .nav-item__tip,
+.nav-item:focus-visible .nav-item__tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* ==========================================================================
+   Content area — offset by the rail, scrolls independently.
+   ========================================================================== */
+
+.content {
+  margin-inline-start: var(--sidebar-w);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Sections that want ordinary page padding opt in; full-bleed screens (Inbox)
+   simply don't, and get the whole area. */
+.page {
+  flex: 1;
+  padding: 26px 32px;
+}
+
+.page-head { margin-bottom: 20px; }
+
+.page-head__title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 12px;
+  padding: 44px 32px;
+}
+
+.panel--empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.panel__icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 6px;
+  border-radius: 12px;
+  background: var(--hover-bg);
+  color: var(--accent);
+}
+
+.panel__title { margin: 0; font-size: 16px; font-weight: 600; }
+
+.panel__hint { margin: 0; font-size: 13px; color: var(--muted); }
+
+.panel__hint code {
+  background: var(--hover-bg);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 12px;
+}
+
+/* HTMX fades the incoming fragment out while the request is in flight. */
+#content.htmx-request { opacity: 0.55; transition: opacity var(--speed) ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,40 @@
+{% comment %}
+  Sidebar navigation -- the reusable component.
+
+  Include it from any page with:   {% include "partials/sidebar.html" %}
+
+  Required context (supplied by core.views.section):
+    primary_nav    list[NavItem]  main icon stack
+    secondary_nav  list[NavItem]  bottom group (apps / academy / recursos)
+    active_key     str            NavItem.key of the section currently shown
+
+  Each item is a real <a href> pointing at its own URL, so the sidebar keeps
+  working without JavaScript. HTMX intercepts the click when available and swaps
+  only #content, pushing the URL so back/forward still behave.
+{% endcomment %}
+
+<aside class="sidebar" data-nav-group
+       {# lets shell.js map the "/" URL back onto the default icon #}
+       data-default-href="{% url 'section' default_section %}">
+  {# Brand mark -- links back to the default section #}
+  <a class="brand" href="{% url 'home' %}" aria-label="Inicio">
+    {% include "icons/logo.svg" %}
+  </a>
+
+  <nav class="sidebar__nav" aria-label="Navegación principal">
+    <ul class="nav-list">
+      {% for item in primary_nav %}
+        {% include "partials/nav_item.html" %}
+      {% endfor %}
+    </ul>
+  </nav>
+
+  {# Secondary group: pushed to the bottom by margin-top:auto, divider above #}
+  <nav class="sidebar__nav sidebar__nav--secondary" aria-label="Recursos y aplicaciones">
+    <ul class="nav-list">
+      {% for item in secondary_nav %}
+        {% include "partials/nav_item.html" %}
+      {% endfor %}
+    </ul>
+  </nav>
+</aside>

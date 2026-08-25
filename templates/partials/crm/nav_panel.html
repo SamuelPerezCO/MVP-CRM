@@ -1,0 +1,44 @@
+{% comment %}
+  CRM column 2 -- secondary navigation.
+
+  Sections come from core.crm.SECTIONS. Collapsing uses native <details>/<summary>
+  rather than JavaScript: it toggles, is keyboard operable and announces its
+  expanded state to assistive tech for free, and still works if JS never loads.
+  The chevron is one glyph rotated by CSS on [open].
+
+  Each row is a real link that HTMX upgrades into a swap of column 3 only.
+
+  Context: crm_sections, active_view
+{% endcomment %}
+
+<nav class="crm-nav" aria-label="Mi cuenta">
+  <p class="crm-nav__heading">Mi cuenta</p>
+
+  {# data-nav-group scopes the active-pill behaviour in shell.js to this list. #}
+  <div class="crm-nav__scroll" data-nav-group>
+    {% for section in crm_sections %}
+      <details class="crm-nav__section" open>
+        <summary class="crm-nav__summary">
+          <span class="crm-nav__summary-icon">{% include section.icon_template %}</span>
+          <span class="crm-nav__summary-text">{{ section.title }}</span>
+          <span class="crm-nav__chevron">{% include "icons/chevron-down.svg" %}</span>
+        </summary>
+
+        <div class="crm-nav__items">
+          {% for view in section.views %}
+            <a class="crm-nav__row{% if view.key == active_view %} is-active{% endif %}"
+               href="{% url 'section' 'crm' %}?view={{ view.key }}"
+               hx-get="{% url 'crm_panel' view.key %}"
+               hx-target="#crm-panel"
+               hx-swap="innerHTML"
+               hx-push-url="{% url 'section' 'crm' %}?view={{ view.key }}"
+               data-nav-item
+               {% if view.key == active_view %}aria-current="true"{% endif %}>
+              {{ view.label }}
+            </a>
+          {% endfor %}
+        </div>
+      </details>
+    {% endfor %}
+  </div>
+</nav>

@@ -1,0 +1,110 @@
+{% comment %}
+  The client table plus its pager -- the swappable region inside #client-table.
+
+  Iterates the real Client queryset (paginated in core.views._clientes_context).
+  No seed rows: with an empty database this renders the empty state below.
+
+  Context: clients (a Paginator page), page_obj
+{% endcomment %}
+{% load crm_extras %}
+
+{% if clients %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">Nombres y apellidos</th>
+        <th scope="col">Teléfono</th>
+        <th scope="col">Mail</th>
+        <th scope="col">Canal</th>
+        <th scope="col" class="table__actions-col">Acciones</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for client in clients %}
+        <tr>
+          <td class="table__name">{{ client.full_name }}</td>
+
+          <td>
+            {% flag_template client.country as flag_svg %}
+            <span class="phone">
+              {% if flag_svg %}
+                <span class="phone__flag">{% include flag_svg %}</span>
+              {% elif client.flag %}
+                {# No SVG vendored for this country; emoji works everywhere but Windows. #}
+                <span class="phone__flag" aria-hidden="true">{{ client.flag }}</span>
+              {% endif %}
+              <span>{{ client.phone }}</span>
+            </span>
+
+            {# Only offered when the client actually came in over WhatsApp. #}
+            {% if client.has_whatsapp %}
+              <a class="wa-link" href="{{ client.whatsapp_url }}" target="_blank" rel="noopener">
+                {% include "icons/brands/whatsapp.svg" %}
+                <span>Iniciar conversación</span>
+              </a>
+            {% endif %}
+          </td>
+
+          <td class="table__muted">{{ client.email|default:"" }}</td>
+
+          <td>
+            {% if client.channel %}
+              <span class="channel">
+                {% include "icons/brands/"|add:client.channel|add:".svg" %}
+                <span>{{ client.get_channel_display }}</span>
+              </span>
+            {% endif %}
+          </td>
+
+          <td class="table__actions-col">
+            <div class="row-actions">
+              <button type="button" class="icon-btn icon-btn--bare"
+                      aria-label="Ver {{ client.full_name }}">
+                {% include "icons/eye.svg" %}
+              </button>
+              <button type="button" class="icon-btn icon-btn--bare"
+                      aria-label="Editar {{ client.full_name }}">
+                {% include "icons/pencil.svg" %}
+              </button>
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {# Pager: real links, upgraded by HTMX to swap only this region. #}
+  {% if page_obj.has_other_pages %}
+    <nav class="pager" aria-label="Paginación de clientes">
+      {% if page_obj.has_previous %}
+        <a class="pager__link"
+           href="?view=clientes&page={{ page_obj.previous_page_number }}"
+           hx-get="{% url 'crm_panel' 'clientes' %}?page={{ page_obj.previous_page_number }}"
+           hx-target="#client-table"
+           hx-swap="innerHTML"
+           hx-push-url="{% url 'section' 'crm' %}?view=clientes&page={{ page_obj.previous_page_number }}">
+          Anterior
+        </a>
+      {% endif %}
+
+      <span class="pager__status">
+        Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+      </span>
+
+      {% if page_obj.has_next %}
+        <a class="pager__link"
+           href="?view=clientes&page={{ page_obj.next_page_number }}"
+           hx-get="{% url 'crm_panel' 'clientes' %}?page={{ page_obj.next_page_number }}"
+           hx-target="#client-table"
+           hx-swap="innerHTML"
+           hx-push-url="{% url 'section' 'crm' %}?view=clientes&page={{ page_obj.next_page_number }}">
+          Siguiente
+        </a>
+      {% endif %}
+    </nav>
+  {% endif %}
+
+{% else %}
+  {% include "partials/crm/client_table_empty.html" %}
+{% endif %}

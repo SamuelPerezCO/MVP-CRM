@@ -1,0 +1,21 @@
+{% comment %}
+  Inbox -- assembles the four columns that fill the sidebar's content area.
+
+  This whole file is what HTMX drops into #content when the Inbox sidebar icon
+  is selected, so it is a fragment: no <html>, no sidebar, just the screen.
+
+  Columns: nav panel | conversation list | chat | client details, with a footer
+  bar underneath spanning all of them. Each column is its own partial so it can
+  be reused or swapped independently later.
+{% endcomment %}
+
+<div class="inbox">
+  <div class="inbox__cols">
+    {% include "partials/inbox/nav_panel.html" %}
+    {% include "partials/inbox/list_panel.html" %}
+    {% include "partials/inbox/chat_panel.html" %}
+    {% include "partials/inbox/details_panel.html" %}
+  </div>
+
+  {% include "partials/inbox/footer.html" %}
+</div>
