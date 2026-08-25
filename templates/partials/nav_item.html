@@ -1,0 +1,28 @@
+{% comment %}
+  One sidebar icon. Expects `item` (a NavItem) and `active_key` in context.
+
+  Accessibility notes:
+   * The sidebar is icon-only, so aria-label carries the Spanish name -- the
+     visible tooltip is aria-hidden to avoid a doubled announcement.
+   * aria-current="page" marks the active section for assistive tech, which is
+     what the blue pill communicates visually.
+   * The <a> is the 40x40 hit area; the 21px glyph is centred inside it.
+{% endcomment %}
+<li class="nav-list__row">
+  <a class="nav-item{% if item.key == active_key %} is-active{% endif %}"
+     href="{% url 'section' item.key %}"
+     hx-get="{% url 'section' item.key %}"
+     hx-target="#content"
+     hx-swap="innerHTML"
+     hx-push-url="true"
+     data-nav-item
+     aria-label="{{ item.label }}"
+     {% if item.key == active_key %}aria-current="page"{% endif %}>
+
+    {% include item.icon_template %}
+
+    {% if item.badge %}<span class="nav-item__badge" aria-hidden="true"></span>{% endif %}
+
+    <span class="nav-item__tip" role="tooltip" aria-hidden="true">{{ item.label }}</span>
+  </a>
+</li>

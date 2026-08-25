@@ -1,0 +1,22 @@
+{% comment %}
+  Embudos column 3.
+
+  Branches on `funnels` (core.embudos.get_funnels): empty renders the
+  empty-state card below, non-empty is where the real funnel list goes once a
+  Funnel model exists. Only that {% else %} branch needs filling in -- the view,
+  URL and nav wiring already work either way.
+
+  Context: funnels
+{% endcomment %}
+
+{% if funnels %}
+  {# The funnel list gets built here. Deliberately not implemented yet. #}
+  <ul class="funnel-list">
+    {% for funnel in funnels %}
+      <li class="funnel-list__row">{{ funnel }}</li>
+    {% endfor %}
+  </ul>
+
+{% else %}
+  {% include "partials/embudos/panels/_empty.html" %}
+{% endif %}

@@ -1,0 +1,21 @@
+{% comment %}
+  Inbox column 3 body -- the swap target's contents.
+
+  This is what core.views.inbox_list returns on its own when a filter is picked,
+  and what the full page renders inside #conv-list on first load. It decides
+  between the real list and the empty state; when conversations exist, the
+  {% else %} branch is where rows get drawn.
+
+  Context: conversations, active_filter
+{% endcomment %}
+
+{% if conversations %}
+  <ul class="conv-items">
+    {% for conversation in conversations %}
+      {# Conversation rows land here once there's a model behind them. #}
+      <li class="conv-items__row">{{ conversation }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  {% include "partials/inbox/conversation_list_empty.html" %}
+{% endif %}

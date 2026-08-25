@@ -1,0 +1,9 @@
+{% comment %}
+  Empty state for the client table -- shown when there are zero clients.
+  Reuses the .empty component built for the Inbox columns.
+{% endcomment %}
+<div class="empty empty--panel">
+  <div class="empty__icon">{% include "icons/users.svg" %}</div>
+  <p class="empty__title">Aún no tienes clientes</p>
+  <p class="empty__text">Los clientes que crees o que te escriban aparecerán aquí.</p>
+</div>

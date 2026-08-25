@@ -1,0 +1,16 @@
+{% comment %}
+  Fallback panel for any Embudos view without its own template yet.
+
+  core.embudos.panel_template picks `partials/embudos/panels/<key>.html` when
+  that file exists and lands here otherwise -- so building one out means adding
+  the file, nothing else.
+
+  Context: embudos_view
+{% endcomment %}
+<div class="card">
+  <h1 class="card__title">{{ embudos_view.label }} — próximamente</h1>
+  <p class="card__text">
+    Crea <code>templates/partials/embudos/panels/{{ embudos_view.key }}.html</code>
+    para construir esta sección.
+  </p>
+</div>

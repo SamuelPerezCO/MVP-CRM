@@ -1,0 +1,38 @@
+{% comment %}
+  Empty-state card shown while the user has zero funnels.
+
+  Kept as its own partial so it can be swapped out independently once the real
+  funnel list exists.
+
+  No illustration by design -- the reference's isometric graphic is deliberately
+  omitted, so the text block is capped at a readable measure and the card keeps
+  generous padding rather than stretching thin across the full width.
+{% endcomment %}
+
+<div class="card card--intro">
+  <div class="intro">
+    <h1 class="intro__title">Organiza tu proceso con embudos de venta</h1>
+
+    <p class="intro__text">
+      Los embudos en Mercately te permiten seguir el recorrido de tus clientes
+      desde el primer contacto hasta la conversión. Al estructurar tus etapas de
+      venta, puedes identificar oportunidades, mejorar estrategias y aumentar tus
+      conversiones.
+    </p>
+
+    <p class="intro__text">
+      Comienza creando tu primer embudo y lleva un control efectivo de tus
+      negociaciones.
+    </p>
+
+    {# Wired to a placeholder route; the creation flow itself is not built yet. #}
+    <a class="btn-outline"
+       href="{% url 'embudo_create' %}"
+       hx-get="{% url 'embudo_create' %}"
+       hx-target="#embudos-panel"
+       hx-swap="innerHTML">
+      <span>Crear nuevo embudo</span>
+      <span class="btn-outline__plus" aria-hidden="true">+</span>
+    </a>
+  </div>
+</div>

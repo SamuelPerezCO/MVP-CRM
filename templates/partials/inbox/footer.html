@@ -1,0 +1,20 @@
+{% comment %}
+  Footer bar spanning all four Inbox columns, plus the help controls that float
+  above it on the right.
+{% endcomment %}
+<footer class="inbox-footer">
+  <span class="inbox-footer__note">
+    {% include "icons/help-circle.svg" %}
+    <span>Estamos aquí para ayudarte.</span>
+  </span>
+</footer>
+
+<div class="help-dock">
+  <button type="button" class="help-dock__pill">
+    <span>¿Necesitas ayuda? Haz clic aquí</span>
+    {% include "icons/chevron-up.svg" %}
+  </button>
+  <button type="button" class="help-dock__avatar" aria-label="Abrir chat de soporte">
+    {% include "icons/message-circle.svg" %}
+  </button>
+</div>

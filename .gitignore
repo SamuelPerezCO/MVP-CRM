@@ -1,0 +1,16 @@
+# Agent skills (installed via `npx skills add`)
+.agents/
+.claude/skills/
+.claude/settings.local.json
+skills-lock.json
+
+# Python virtualenv
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Django
+db.sqlite3
+/staticfiles/

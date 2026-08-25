@@ -1,0 +1,18 @@
+{% comment %}
+  CRM -- the two columns that fill the sidebar's content area.
+
+  This whole file is what HTMX drops into #content when the CRM sidebar icon is
+  selected, so it is a fragment: no <html>, no sidebar, just the screen.
+
+  Columns: secondary nav | active panel. The panel is its own swap target so the
+  secondary nav can replace it without re-rendering itself.
+{% endcomment %}
+
+<div class="crm">
+  {% include "partials/crm/nav_panel.html" %}
+
+  {# HTMX swap target for core.views.crm_panel. #}
+  <main class="crm__panel" id="crm-panel">
+    {% include panel_template %}
+  </main>
+</div>

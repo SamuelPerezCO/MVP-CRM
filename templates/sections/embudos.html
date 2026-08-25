@@ -1,0 +1,18 @@
+{% comment %}
+  Embudos -- the two columns that fill the sidebar's content area.
+
+  This whole file is what HTMX drops into #content when the Embudos sidebar icon
+  is selected, so it is a fragment: no <html>, no sidebar, just the screen.
+
+  Columns: secondary nav | active panel. The panel is its own swap target so the
+  secondary nav can replace it without re-rendering itself.
+{% endcomment %}
+
+<div class="embudos">
+  {% include "partials/embudos/nav_panel.html" %}
+
+  {# HTMX swap target for core.views.embudos_panel. #}
+  <main class="embudos__panel" id="embudos-panel">
+    {% include panel_template %}
+  </main>
+</div>
