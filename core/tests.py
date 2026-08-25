@@ -3,7 +3,13 @@
 from django.test import TestCase
 from django.urls import reverse
 
-from core.nav import ALL_NAV, DEFAULT_SECTION, PRIMARY_NAV, SECONDARY_NAV
+from core.nav import (
+    ALL_NAV,
+    NAV_BY_KEY,
+    PRIMARY_NAV,
+    SECONDARY_NAV,
+    WELCOME_SHORTCUTS,
+)
 
 HTMX = {"HX-Request": "true"}
 
@@ -44,10 +50,10 @@ class NavDefinitionTests(TestCase):
 
 
 class RoutingTests(TestCase):
-    def test_root_renders_the_default_section(self):
+    def test_root_renders_the_welcome_screen(self):
         response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["active_key"], DEFAULT_SECTION)
+        self.assertIsNone(response.context["active_key"])
 
     def test_every_nav_key_resolves(self):
         for item in ALL_NAV:
@@ -230,3 +236,63 @@ class InboxListEndpointTests(TestCase):
         fragment = self.client.get(reverse("inbox_list", args=["todos"])).content.decode()
         page = self.client.get(reverse("section", args=["inbox"])).content.decode()
         self.assertIn(fragment.strip(), page)
+
+
+class WelcomeScreenTests(TestCase):
+    """The landing state at "/": full shell, centred copy, and an idle rail."""
+
+    def test_no_icon_is_marked_active(self):
+        html = self.client.get(reverse("home")).content.decode()
+        # The whole point of the screen: the rail renders, but nothing is lit.
+        self.assertIn("nav-item", html)
+        self.assertNotIn("is-active", html)
+        self.assertNotIn("aria-current", html)
+
+    def test_root_matches_no_sidebar_href(self):
+        """Guards the regression the welcome screen exists to avoid.
+
+        shell.js lights up `.nav-item[href="<pathname>"]`, so if any icon ever
+        pointed at "/" the rail would select itself on the welcome screen.
+        """
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertNotIn('class="nav-item" href="/"', html)
+        for item in ALL_NAV:
+            with self.subTest(item.key):
+                self.assertNotEqual(reverse("section", args=[item.key]), "/")
+
+    def test_hero_copy_renders(self):
+        response = self.client.get(reverse("home"))
+        self.assertContains(response, "Bienvenido a MVP-CRM")
+        self.assertContains(response, "Gestiona tus conversaciones, clientes y ventas")
+        self.assertContains(response, "welcome__logo")
+
+    def test_title_names_the_screen(self):
+        self.assertContains(self.client.get(reverse("home")), "<title>Bienvenido · MVP CRM</title>")
+
+    def test_shortcuts_link_to_their_sections(self):
+        html = self.client.get(reverse("home")).content.decode()
+        for key in WELCOME_SHORTCUTS:
+            with self.subTest(key):
+                url = reverse("section", args=[key])
+                self.assertIn(f'href="{url}"', html)
+                # Tells shell.js which icon to light up, since the card sits
+                # outside the rail's [data-nav-group].
+                self.assertIn(f'data-nav-for="{url}"', html)
+                self.assertIn(NAV_BY_KEY[key].label, html)
+
+    def test_footer_and_help_dock_render(self):
+        response = self.client.get(reverse("home"))
+        self.assertContains(response, "Estamos aquí para ayudarte.")
+        self.assertContains(response, "¿Necesitas ayuda? Haz clic aquí")
+
+    def test_htmx_request_returns_a_bare_fragment(self):
+        body = self.client.get(reverse("home"), headers=HTMX).content.decode()
+        self.assertNotIn("<html", body)
+        self.assertNotIn("sidebar", body)
+        self.assertIn("welcome__title", body)
+
+    def test_leaving_the_welcome_screen_activates_that_icon(self):
+        """Clicking through to a section restores the normal active state."""
+        response = self.client.get(reverse("section", args=["crm"]))
+        self.assertEqual(response.context["active_key"], "crm")
+        self.assertEqual(response.content.decode().count("nav-item is-active"), 1)

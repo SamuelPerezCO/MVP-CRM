@@ -3,20 +3,20 @@
 
   Include it from any page with:   {% include "partials/sidebar.html" %}
 
-  Required context (supplied by core.views.section):
+  Required context (supplied by core.views.section and core.views.welcome):
     primary_nav    list[NavItem]  main icon stack
     secondary_nav  list[NavItem]  bottom group (apps / academy / recursos)
-    active_key     str            NavItem.key of the section currently shown
+    active_key     str | None     NavItem.key of the section currently shown,
+                                  or None on the welcome screen -- no key can
+                                  equal None, so every icon renders unselected.
 
   Each item is a real <a href> pointing at its own URL, so the sidebar keeps
   working without JavaScript. HTMX intercepts the click when available and swaps
   only #content, pushing the URL so back/forward still behave.
 {% endcomment %}
 
-<aside class="sidebar" data-nav-group
-       {# lets shell.js map the "/" URL back onto the default icon #}
-       data-default-href="{% url 'section' default_section %}">
-  {# Brand mark -- links back to the default section #}
+<aside class="sidebar" data-nav-group>
+  {# Brand mark -- returns to the welcome screen, which selects no icon #}
   <a class="brand" href="{% url 'home' %}" aria-label="Inicio">
     {% include "icons/logo.svg" %}
   </a>

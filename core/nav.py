@@ -68,5 +68,14 @@ ALL_NAV = PRIMARY_NAV + SECONDARY_NAV
 # Fast lookup used by the view to validate the slug in the URL.
 NAV_BY_KEY = {item.key: item for item in ALL_NAV}
 
-#: Section shown on first load and at the site root.
+#: Fallback slug for :func:`core.views.section` when none is supplied.
+#:
+#: The site root is *not* a section any more -- it renders the welcome screen
+#: (``core.views.welcome``) with no icon selected, so nothing maps "/" onto this
+#: key. See :data:`WELCOME_SHORTCUTS` for what the welcome screen links to.
 DEFAULT_SECTION = "inbox"
+
+#: Sections featured as quick-access cards on the welcome screen, in order.
+#: Keys must exist in :data:`NAV_BY_KEY`; the view resolves them to NavItems so
+#: the cards reuse the same label and glyph as the rail.
+WELCOME_SHORTCUTS = ["inbox", "crm", "embudos"]

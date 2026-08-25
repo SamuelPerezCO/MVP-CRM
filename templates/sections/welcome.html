@@ -1,0 +1,51 @@
+{% comment %}
+  Welcome -- the landing screen at "/", shown before any section is chosen.
+
+  Like every other section this file is a fragment (no <html>, no sidebar), so
+  HTMX can drop it straight into #content. Unlike the others it fills the whole
+  content area: there is no secondary nav panel, just one centred block.
+
+  Context (from core.views.welcome):
+    shortcuts  list[NavItem]  quick-access cards, from nav.WELCOME_SHORTCUTS
+
+  The rail is left unselected here -- see core.views.welcome for why.
+{% endcomment %}
+
+<div class="welcome">
+  <div class="welcome__body">
+    {# Same logo mark as the sidebar's brand, scaled up by .welcome__logo. #}
+    <div class="welcome__logo">{% include "icons/logo.svg" %}</div>
+
+    <h1 class="welcome__title">Bienvenido a MVP-CRM</h1>
+
+    <p class="welcome__text">
+      Gestiona tus conversaciones, clientes y ventas desde un solo lugar.
+      Selecciona una opción en el menú lateral para comenzar.
+    </p>
+
+    {% comment %}
+      Shortcuts into the most-used sections. They swap #content exactly like a
+      rail icon, but they sit outside [data-nav-group] -- so `data-nav-for`
+      names the icon shell.js should light up on the way out. Keeping the href
+      identical to the rail's is what lets that lookup succeed.
+    {% endcomment %}
+    <ul class="welcome__cards">
+      {% for item in shortcuts %}
+        <li>
+          <a class="welcome-card"
+             href="{% url 'section' item.key %}"
+             hx-get="{% url 'section' item.key %}"
+             hx-target="#content"
+             hx-swap="innerHTML"
+             hx-push-url="true"
+             data-nav-for="{% url 'section' item.key %}">
+            <span class="welcome-card__icon">{% include item.icon_template %}</span>
+            <span>{{ item.label }}</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  {% include "partials/footer.html" %}
+</div>
