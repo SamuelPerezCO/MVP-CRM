@@ -6,8 +6,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    # Root loads the default section (Inbox) so "/" is a valid landing page.
-    path("", views.section, name="home"),
+    # Root is the welcome screen: the shell before any section is chosen. It is
+    # deliberately not a `section` route, so no sidebar icon matches "/".
+    path("", views.welcome, name="home"),
     # Inbox column 3, fetched on its own when a conversation filter is picked.
     path("inbox/list/<slug:filter_key>/", views.inbox_list, name="inbox_list"),
     # CRM column 3, fetched on its own when a secondary-nav page is picked.

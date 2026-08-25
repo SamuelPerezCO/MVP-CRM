@@ -1,6 +1,12 @@
 {% comment %}
-  Footer bar spanning all four Inbox columns, plus the help controls that float
-  above it on the right.
+  Shared footer bar plus the help controls that float above it on the right.
+
+  Used by every full-height screen: it spans the Inbox's four columns and sits
+  under the welcome screen's centred block. The host element must be
+  `position: relative`, since `.help-dock` is absolutely positioned against it.
+
+  Styles live in inbox.css (the `.inbox-footer` / `.help-dock` rules), which is
+  loaded on every page from base.html.
 {% endcomment %}
 <footer class="inbox-footer">
   <span class="inbox-footer__note">

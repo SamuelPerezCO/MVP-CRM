@@ -11,6 +11,9 @@ keeping every URL directly linkable, bookmarkable and back-button friendly.
 
 Sections that need their own data register a context builder in
 :data:`SECTION_CONTEXT` rather than adding branches to ``section()``.
+
+:func:`welcome` serves the root URL and answers the same two ways, but is not a
+section: it is the shell at rest, with no sidebar icon selected.
 """
 
 from django.http import Http404, HttpResponse
@@ -21,7 +24,13 @@ from django.core.paginator import Paginator
 
 from . import crm, embudos, inbox
 from .models import Client
-from .nav import DEFAULT_SECTION, NAV_BY_KEY, PRIMARY_NAV, SECONDARY_NAV
+from .nav import (
+    DEFAULT_SECTION,
+    NAV_BY_KEY,
+    PRIMARY_NAV,
+    SECONDARY_NAV,
+    WELCOME_SHORTCUTS,
+)
 
 #: Rendered when a section has no template of its own yet.
 PLACEHOLDER_TEMPLATE = "sections/_placeholder.html"
@@ -155,6 +164,35 @@ SECTION_CONTEXT = {
 # --- Views -----------------------------------------------------------------
 
 
+def welcome(request):
+    """Render the landing screen served at "/".
+
+    This is the shell's resting state: the app is open but no section has been
+    picked yet. The only thing that makes it special is ``active_key=None`` --
+    :file:`partials/nav_item.html` compares every ``item.key`` against it, so a
+    value no key can equal leaves the whole rail unselected.
+
+    It deliberately does *not* go through :func:`section`: the root URL is not a
+    nav destination, and keeping it separate is what stops "/" from resolving to
+    a section and lighting up an icon.
+    """
+    context = {
+        "primary_nav": PRIMARY_NAV,
+        "secondary_nav": SECONDARY_NAV,
+        "active_key": None,         # no icon is selected on the welcome screen
+        "page_title": "Bienvenido",
+        "shortcuts": [NAV_BY_KEY[key] for key in WELCOME_SHORTCUTS],
+        "section_template": "sections/welcome.html",
+    }
+
+    if _is_htmx(request):
+        return HttpResponse(
+            render_to_string(context["section_template"], context, request=request)
+        )
+
+    return HttpResponse(render_to_string("base.html", context, request=request))
+
+
 def section(request, key: str = DEFAULT_SECTION):
     """Render one nav section, as a fragment for HTMX or a full page otherwise."""
     item = NAV_BY_KEY.get(key)
@@ -165,8 +203,8 @@ def section(request, key: str = DEFAULT_SECTION):
         "primary_nav": PRIMARY_NAV,
         "secondary_nav": SECONDARY_NAV,
         "active_key": key,          # drives the active pill in the sidebar
-        "default_section": DEFAULT_SECTION,
         "item": item,               # the section's own label / icon
+        "page_title": item.label,
         "section_template": _section_template(key),
     }
 
