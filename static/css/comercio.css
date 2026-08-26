@@ -78,7 +78,10 @@
 .info-dot--muted { color: var(--muted); }
 .info-dot--muted .icon { width: 14px; height: 14px; }
 
-/* --- Tabbed table card ---------------------------------------------------- */
+/* --- Tabbed table card ----------------------------------------------------
+   NOTE: `.product-card` / `.product-tabs` are the app's shared tabbed-card
+   language -- the Plantillas de WhatsApp screen (mensajeria.css) renders on
+   these classes too. --------------------------------------------------------- */
 
 /* One bordered, rounded container holds the tabs and the table, like the
    reference. min-height keeps the blank body visible when there are no rows. */
@@ -121,8 +124,17 @@
 
 /* --- Table tweaks --------------------------------------------------------- */
 
-/* Header cells inherit `.table` from crm.css; the card supplies the radius,
-   so the per-cell radii there are harmless here. */
+/* Eight columns outgrow a narrow viewport: they scroll inside this
+   container instead of clipping against the card's overflow:hidden. */
+.product-card__scroll { overflow-x: auto; }
+
+/* Header cells inherit `.table` from crm.css, where the first/last th carry
+   corner radii for a table that IS the card top. Inside this card the tabs
+   sit above, so a rounded header band mid-card looks broken -- square it off
+   for every table the card hosts (Productos, Plantillas...). */
+.product-card .table thead th:first-child { border-start-start-radius: 0; }
+.product-card .table thead th:last-child { border-start-end-radius: 0; }
+
 .product-table__col {
   display: inline-flex;
   align-items: center;

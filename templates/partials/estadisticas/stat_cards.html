@@ -1,0 +1,28 @@
+{% comment %}
+  The Mensajería stat-card grid -- four clickable cards, 4-across on wide
+  screens and 2x2 (then stacked) below the breakpoints in estadisticas.css.
+
+  Cards come from core.estadisticas.CARDS. The whole card is one link, wired
+  to a placeholder detail route; the real charts get built behind
+  core.views.estadisticas_card later. Kept as its own partial so the grid can
+  be reused or swapped independently of the page header.
+
+  Context: stat_cards
+{% endcomment %}
+
+<div class="stat-cards">
+  {% for card in stat_cards %}
+    <a class="stat-card"
+       href="{% url 'estadisticas_card' card.key %}"
+       hx-get="{% url 'estadisticas_card' card.key %}"
+       hx-target="#estadisticas-panel"
+       hx-swap="innerHTML">
+      <p class="stat-card__title">
+        {# Colored emoji, per the reference -- see core.estadisticas.Card.icon. #}
+        <span class="stat-card__icon" aria-hidden="true">{{ card.icon }}</span>
+        {{ card.title }}
+      </p>
+      <p class="stat-card__text">{{ card.text }}</p>
+    </a>
+  {% endfor %}
+</div>

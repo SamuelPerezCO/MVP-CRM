@@ -6,7 +6,7 @@ from decimal import Decimal
 from django.test import TestCase
 from django.urls import reverse
 
-from core.comercio import ALL_VIEWS, SECTIONS, STANDALONE, TABS
+from core.comercio import ALL_VIEWS, SECTIONS, STANDALONE, TABLE_COLUMNS, TABS
 from core.models import Product
 
 HTMX = {"HX-Request": "true"}
@@ -54,6 +54,13 @@ class ComercioScreenTests(TestCase):
         self.assertIn('title="Configuración del comercio"', html)
         self.assertIn("side-nav__row--single", html)
         self.assertNotIn("Configuración del come...", html)
+
+    def test_standalone_row_takes_the_active_state(self):
+        html = self.client.get(
+            reverse("section", args=["mi-comercio"]), {"view": "configuracion-comercio"}
+        ).content.decode()
+        self.assertIn("side-nav__row--single is-active", html)
+        self.assertNotIn("side-nav__row--child is-active", html)
 
     def test_productos_is_the_default_view(self):
         response = self.client.get(reverse("section", args=["mi-comercio"]))
@@ -104,13 +111,12 @@ class ProductosPanelTests(TestCase):
 
     def test_all_columns_render_with_info_dots(self):
         html = self.client.get(reverse("section", args=["mi-comercio"])).content.decode()
-        for column in ["Nombre", "Stock", "Precio", "Categoría", "Marca", "Estado",
-                       "Sincronizado con"]:
+        for column in TABLE_COLUMNS:
             with self.subTest(column):
                 self.assertIn(column, html)
-        # One info-dot per column, plus the Importar button's.
+        # One info-dot per column; the Importar button's sits outside this region.
         table = html.split('id="product-table"', 1)[1]
-        self.assertEqual(table.count('class="info-dot'), 7)
+        self.assertEqual(table.count('class="info-dot'), len(TABLE_COLUMNS))
 
     def test_select_all_checkbox_renders(self):
         self.assertContains(
@@ -188,7 +194,7 @@ class ProductosTabTests(TestCase):
     def test_row_renders_every_column_value(self):
         html = self.client.get(reverse("section", args=["mi-comercio"])).content.decode()
         row = html.split("Camiseta", 1)[1].split("</tr>", 1)[0]
-        self.assertIn("3", row)          # stock
+        self.assertIn("<td>3</td>", row)  # the stock cell, exactly
         self.assertIn("9.99", row)       # price
         self.assertIn("Activo", row)     # estado display
 

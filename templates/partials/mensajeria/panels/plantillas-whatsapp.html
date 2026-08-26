@@ -1,0 +1,38 @@
+{% comment %}
+  Column 3 -- the Plantillas de WhatsApp page: toolbar, then the tabbed table.
+
+  No page title, per the reference: the toolbar alone sits right-aligned at
+  the top. Only #template-table below is replaced when a tab is picked.
+
+  Context: tabs, active_tab, columns, templates
+{% endcomment %}
+
+<div class="plantillas">
+
+  <header class="plantillas__head">
+    <div class="plantillas__toolbar">
+      <div class="field field--wide">
+        <span class="field__icon">{% include "icons/search.svg" %}</span>
+        <input class="field__input" type="search"
+               placeholder="Buscar por nombre"
+               aria-label="Buscar plantillas por nombre">
+      </div>
+
+      <button type="button" class="icon-btn" aria-label="Filtrar">
+        {% include "icons/list-filter.svg" %}
+      </button>
+
+      {# Wired to a placeholder route; the creation flow itself is not built yet. #}
+      <a class="btn-primary plantillas__create"
+         href="{% url 'plantilla_create' %}"
+         hx-get="{% url 'plantilla_create' %}"
+         hx-target="#mensajeria-panel"
+         hx-swap="innerHTML">Crear plantilla +</a>
+    </div>
+  </header>
+
+  {# HTMX swap target for core.views.plantillas_table (tabs + table region). #}
+  <div id="template-table">
+    {% include "partials/mensajeria/template_table.html" %}
+  </div>
+</div>

@@ -21,9 +21,10 @@ from django.template import TemplateDoesNotExist
 from django.template.loader import get_template, render_to_string
 
 from django.core.paginator import Paginator
+from django.db.models import Count
 
-from . import automatizaciones, comercio, crm, embudos, inbox
-from .models import Client
+from . import automatizaciones, comercio, crm, embudos, estadisticas, inbox, mensajeria
+from .models import Client, ClientList
 from .nav import (
     DEFAULT_SECTION,
     NAV_BY_KEY,
@@ -88,14 +89,29 @@ def _clientes_context(request) -> dict:
     return {"clients": page, "page_obj": page}
 
 
+def _lista_clientes_context(request) -> dict:
+    """Client lists for the Lista de clientes table.
+
+    The contact count is annotated in one query rather than counted per row in
+    the template; the template renders it as ``contact_count``.
+    """
+    return {
+        "client_lists": ClientList.objects.annotate(contact_count=Count("clients")),
+    }
+
+
 #: CRM view key -> callable(request) -> dict. Panels without an entry need no data.
 PANEL_CONTEXT = {
     "clientes": _clientes_context,
+    "lista-clientes": _lista_clientes_context,
 }
 
 
 def _crm_context(request) -> dict:
-    """Extra context for the CRM screen.
+    """Extra context for the screens that mount the account nav (CRM, Campañas).
+
+    Both sections render the same core.crm sections and panels; only the
+    section template differs (see sections/crm.html and sections/campanas.html).
 
     ``?view=`` selects the active row in the secondary nav. An unknown value
     falls back to the default rather than 404-ing, so a stale bookmark opens.
@@ -239,13 +255,99 @@ def _comercio_context(request) -> dict:
     return context
 
 
+def _mensajeria_stats_context(request) -> dict:
+    """Data for the Mensajería panel: the four stat cards."""
+    return {"stat_cards": estadisticas.CARDS}
+
+
+#: Estadísticas view key -> callable(request) -> dict. Views without an entry
+#: need no data.
+STATS_PANEL_CONTEXT = {
+    "mensajeria": _mensajeria_stats_context,
+}
+
+
+def _estadisticas_context(request) -> dict:
+    """Extra context for the Estadísticas screen.
+
+    ``?view=`` selects the active row in the secondary nav. An unknown value
+    falls back to the default rather than 404-ing, so a stale bookmark opens.
+    """
+    view_key = request.GET.get("view", estadisticas.DEFAULT_VIEW)
+    if view_key not in estadisticas.VIEW_BY_KEY:
+        view_key = estadisticas.DEFAULT_VIEW
+
+    context = {
+        "stats_nav": estadisticas.VIEWS,
+        "active_view": view_key,
+        "stats_view": estadisticas.VIEW_BY_KEY[view_key],
+        "panel_template": estadisticas.panel_template(view_key),
+    }
+    builder = STATS_PANEL_CONTEXT.get(view_key)
+    if builder is not None:
+        context.update(builder(request))
+    return context
+
+
+def _plantillas_context(request) -> dict:
+    """Data for the Plantillas de WhatsApp panel: the tab row and the
+    filtered queryset.
+
+    ``?tab=`` selects the active tab. An unknown value falls back to the
+    default rather than 404-ing, so a stale bookmark still opens.
+    """
+    tab_key = request.GET.get("tab", mensajeria.DEFAULT_TAB)
+    if tab_key not in mensajeria.TAB_BY_KEY:
+        tab_key = mensajeria.DEFAULT_TAB
+
+    return {
+        "tabs": mensajeria.TABS,
+        "active_tab": tab_key,
+        "columns": mensajeria.TABLE_COLUMNS,
+        "templates": mensajeria.get_templates(tab_key),
+    }
+
+
+#: Configuración de mensajería view key -> callable(request) -> dict. Views
+#: without an entry need no data.
+MENSAJERIA_PANEL_CONTEXT = {
+    "plantillas-whatsapp": _plantillas_context,
+}
+
+
+def _mensajeria_context(request) -> dict:
+    """Extra context for the Configuración de mensajería screen.
+
+    ``?view=`` selects the active row in the secondary nav. An unknown value
+    falls back to the default rather than 404-ing, so a stale bookmark opens.
+    """
+    view_key = request.GET.get("view", mensajeria.DEFAULT_VIEW)
+    if view_key not in mensajeria.VIEW_BY_KEY:
+        view_key = mensajeria.DEFAULT_VIEW
+
+    context = {
+        "msg_nav": mensajeria.VIEWS,
+        "active_view": view_key,
+        "msg_view": mensajeria.VIEW_BY_KEY[view_key],
+        "panel_template": mensajeria.panel_template(view_key),
+    }
+    builder = MENSAJERIA_PANEL_CONTEXT.get(view_key)
+    if builder is not None:
+        context.update(builder(request))
+    return context
+
+
 #: section key -> callable(request) -> dict of extra template context.
 SECTION_CONTEXT = {
     "inbox": _inbox_context,
     "crm": _crm_context,
+    # Campañas mounts the same account nav and panels as the CRM (core.crm).
+    "campanas": _crm_context,
     "embudos": _embudos_context,
     "automatizaciones": _automatizaciones_context,
     "mi-comercio": _comercio_context,
+    "estadisticas": _estadisticas_context,
+    "mensajeria": _mensajeria_context,
 }
 
 
@@ -352,6 +454,32 @@ def crm_panel(request, view_key: str):
 
     return HttpResponse(
         render_to_string(crm.panel_template(view_key), context, request=request)
+    )
+
+
+def clientes_table(request):
+    """Return just the client table region (rows + pager) for one ``?page=``.
+
+    Targeted by the pager's HTMX requests so paging re-renders only
+    #client-table -- the title and toolbar above it stay put. The pager used
+    to fetch the *full* Clientes panel into that region, nesting a second
+    toolbar and a duplicate #client-table inside the first on every click.
+    """
+    return HttpResponse(
+        render_to_string(
+            "partials/crm/client_table.html", _clientes_context(request), request=request
+        )
+    )
+
+
+def lista_create(request):
+    """Placeholder destination for the "+ Crear lista" button.
+
+    Wired so the button goes somewhere real; the creation flow itself is not
+    built yet.
+    """
+    return HttpResponse(
+        render_to_string("partials/crm/panels/_nueva_lista.html", {}, request=request)
     )
 
 
@@ -490,4 +618,106 @@ def producto_import(request):
     """
     return HttpResponse(
         render_to_string("partials/comercio/panels/_importar.html", {}, request=request)
+    )
+
+
+def estadisticas_panel(request, view_key: str):
+    """Return just the Estadísticas column 3 for one secondary-nav view.
+
+    Targeted by the nav panel's HTMX requests so picking a page re-renders only
+    the panel, leaving the nav untouched.
+    """
+    if view_key not in estadisticas.VIEW_BY_KEY:
+        raise Http404(f"Unknown Estadísticas view: {view_key!r}")
+
+    context = {
+        "active_view": view_key,
+        "stats_view": estadisticas.VIEW_BY_KEY[view_key],
+    }
+    builder = STATS_PANEL_CONTEXT.get(view_key)
+    if builder is not None:
+        context.update(builder(request))
+
+    return HttpResponse(
+        render_to_string(
+            estadisticas.panel_template(view_key), context, request=request
+        )
+    )
+
+
+def estadisticas_card(request, card_key: str):
+    """Placeholder destination for one Mensajería stat card.
+
+    Wired so every card goes somewhere real; the detailed stats views (charts,
+    filters) are not built yet.
+    """
+    card = estadisticas.CARD_BY_KEY.get(card_key)
+    if card is None:
+        raise Http404(f"Unknown stat card: {card_key!r}")
+
+    return HttpResponse(
+        render_to_string(
+            "partials/estadisticas/panels/_card_detail.html",
+            {"stat_card": card},
+            request=request,
+        )
+    )
+
+
+def mensajeria_panel(request, view_key: str):
+    """Return just the Configuración de mensajería column 3 for one
+    secondary-nav view.
+
+    Targeted by the nav panel's HTMX requests so picking a page re-renders only
+    the panel, leaving the nav untouched.
+    """
+    if view_key not in mensajeria.VIEW_BY_KEY:
+        raise Http404(f"Unknown Mensajería view: {view_key!r}")
+
+    context = {
+        "active_view": view_key,
+        "msg_view": mensajeria.VIEW_BY_KEY[view_key],
+    }
+    builder = MENSAJERIA_PANEL_CONTEXT.get(view_key)
+    if builder is not None:
+        context.update(builder(request))
+
+    return HttpResponse(
+        render_to_string(mensajeria.panel_template(view_key), context, request=request)
+    )
+
+
+def plantillas_table(request, tab_key: str):
+    """Return just the tabbed table region (tabs + rows) for one Plantillas tab.
+
+    Targeted by the tab row's HTMX requests so picking a tab re-renders only
+    #template-table -- the toolbar above it stays put, like the Productos tabs.
+    """
+    if tab_key not in mensajeria.TAB_BY_KEY:
+        raise Http404(f"Unknown Plantillas tab: {tab_key!r}")
+
+    return HttpResponse(
+        render_to_string(
+            "partials/mensajeria/template_table.html",
+            {
+                "tabs": mensajeria.TABS,
+                "active_tab": tab_key,
+                "columns": mensajeria.TABLE_COLUMNS,
+                "templates": mensajeria.get_templates(tab_key),
+            },
+            request=request,
+        )
+    )
+
+
+def plantilla_create(request):
+    """Placeholder destination for both create-template buttons.
+
+    Wired so the buttons go somewhere real; the creation flow itself is not
+    built yet.
+    """
+    return HttpResponse(
+        render_to_string(
+            "partials/mensajeria/panels/_nueva_plantilla.html", {}, request=request
+        )
     )

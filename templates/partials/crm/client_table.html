@@ -80,10 +80,10 @@
       {% if page_obj.has_previous %}
         <a class="pager__link"
            href="?view=clientes&page={{ page_obj.previous_page_number }}"
-           hx-get="{% url 'crm_panel' 'clientes' %}?page={{ page_obj.previous_page_number }}"
+           hx-get="{% url 'clientes_table' %}?page={{ page_obj.previous_page_number }}"
            hx-target="#client-table"
            hx-swap="innerHTML"
-           hx-push-url="{% url 'section' 'crm' %}?view=clientes&page={{ page_obj.previous_page_number }}">
+           hx-push-url="?view=clientes&page={{ page_obj.previous_page_number }}">
           Anterior
         </a>
       {% endif %}
@@ -95,10 +95,10 @@
       {% if page_obj.has_next %}
         <a class="pager__link"
            href="?view=clientes&page={{ page_obj.next_page_number }}"
-           hx-get="{% url 'crm_panel' 'clientes' %}?page={{ page_obj.next_page_number }}"
+           hx-get="{% url 'clientes_table' %}?page={{ page_obj.next_page_number }}"
            hx-target="#client-table"
            hx-swap="innerHTML"
-           hx-push-url="{% url 'section' 'crm' %}?view=clientes&page={{ page_obj.next_page_number }}">
+           hx-push-url="?view=clientes&page={{ page_obj.next_page_number }}">
           Siguiente
         </a>
       {% endif %}

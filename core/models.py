@@ -81,8 +81,9 @@ class Product(models.Model):
     an empty cell until then.
     """
 
-    # Keys double as the ?tab= slugs on the Productos table, so a status and
-    # the tab that filters by it refer to the same thing.
+    # The Productos tabs filter by these values; the tab-slug -> status
+    # mapping lives in core.comercio._TAB_STATUS, next to the tab list itself
+    # (the slugs are plural -- "activos" -- while these keys are singular).
     STATUS_CHOICES = [
         ("activo", "Activo"),
         ("inactivo", "Inactivo"),
@@ -104,6 +105,70 @@ class Product(models.Model):
     class Meta:
         verbose_name = "producto"
         verbose_name_plural = "productos"
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ClientList(models.Model):
+    """A named group of clients -- one row in the "Lista de clientes" table.
+
+    "Número de contactos" is derived from the ``clients`` M2M (annotated in
+    the view) so the count can never disagree with the list's actual members.
+    ``created_by`` is plain text until the app grows real users/auth, at which
+    point it becomes a foreign key.
+    """
+
+    name = models.CharField("nombre del grupo", max_length=120)
+    clients = models.ManyToManyField(
+        Client, related_name="client_lists", blank=True, verbose_name="clientes"
+    )
+
+    created_by = models.CharField("creado por", max_length=80, blank=True)
+    created_at = models.DateTimeField("fecha", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "lista de clientes"
+        verbose_name_plural = "listas de clientes"
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class MessageTemplate(models.Model):
+    """A WhatsApp message template -- one row in the Plantillas table.
+
+    Fields map directly onto the table columns. ``is_active`` (Activo) is the
+    account's own on/off toggle; ``status`` (Estado) is the WhatsApp approval
+    verdict -- separate fields because they move independently: an approved
+    template can be switched off. The Desactivadas tab filters on the toggle,
+    the other tabs on the status.
+    """
+
+    STATUS_CHOICES = [
+        ("pendiente", "Pendiente"),
+        ("aceptada", "Aceptada"),
+        ("rechazada", "Rechazada"),
+    ]
+
+    name = models.CharField("nombre", max_length=120)
+    template_type = models.CharField("tipo", max_length=40, blank=True)
+    category = models.CharField("categoría", max_length=60, blank=True)
+    text = models.TextField("texto", blank=True)
+    team = models.CharField("equipo", max_length=80, blank=True)
+
+    is_active = models.BooleanField("activo", default=True)
+    status = models.CharField(
+        "estado", max_length=10, choices=STATUS_CHOICES, default="pendiente"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "plantilla de WhatsApp"
+        verbose_name_plural = "plantillas de WhatsApp"
         ordering = ["name"]
 
     def __str__(self) -> str:

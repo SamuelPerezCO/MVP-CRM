@@ -1,0 +1,113 @@
+/* ==========================================================================
+   Configuración de mensajería screen — flat secondary nav + Plantillas card.
+   Reuses the tokens from sidebar.css, the shared `.side-nav` block from
+   embudos.css and the tab/card classes from comercio.css; new here are the
+   headless nav spacing and the two-half empty state.
+   ========================================================================== */
+
+/* --- Shell ---------------------------------------------------------------- */
+
+.msgcfg {
+  display: flex;
+  height: 100vh;
+}
+
+/* This section's nav has no heading, so the list supplies its own top gap. */
+.side-nav__scroll--headless { padding-block-start: 16px; }
+
+/* ==========================================================================
+   Column 3 — toolbar on top, then the tabbed table card
+   ========================================================================== */
+
+.msgcfg__panel {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.plantillas {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 14px 22px 28px;
+}
+
+/* --- Toolbar (no page title -- it sits alone, right-aligned) --------------- */
+
+.plantillas__head {
+  display: flex;
+  margin-block-end: 14px;
+}
+
+.plantillas__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+.plantillas__toolbar .icon-btn { width: 36px; height: 36px; }
+.plantillas__create { height: 36px; white-space: nowrap; }
+
+/* --- Card tweaks over the shared .product-card / .product-tabs ------------- */
+
+/* Tall enough that the empty state reads as a page, not a strip. */
+.tpl-card { min-height: 540px; display: flex; flex-direction: column; }
+
+/* Thin separators between the tabs, per the reference. */
+.tpl-card .product-tabs__tab + .product-tabs__tab {
+  border-inline-start: 1px solid var(--sidebar-border);
+}
+
+.tpl-table__text { color: var(--muted); }
+
+/* ==========================================================================
+   Two-half empty state inside the card
+   ========================================================================== */
+
+.tpl-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  padding: 32px 48px 40px;
+}
+
+.tpl-empty__copy { flex: 1; max-width: 62ch; }
+
+.tpl-empty__title {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tpl-empty__text {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.tpl-empty__art { flex-shrink: 0; }
+
+.tpl-art { display: block; max-width: 100%; height: auto; }
+
+/* Single column when the panel gets narrow: the copy keeps priority. */
+@media (max-width: 1080px) {
+  .tpl-empty { flex-direction: column-reverse; align-items: flex-start; }
+  .tpl-empty__art { align-self: center; }
+}
+
+/* --- Placeholder panels --------------------------------------------------- */
+
+/* The shared white `.card` needs a grey field behind it on this white panel. */
+.msgcfg-placeholder {
+  flex: 1;
+  background: var(--page-gray);
+  padding: 16px;
+}

@@ -132,6 +132,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: background-color var(--speed) ease;
+  text-decoration: none;   /* also rendered as <a> (Crear +, Añadir flujo...) */
 }
 
 .btn-primary:hover { background: #2a72d4; }

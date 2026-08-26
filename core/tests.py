@@ -130,8 +130,8 @@ class SectionTemplateTests(TestCase):
         self.assertEqual(
             response.context["section_template"], "sections/_placeholder.html"
         )
-        # The placeholder names the file you would create to take it over.
-        self.assertContains(response, f"templates/sections/{key}.html")
+        # Just the "próximamente" title -- the file hint was removed on request.
+        self.assertContains(response, "próximamente")
 
 
 class InboxScreenTests(TestCase):
@@ -296,3 +296,20 @@ class WelcomeScreenTests(TestCase):
         response = self.client.get(reverse("section", args=["crm"]))
         self.assertEqual(response.context["active_key"], "crm")
         self.assertEqual(response.content.decode().count("nav-item is-active"), 1)
+
+class TemplateCommentLeakTests(TestCase):
+    """Django's ``{#`` comments are single-line only: a multi-line one is not
+    a comment at all and leaks into the page as visible text. Render every
+    screen and pin that none does -- this has shipped twice before."""
+
+    def test_no_section_leaks_template_comment_syntax(self):
+        for item in ALL_NAV:
+            with self.subTest(item.key):
+                html = self.client.get(reverse("section", args=[item.key])).content.decode()
+                self.assertNotIn("{#", html)
+                self.assertNotIn("#}", html)
+
+    def test_welcome_screen_does_not_leak_either(self):
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertNotIn("{#", html)
+        self.assertNotIn("#}", html)

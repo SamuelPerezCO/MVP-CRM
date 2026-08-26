@@ -19,10 +19,10 @@
 /* ==========================================================================
    Column 2 — flat secondary nav
 
-   NOTE: this is the third nav panel in the app with the same visual language
-   (sidebar rail, Inbox filters, CRM tree). The `.side-nav` block here is
-   written to be the shared one; the CRM panel still has its own `.crm-nav`
-   rules in crm.css and could be migrated onto these classes.
+   NOTE: this `.side-nav` block is the app's shared secondary-nav language.
+   Embudos, Automatizaciones, Mi comercio and the account nav (CRM/Campañas)
+   all render on these classes; the collapsible-section extension lives in
+   automatizaciones.css next to the screen that introduced it.
    ========================================================================== */
 
 .side-nav {

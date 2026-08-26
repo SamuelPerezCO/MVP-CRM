@@ -1,0 +1,27 @@
+{% comment %}
+  Estadísticas column 3 -- the Mensajería page: title, subheading and the
+  four stat cards.
+
+  This is what core.views.estadisticas_panel returns on its own when
+  "Mensajería" is picked in the secondary nav, and what the full page renders
+  inside #estadisticas-panel on first load.
+
+  Context: stat_cards
+{% endcomment %}
+
+<div class="stats-page">
+
+  <header class="stats-page__head">
+    <h1 class="stats-page__title">Estadísticas de mensajería</h1>
+
+    <p class="stats-page__subtitle">
+      Datos interesantes que tienes en cada plataforma de mensajería
+      {# Tooltip copy still TBD -- the label is what assistive tech reads. #}
+      <span class="info-dot" role="img" aria-label="Información sobre estadísticas de mensajería">
+        {% include "icons/info.svg" %}
+      </span>
+    </p>
+  </header>
+
+  {% include "partials/estadisticas/stat_cards.html" %}
+</div>
