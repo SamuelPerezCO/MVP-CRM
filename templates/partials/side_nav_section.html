@@ -1,17 +1,21 @@
 {% comment %}
-  Reusable collapsible nav section -- one titled, chevroned group of rows in a
-  screen's secondary nav (column 2). Mi comercio includes it four times; any
-  screen with a multi-section nav can reuse it the same way.
+  Reusable nav section -- one titled group of rows in a screen's secondary nav
+  (column 2). Mi comercio includes it four times; any screen with a
+  multi-section nav can reuse it the same way.
 
-  Collapsing uses native <details>/<summary> rather than JavaScript: it
-  toggles, is keyboard operable and announces its expanded state to assistive
-  tech for free, and still works if JS never loads. Each include is its own
-  <details>, so sections expand and collapse independently. The chevron is one
-  glyph rotated by CSS on [open]; all sections start expanded.
+  Two renderings, picked by the ``flat`` parameter:
 
-  Each child row is a real link that HTMX upgrades into a swap of column 3
-  only. The styling lives on the shared `.side-nav` classes (embudos.css, with
-  the collapsible extension in automatizaciones.css).
+  * default (collapsible) -- native <details>/<summary> rather than JavaScript:
+    it toggles, is keyboard operable and announces its expanded state to
+    assistive tech for free, and still works if JS never loads. Each include is
+    its own <details>, so sections expand and collapse independently. The
+    chevron is one glyph rotated by CSS on [open]; all sections start expanded.
+  * flat=True -- the same title and rows as a plain, always-open group: no
+    chevron, nothing to toggle. Campañas mounts the account nav this way.
+
+  The child rows themselves live in partials/side_nav_rows.html so both
+  renderings share one source. The styling lives on the shared `.side-nav`
+  classes (embudos.css, with the collapsible extension in automatizaciones.css).
 
   Parameters (pass via {% include ... with %}):
     section         -- has .icon_template, .title and .views (key, label)
@@ -19,27 +23,30 @@
     section_key     -- the sidebar slug, e.g. "mi-comercio" (for href/push-url)
     panel_url_name  -- URL name resolving <view.key> to the panel endpoint
     panel_target    -- id of the column-3 element the rows swap, no "#"
+    flat            -- optional; True renders the non-collapsible variant
 {% endcomment %}
 
-<details class="side-nav__section" open>
-  <summary class="side-nav__row side-nav__row--summary">
-    <span class="side-nav__icon">{% include section.icon_template %}</span>
-    <span class="side-nav__label">{{ section.title }}</span>
-    <span class="side-nav__chevron">{% include "icons/chevron-down.svg" %}</span>
-  </summary>
+{% if flat %}
+  <div class="side-nav__section">
+    <div class="side-nav__row side-nav__row--static">
+      <span class="side-nav__icon">{% include section.icon_template %}</span>
+      <span class="side-nav__label">{{ section.title }}</span>
+    </div>
 
-  <div class="side-nav__children">
-    {% for view in section.views %}
-      <a class="side-nav__row side-nav__row--child{% if view.key == active_view %} is-active{% endif %}"
-         href="{% url 'section' section_key %}?view={{ view.key }}"
-         hx-get="{% url panel_url_name view.key %}"
-         hx-target="#{{ panel_target }}"
-         hx-swap="innerHTML"
-         hx-push-url="{% url 'section' section_key %}?view={{ view.key }}"
-         data-nav-item
-         {% if view.key == active_view %}aria-current="true"{% endif %}>
-        {{ view.label }}
-      </a>
-    {% endfor %}
+    <div class="side-nav__children">
+      {% include "partials/side_nav_rows.html" %}
+    </div>
   </div>
-</details>
+{% else %}
+  <details class="side-nav__section" open>
+    <summary class="side-nav__row side-nav__row--summary">
+      <span class="side-nav__icon">{% include section.icon_template %}</span>
+      <span class="side-nav__label">{{ section.title }}</span>
+      <span class="side-nav__chevron">{% include "icons/chevron-down.svg" %}</span>
+    </summary>
+
+    <div class="side-nav__children">
+      {% include "partials/side_nav_rows.html" %}
+    </div>
+  </details>
+{% endif %}

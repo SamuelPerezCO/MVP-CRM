@@ -13,6 +13,7 @@
     section_key     -- the sidebar slug this mount lives under ("crm", "campanas")
     panel_url_name  -- URL name resolving <view.key> to the panel endpoint
     panel_target    -- id of the column-3 element the rows swap, no "#"
+    flat            -- optional; True renders every section non-collapsible
 {% endcomment %}
 
 <nav class="side-nav" aria-label="Mi cuenta">
@@ -21,7 +22,7 @@
   {# data-nav-group scopes the active-pill behaviour in shell.js to this list. #}
   <div class="side-nav__scroll" data-nav-group>
     {% for section in sections %}
-      {% include "partials/side_nav_section.html" with section=section active_view=active_view section_key=section_key panel_url_name=panel_url_name panel_target=panel_target %}
+      {% include "partials/side_nav_section.html" with section=section active_view=active_view section_key=section_key panel_url_name=panel_url_name panel_target=panel_target flat=flat %}
     {% endfor %}
   </div>
 </nav>

@@ -30,6 +30,20 @@ class CampanasScreenTests(TestCase):
                 self.assertIn(f"?view={view.key}", html)
                 self.assertIn(view.label, html)
 
+    def test_nav_sections_are_flat_not_collapsible(self):
+        # Campañas mounts the account nav with flat=True: same sections and
+        # rows as the CRM, but as plain always-open groups. The CRM keeps the
+        # <details> dropdowns.
+        campanas = self.client.get(
+            reverse("section", args=["campanas"])
+        ).content.decode()
+        self.assertNotIn("<details", campanas)
+        self.assertIn("side-nav__row--static", campanas)
+
+        crm = self.client.get(reverse("section", args=["crm"])).content.decode()
+        self.assertIn("<details", crm)
+        self.assertNotIn("side-nav__row--static", crm)
+
     def test_clientes_is_the_default_view_here_too(self):
         response = self.client.get(reverse("section", args=["campanas"]))
         self.assertEqual(response.context["active_view"], "clientes")
