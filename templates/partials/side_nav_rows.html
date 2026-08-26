@@ -1,0 +1,22 @@
+{% comment %}
+  The child rows of one nav section -- just the loop of view links, shared by
+  both renderings of partials/side_nav_section.html (collapsible and flat).
+
+  Each row is a real link that HTMX upgrades into a swap of column 3 only.
+
+  Context (inherited from the including template):
+    section, active_view, section_key, panel_url_name, panel_target
+{% endcomment %}
+
+{% for view in section.views %}
+  <a class="side-nav__row side-nav__row--child{% if view.key == active_view %} is-active{% endif %}"
+     href="{% url 'section' section_key %}?view={{ view.key }}"
+     hx-get="{% url panel_url_name view.key %}"
+     hx-target="#{{ panel_target }}"
+     hx-swap="innerHTML"
+     hx-push-url="{% url 'section' section_key %}?view={{ view.key }}"
+     data-nav-item
+     {% if view.key == active_view %}aria-current="true"{% endif %}>
+    {{ view.label }}
+  </a>
+{% endfor %}

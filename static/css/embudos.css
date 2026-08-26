@@ -75,6 +75,12 @@
 
 .side-nav__row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+/* Static group header — the flat (non-collapsible) variant of
+   side_nav_section.html: a title row that is not a link and toggles nothing,
+   so it gets no hover affordance. */
+.side-nav__row--static { cursor: default; }
+.side-nav__row--static:hover { background: transparent; }
+
 .side-nav__icon {
   display: grid;
   place-items: center;
