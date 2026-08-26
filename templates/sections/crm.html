@@ -4,12 +4,13 @@
   This whole file is what HTMX drops into #content when the CRM sidebar icon is
   selected, so it is a fragment: no <html>, no sidebar, just the screen.
 
-  Columns: secondary nav | active panel. The panel is its own swap target so the
-  secondary nav can replace it without re-rendering itself.
+  Columns: the shared "Mi cuenta" nav (also mounted by Campañas) | active
+  panel. The panel is its own swap target so the secondary nav can replace it
+  without re-rendering itself.
 {% endcomment %}
 
 <div class="crm">
-  {% include "partials/crm/nav_panel.html" %}
+  {% include "partials/account_nav_panel.html" with sections=crm_sections active_view=active_view section_key="crm" panel_url_name="crm_panel" panel_target="crm-panel" %}
 
   {# HTMX swap target for core.views.crm_panel. #}
   <main class="crm__panel" id="crm-panel">

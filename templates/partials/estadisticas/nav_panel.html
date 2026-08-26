@@ -1,0 +1,36 @@
+{% comment %}
+  Estadísticas column 2 -- secondary navigation.
+
+  A flat list on the shared `.side-nav` classes, like Embudos. Two local
+  wrinkles: the heading is "Menú" (this section's own label, unlike the
+  "Mi cuenta" panels elsewhere), and a row can carry a small pill badge after
+  its label (the "Alpha" on Atribuciones -- see View.badge).
+
+  Rows come from core.estadisticas.VIEWS. Each is a real link that HTMX
+  upgrades into a swap of column 3 only.
+
+  Context: stats_nav, active_view
+{% endcomment %}
+
+<nav class="side-nav" aria-label="Menú">
+  <p class="side-nav__heading">Menú</p>
+
+  {# data-nav-group scopes the active-pill behaviour in shell.js to this list. #}
+  <div class="side-nav__scroll" data-nav-group>
+    {% for view in stats_nav %}
+      <a class="side-nav__row{% if view.key == active_view %} is-active{% endif %}"
+         href="{% url 'section' 'estadisticas' %}?view={{ view.key }}"
+         hx-get="{% url 'estadisticas_panel' view.key %}"
+         hx-target="#estadisticas-panel"
+         hx-swap="innerHTML"
+         hx-push-url="{% url 'section' 'estadisticas' %}?view={{ view.key }}"
+         data-nav-item
+         {% if view.key == active_view %}aria-current="true"{% endif %}>
+        <span class="side-nav__icon">{% include view.icon_template %}</span>
+        {# --fit keeps the badge adjacent to the label instead of edge-flushed. #}
+        <span class="side-nav__label{% if view.badge %} side-nav__label--fit{% endif %}">{{ view.label }}</span>
+        {% if view.badge %}<span class="nav-badge">{{ view.badge }}</span>{% endif %}
+      </a>
+    {% endfor %}
+  </div>
+</nav>

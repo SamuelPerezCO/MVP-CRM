@@ -1,0 +1,27 @@
+{% comment %}
+  Shared "Mi cuenta" nav panel -- the Gestión de clientes + Calendario column
+  that both the CRM and Campañas sections mount. One source: the sections come
+  from core.crm.SECTIONS either way, and each group renders through the
+  reusable partials/side_nav_section.html component.
+
+  A third section wanting this panel just includes it with its own mount
+  parameters -- nothing here names a specific screen.
+
+  Parameters (pass via {% include ... with %}):
+    sections        -- core.crm.SECTIONS (or any list with the same shape)
+    active_view     -- key of the currently selected view
+    section_key     -- the sidebar slug this mount lives under ("crm", "campanas")
+    panel_url_name  -- URL name resolving <view.key> to the panel endpoint
+    panel_target    -- id of the column-3 element the rows swap, no "#"
+{% endcomment %}
+
+<nav class="side-nav" aria-label="Mi cuenta">
+  <p class="side-nav__heading">Mi cuenta</p>
+
+  {# data-nav-group scopes the active-pill behaviour in shell.js to this list. #}
+  <div class="side-nav__scroll" data-nav-group>
+    {% for section in sections %}
+      {% include "partials/side_nav_section.html" with section=section active_view=active_view section_key=section_key panel_url_name=panel_url_name panel_target=panel_target %}
+    {% endfor %}
+  </div>
+</nav>

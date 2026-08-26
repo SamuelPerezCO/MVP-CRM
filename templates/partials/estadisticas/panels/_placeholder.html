@@ -1,0 +1,14 @@
+{% comment %}
+  Fallback panel for any Estadísticas view without its own template yet.
+
+  core.estadisticas.panel_template picks
+  `partials/estadisticas/panels/<key>.html` when that file exists and lands
+  here otherwise -- so building one out means adding the file, nothing else.
+
+  Context: stats_view
+{% endcomment %}
+<div class="stats-placeholder">
+  <div class="card">
+    <h1 class="card__title">{{ stats_view.label }} — próximamente</h1>
+  </div>
+</div>

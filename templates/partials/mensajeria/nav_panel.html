@@ -1,0 +1,31 @@
+{% comment %}
+  Configuración de mensajería column 2 -- secondary navigation.
+
+  A flat list on the shared `.side-nav` classes, like Estadísticas -- but with
+  no heading above the list, matching the reference (the nav's aria-label
+  carries the section name instead).
+
+  Rows come from core.mensajeria.VIEWS. Each is a real link that HTMX
+  upgrades into a swap of column 3 only.
+
+  Context: msg_nav, active_view
+{% endcomment %}
+
+<nav class="side-nav" aria-label="Configuración de mensajería">
+  {# data-nav-group scopes the active-pill behaviour in shell.js to this list. #}
+  <div class="side-nav__scroll side-nav__scroll--headless" data-nav-group>
+    {% for view in msg_nav %}
+      <a class="side-nav__row{% if view.key == active_view %} is-active{% endif %}"
+         href="{% url 'section' 'mensajeria' %}?view={{ view.key }}"
+         hx-get="{% url 'mensajeria_panel' view.key %}"
+         hx-target="#mensajeria-panel"
+         hx-swap="innerHTML"
+         hx-push-url="{% url 'section' 'mensajeria' %}?view={{ view.key }}"
+         data-nav-item
+         {% if view.key == active_view %}aria-current="true"{% endif %}>
+        <span class="side-nav__icon">{% include view.icon_template %}</span>
+        <span class="side-nav__label">{{ view.label }}</span>
+      </a>
+    {% endfor %}
+  </div>
+</nav>

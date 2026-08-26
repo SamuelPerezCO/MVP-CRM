@@ -1,0 +1,38 @@
+{% comment %}
+  Placeholder empty-state illustration: a tilted phone/chat card in the
+  reference's palette (navy edge, pale teal screen, gray text lines, yellow
+  bar, green WhatsApp badge). Deliberately simple -- swap this file for a
+  real asset when one exists. Decorative only, hence aria-hidden.
+{% endcomment %}
+<svg class="tpl-art" viewBox="0 0 250 240" width="250" height="240"
+     aria-hidden="true" focusable="false">
+  <g transform="rotate(9 125 120)">
+    {# Navy card edge, offset behind the screen. #}
+    <rect x="48" y="18" width="150" height="196" rx="16" fill="#1b2a41"/>
+    {# Pale teal screen. #}
+    <rect x="40" y="12" width="150" height="196" rx="16" fill="#e6f6f8"/>
+
+    {# Image placeholder: sky block with a cloud. #}
+    <rect x="58" y="32" width="114" height="58" rx="8" fill="#bfe9f2"/>
+    <circle cx="96" cy="66" r="14" fill="#f4fbfd"/>
+    <circle cx="116" cy="60" r="18" fill="#f4fbfd"/>
+    <rect x="82" y="64" width="52" height="16" rx="8" fill="#f4fbfd"/>
+
+    {# Message text lines. #}
+    <rect x="58" y="106" width="98" height="9" rx="4.5" fill="#c9d5df"/>
+    <rect x="58" y="123" width="112" height="9" rx="4.5" fill="#c9d5df"/>
+    <rect x="58" y="140" width="74" height="9" rx="4.5" fill="#c9d5df"/>
+
+    {# Button bar. #}
+    <rect x="58" y="164" width="64" height="18" rx="9" fill="#f7c948"/>
+
+    {# Cursor swoosh. #}
+    <path d="M52 224 l26 -20" stroke="#1b2a41" stroke-width="5" stroke-linecap="round" fill="none"/>
+  </g>
+
+  {# WhatsApp badge overlapping the card's right edge. #}
+  <circle cx="203" cy="108" r="27" fill="#4ec269"/>
+  <circle cx="203" cy="108" r="27" fill="none" stroke="#dff3e4" stroke-width="5"/>
+  <path d="M193 100a4 4 0 0 1 4-4h2l3 7-3 3a16 16 0 0 0 7 7l3-3 7 3v2a4 4 0 0 1-4 4c-10 0-19-9-19-19z"
+        fill="#ffffff"/>
+</svg>

@@ -1,0 +1,44 @@
+{% comment %}
+  Column 3 -- the Lista de clientes page: title, toolbar and the list table.
+
+  Reached from BOTH sidebar entry points that mount the account nav (CRM and
+  Campañas), so nothing here names a mount: the create button targets
+  "closest main", which resolves to #crm-panel or #campanas-panel depending on
+  where the panel is mounted.
+
+  Context: client_lists (annotated with contact_count)
+{% endcomment %}
+
+<div class="crm-panel">
+
+  <header class="crm-panel__head">
+    <h1 class="crm-panel__title">
+      Lista de clientes
+      {# Tooltip copy still TBD -- the label is what assistive tech reads. #}
+      <span class="info-dot" role="img" aria-label="Información sobre listas de clientes">
+        {% include "icons/info.svg" %}
+      </span>
+    </h1>
+
+    <div class="crm-panel__toolbar">
+      {# Tooltip copy still TBD, like the title's. #}
+      <span class="info-dot" role="img" aria-label="Información sobre acciones">
+        {% include "icons/info.svg" %}
+      </span>
+
+      {# Inert until the actions dropdown gets contents, like the Clientes one. #}
+      <button type="button" class="btn-ghost">
+        <span>Acciones</span>{% include "icons/chevron-down.svg" %}
+      </button>
+
+      {# Wired to a placeholder route; the creation flow itself is not built yet. #}
+      <a class="btn-primary"
+         href="{% url 'lista_create' %}"
+         hx-get="{% url 'lista_create' %}"
+         hx-target="closest main"
+         hx-swap="innerHTML">+ Crear lista</a>
+    </div>
+  </header>
+
+  {% include "partials/crm/client_list_table.html" %}
+</div>

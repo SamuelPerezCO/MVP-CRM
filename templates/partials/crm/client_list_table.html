@@ -1,0 +1,42 @@
+{% comment %}
+  The client-list table, in its bordered card.
+
+  Iterates the real ClientList queryset -- no seed rows: with an empty
+  database the {% empty %} row renders the minimal centered "Sin lista de
+  clientes" text inside the body area, matching the reference (same bare-text
+  pattern as the Automatizaciones "Sin flujos" state, not the decorated
+  Clientes empty state).
+
+  Kept as its own partial so a pager or bulk actions can swap it
+  independently later, like partials/crm/client_table.html.
+
+  Context: client_lists (annotated with contact_count)
+{% endcomment %}
+
+<div class="list-card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">Nombre del grupo</th>
+        <th scope="col">Número de contactos</th>
+        <th scope="col">Fecha</th>
+        <th scope="col">Creado por</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for client_list in client_lists %}
+        <tr>
+          <td class="table__name">{{ client_list.name }}</td>
+          <td>{{ client_list.contact_count }}</td>
+          <td>{{ client_list.created_at|date:"d/m/Y" }}</td>
+          <td>{{ client_list.created_by }}</td>
+        </tr>
+      {% empty %}
+        <tr class="list-card__empty">
+          <td colspan="4">Sin lista de clientes</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

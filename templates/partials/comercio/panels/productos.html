@@ -7,7 +7,7 @@
   #comercio-panel on first load. Only #product-table below is replaced when a
   tab is picked -- the toolbar above stays put.
 
-  Context: tabs, active_tab, products
+  Context: tabs, active_tab, columns, products
 {% endcomment %}
 
 <div class="productos">
@@ -48,8 +48,6 @@
     </div>
   </header>
 
-  {# HTMX swap target for the tabs -- core.views.productos_table returns this
-     whole region (tabs + table) so the active tab re-renders server-side. #}
   <div id="product-table">
     {% include "partials/comercio/product_table.html" %}
   </div>

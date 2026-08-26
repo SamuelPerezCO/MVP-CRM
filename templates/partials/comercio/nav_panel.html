@@ -23,8 +23,6 @@
       {% include "partials/side_nav_section.html" with section=section active_view=active_view section_key="mi-comercio" panel_url_name="comercio_panel" panel_target="comercio-panel" %}
     {% endfor %}
 
-    {# Standalone row: looks like a section header (icon + caret) but is a
-       plain link -- there is nothing to collapse. #}
     <a class="side-nav__row side-nav__row--single{% if comercio_single.key == active_view %} is-active{% endif %}"
        href="{% url 'section' 'mi-comercio' %}?view={{ comercio_single.key }}"
        title="{{ comercio_single.label }}"

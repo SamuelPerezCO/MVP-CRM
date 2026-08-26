@@ -2,9 +2,10 @@
 
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from core.crm import ALL_VIEWS
-from core.models import Client
+from core.models import Client, ClientList
 from core.views import CLIENTS_PER_PAGE
 
 CO_FLAG = "\U0001F1E8\U0001F1F4"
@@ -39,7 +40,7 @@ class ClientModelTests(TestCase):
 class CrmScreenTests(TestCase):
     def test_crm_renders_both_columns(self):
         response = self.client.get(reverse("section", args=["crm"]))
-        self.assertContains(response, "crm-nav")
+        self.assertContains(response, "side-nav")
         self.assertContains(response, 'id="crm-panel"')
 
     def test_heading_and_section_titles_render(self):
@@ -56,7 +57,7 @@ class CrmScreenTests(TestCase):
 
     def test_both_sections_start_expanded(self):
         html = self.client.get(reverse("section", args=["crm"])).content.decode()
-        self.assertEqual(html.count('<details class="crm-nav__section" open>'), 2)
+        self.assertEqual(html.count('<details class="side-nav__section" open>'), 2)
 
     def test_clientes_is_the_default_view(self):
         response = self.client.get(reverse("section", args=["crm"]))
@@ -79,7 +80,7 @@ class CrmScreenTests(TestCase):
         html = self.client.get(
             reverse("section", args=["crm"]), {"view": "exportaciones"}
         ).content.decode()
-        self.assertEqual(html.count("crm-nav__row is-active"), 1)
+        self.assertEqual(html.count("side-nav__row--child is-active"), 1)
         active = html.split('?view=exportaciones"')[0].rsplit("<a ", 1)[-1]
         self.assertIn("is-active", active)
 
@@ -149,6 +150,23 @@ class ClientTableTests(TestCase):
             self.client.get(reverse("section", args=["crm"])), "pager__status"
         )
 
+    def test_pager_swaps_a_region_endpoint_not_the_full_panel(self):
+        # The pager targets #client-table, so it must fetch only that region:
+        # fetching the whole Clientes panel here used to nest a second toolbar
+        # and a duplicate #client-table inside the first on every page click.
+        Client.objects.bulk_create(
+            Client(first_name=f"C{n:03d}", phone=f"+57{n}", country="CO")
+            for n in range(CLIENTS_PER_PAGE + 5)
+        )
+        page = self.client.get(reverse("section", args=["crm"])).content.decode()
+        self.assertIn(f"hx-get=\"{reverse('clientes_table')}?page=2\"", page)
+
+        response = self.client.get(reverse("clientes_table"), {"page": 2})
+        region = response.content.decode()
+        self.assertNotIn("crm-panel__toolbar", region)   # toolbar stays put
+        self.assertNotIn('id="client-table"', region)    # no duplicate id
+        self.assertEqual(len(response.context["clients"]), 5)
+
     def test_pager_appears_and_splits_the_queryset(self):
         Client.objects.bulk_create(
             Client(first_name=f"C{n:03d}", phone=f"+57{n}", country="CO")
@@ -168,7 +186,7 @@ class CrmPanelEndpointTests(TestCase):
         body = response.content.decode()
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("<html", body)
-        self.assertNotIn("crm-nav", body)  # nav panel is not re-sent
+        self.assertNotIn("side-nav", body)  # nav panel is not re-sent
         self.assertIn("Clientes", body)
 
     def test_every_view_has_a_working_endpoint(self):
@@ -190,3 +208,61 @@ class CrmPanelEndpointTests(TestCase):
         fragment = self.client.get(reverse("crm_panel", args=["clientes"])).content.decode()
         page = self.client.get(reverse("section", args=["crm"])).content.decode()
         self.assertIn(fragment.strip(), page)
+
+
+class ClientListTests(TestCase):
+    """The Lista de clientes panel: toolbar, table and its minimal empty state."""
+
+    URL = reverse("section", args=["crm"]) + "?view=lista-clientes"
+
+    def test_header_and_toolbar_render(self):
+        response = self.client.get(self.URL)
+        self.assertContains(response, "Lista de clientes")
+        self.assertContains(response, "Acciones")
+        self.assertContains(response, "+ Crear lista")
+        # Two info dots: beside the title and in the toolbar.
+        panel = response.content.decode().split('id="crm-panel"', 1)[1]
+        self.assertEqual(panel.count('class="info-dot"'), 2)
+
+    def test_all_columns_render(self):
+        response = self.client.get(self.URL)
+        for header in ("Nombre del grupo", "Número de contactos", "Fecha", "Creado por"):
+            self.assertContains(response, header)
+
+    def test_no_checkbox_column_unlike_productos(self):
+        html = self.client.get(self.URL).content.decode()
+        self.assertNotIn('type="checkbox"', html)
+
+    def test_empty_state_is_bare_centered_text(self):
+        html = self.client.get(self.URL).content.decode()
+        self.assertIn("Sin lista de clientes", html)
+        empty = html.split('class="list-card__empty"', 1)[1].split("</tr>", 1)[0]
+        self.assertIn('colspan="4"', empty)
+        self.assertNotIn("<svg", empty)  # minimal, like the "Sin flujos" state
+
+    def test_row_renders_name_count_date_and_author(self):
+        ana = Client.objects.create(first_name="Ana", phone="+571", country="CO")
+        luc = Client.objects.create(first_name="Luc", phone="+331", country="FR")
+        vip = ClientList.objects.create(name="VIP", created_by="Samuel")
+        vip.clients.set([ana, luc])
+
+        html = self.client.get(self.URL).content.decode()
+        self.assertIn("VIP", html)
+        self.assertIn("Samuel", html)
+        # localtime() mirrors the |date filter, so this holds under any TIME_ZONE.
+        self.assertIn(timezone.localtime(vip.created_at).strftime("%d/%m/%Y"), html)
+        row = html.split("VIP", 1)[1].split("</tr>", 1)[0]
+        self.assertIn("<td>2</td>", row)  # the contact count, from the M2M
+        self.assertNotIn("Sin lista de clientes", html)
+
+    def test_create_button_points_at_a_real_route(self):
+        html = self.client.get(self.URL).content.decode()
+        self.assertIn(f'href="{reverse("lista_create")}"', html)
+        self.assertIn(f'hx-get="{reverse("lista_create")}"', html)
+        # "closest main" resolves under either mount (#crm-panel / #campanas-panel).
+        self.assertIn('hx-target="closest main"', html)
+
+    def test_create_route_returns_a_placeholder_panel(self):
+        response = self.client.get(reverse("lista_create"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Crear lista — próximamente")

@@ -13,6 +13,10 @@ urlpatterns = [
     path("inbox/list/<slug:filter_key>/", views.inbox_list, name="inbox_list"),
     # CRM column 3, fetched on its own when a secondary-nav page is picked.
     path("crm/panel/<slug:view_key>/", views.crm_panel, name="crm_panel"),
+    # The client table region (rows + pager), fetched on its own when paging.
+    path("crm/clientes/tabla/", views.clientes_table, name="clientes_table"),
+    # Placeholder target for the "+ Crear lista" button.
+    path("crm/listas/nueva/", views.lista_create, name="lista_create"),
     # Embudos column 3, fetched on its own when a secondary-nav page is picked.
     path("embudos/panel/<slug:view_key>/", views.embudos_panel, name="embudos_panel"),
     # Placeholder target for the "Crear nuevo embudo" button.
@@ -41,6 +45,33 @@ urlpatterns = [
     # Placeholder targets for the "Crear +" and "Importar" buttons.
     path("comercio/productos/nuevo/", views.producto_create, name="producto_create"),
     path("comercio/productos/importar/", views.producto_import, name="producto_import"),
+    # Estadísticas column 3, fetched on its own when a secondary-nav page is picked.
+    path(
+        "estadisticas/panel/<slug:view_key>/",
+        views.estadisticas_panel,
+        name="estadisticas_panel",
+    ),
+    # Placeholder detail target for each Mensajería stat card.
+    path(
+        "estadisticas/mensajeria/<slug:card_key>/",
+        views.estadisticas_card,
+        name="estadisticas_card",
+    ),
+    # Configuración de mensajería column 3, fetched per secondary-nav page.
+    path(
+        "mensajeria/panel/<slug:view_key>/",
+        views.mensajeria_panel,
+        name="mensajeria_panel",
+    ),
+    # The Plantillas table region (tabs + rows), fetched on its own per tab.
+    # "tab/" keeps the slug from swallowing the nueva route below.
+    path(
+        "mensajeria/plantillas/tab/<slug:tab_key>/",
+        views.plantillas_table,
+        name="plantillas_table",
+    ),
+    # Placeholder target for both create-template buttons.
+    path("mensajeria/plantillas/nueva/", views.plantilla_create, name="plantilla_create"),
     # Every sidebar icon points here; <key> matches a NavItem.key from nav.py.
     path("s/<slug:key>/", views.section, name="section"),
 ]

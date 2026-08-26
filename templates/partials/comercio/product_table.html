@@ -9,12 +9,12 @@
   a blank body, which is exactly the reference's empty state -- no message by
   design, unlike the decorated empty states on other screens.
 
-  Context: tabs, active_tab, products
+  Context: tabs, active_tab, columns, products
 {% endcomment %}
 
 <div class="product-card">
 
-  <div class="product-tabs" role="tablist" aria-label="Filtrar productos por estado">
+  <nav class="product-tabs" aria-label="Filtrar productos por estado">
     {% for tab in tabs %}
       <a class="product-tabs__tab{% if tab.key == active_tab %} is-active{% endif %}"
          href="{% url 'section' 'mi-comercio' %}?view=productos&tab={{ tab.key }}"
@@ -26,8 +26,10 @@
         {{ tab.label }}
       </a>
     {% endfor %}
-  </div>
+  </nav>
 
+  {# Wide table: scrolls in its own container instead of clipping the card. #}
+  <div class="product-card__scroll">
   <table class="table product-table">
     <thead>
       <tr>
@@ -61,12 +63,12 @@
           <td>{{ product.category }}</td>
           <td>{{ product.brand }}</td>
           <td>{{ product.get_status_display }}</td>
-          {# Empty until products sync to sales channels -- the future M2M
-             (see the Product model docstring) renders its channel list here. #}
+          {# Empty until the sales-channel M2M exists (see the Product model). #}
           <td></td>
         </tr>
       {% endfor %}
       {# Zero rows: the body simply stays blank, per the reference. #}
     </tbody>
   </table>
+  </div>
 </div>

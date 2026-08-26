@@ -1,9 +1,13 @@
 """
-Data definition for the CRM screen's secondary nav panel (column 2).
+Data definition for the "Mi cuenta" account nav (column 2) and its panels.
 
 Same shape as core.nav and core.inbox: declare the rows once, let the templates
 loop. Here the rows are grouped into collapsible sections, and each row swaps
 the panel in column 3.
+
+Two sidebar sections mount this same nav and the same panels -- the CRM and
+Campañas (see sections/crm.html and sections/campanas.html): a panel built
+here once lights up under both entry points.
 """
 
 from dataclasses import dataclass

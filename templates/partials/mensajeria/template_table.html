@@ -1,0 +1,60 @@
+{% comment %}
+  The tab row plus the template table -- the swappable region inside
+  #template-table. Same pattern as the Mi comercio product table: tabs live
+  inside the region so picking one re-renders its own active state along with
+  the rows.
+
+  Iterates the real MessageTemplate queryset (filtered by tab in
+  core.mensajeria.get_templates). No seed rows: with zero templates for the
+  active tab, the header renders and the two-half empty state below fills the
+  card. The tab classes are the shared ones from comercio.css.
+
+  Context: tabs, active_tab, columns, templates
+{% endcomment %}
+
+<div class="product-card tpl-card">
+
+  <nav class="product-tabs" aria-label="Filtrar plantillas">
+    {% for tab in tabs %}
+      <a class="product-tabs__tab{% if tab.key == active_tab %} is-active{% endif %}"
+         href="{% url 'section' 'mensajeria' %}?view=plantillas-whatsapp&tab={{ tab.key }}"
+         hx-get="{% url 'plantillas_table' tab.key %}"
+         hx-target="#template-table"
+         hx-swap="innerHTML"
+         hx-push-url="{% url 'section' 'mensajeria' %}?view=plantillas-whatsapp&tab={{ tab.key }}"
+         {% if tab.key == active_tab %}aria-current="true"{% endif %}>
+        {{ tab.label }}
+      </a>
+    {% endfor %}
+  </nav>
+
+  <div class="product-card__scroll">
+    <table class="table tpl-table">
+      <thead>
+        <tr>
+          {% for column in columns %}
+            <th scope="col">{{ column }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for template in templates %}
+          <tr>
+            <td class="table__name">{{ template.name }}</td>
+            <td>{{ template.template_type }}</td>
+            <td>{{ template.category }}</td>
+            <td class="tpl-table__text">{{ template.text|truncatechars:60 }}</td>
+            <td>{{ template.team }}</td>
+            <td>{% if template.is_active %}Sí{% else %}No{% endif %}</td>
+            <td>{{ template.get_status_display }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if not templates %}
+    {% include "partials/mensajeria/templates_empty.html" %}
+  {% endif %}
+</div>

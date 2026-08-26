@@ -1,0 +1,20 @@
+{% comment %}
+  Configuración de mensajería -- the two columns that fill the sidebar's
+  content area.
+
+  This whole file is what HTMX drops into #content when the Configuración de
+  mensajería sidebar icon is selected, so it is a fragment: no <html>, no
+  sidebar, just the screen.
+
+  Columns: secondary nav | active panel. The panel is its own swap target so
+  the secondary nav can replace it without re-rendering itself.
+{% endcomment %}
+
+<div class="msgcfg">
+  {% include "partials/mensajeria/nav_panel.html" %}
+
+  {# HTMX swap target for core.views.mensajeria_panel. #}
+  <main class="msgcfg__panel" id="mensajeria-panel">
+    {% include panel_template %}
+  </main>
+</div>

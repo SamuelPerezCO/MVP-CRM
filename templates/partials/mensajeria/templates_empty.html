@@ -1,0 +1,35 @@
+{% comment %}
+  Two-half empty state shown while the active tab has zero templates, inside
+  the same bordered card as the table: copy + outlined create button on the
+  left, placeholder illustration on the right.
+
+  The button triggers the same action as the toolbar's "Crear plantilla +" --
+  both point at core.views.plantilla_create.
+{% endcomment %}
+
+<div class="tpl-empty">
+  <div class="tpl-empty__copy">
+    <h1 class="tpl-empty__title">
+      Crea plantillas de WhatsApp listas para automatizar tus mensajes
+    </h1>
+
+    <p class="tpl-empty__text">
+      Usa plantillas para iniciar conversaciones, enviar recordatorios y
+      personalizar tus mensajes con variables y botones. Ideal para mensajes
+      automatizados y campañas.
+    </p>
+
+    <a class="btn-outline"
+       href="{% url 'plantilla_create' %}"
+       hx-get="{% url 'plantilla_create' %}"
+       hx-target="#mensajeria-panel"
+       hx-swap="innerHTML">
+      <span>Crear nueva plantilla</span>
+      <span class="btn-outline__plus" aria-hidden="true">+</span>
+    </a>
+  </div>
+
+  <div class="tpl-empty__art">
+    {% include "partials/mensajeria/_illustration.html" %}
+  </div>
+</div>
