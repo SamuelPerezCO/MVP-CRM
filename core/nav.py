@@ -45,15 +45,18 @@ PRIMARY_NAV = [
     NavItem("inbox",            "Inbox",                          "inbox"),
     NavItem("crm",              "CRM",                            "users"),
     NavItem("embudos",          "Embudos",                        "funnel"),
-    NavItem("automatizaciones", "Automatizaciones",               "bot"),
     NavItem("mi-comercio",      "Mi comercio",                    "store"),
     NavItem("campanas",         "Campañas",                       "megaphone"),
-    NavItem("performance-hub",  "Performance HUB",                "gauge"),
-    NavItem("crecimiento",      "Herramientas de Crecimiento",    "trending-up"),
     NavItem("estadisticas",     "Estadísticas",                   "bar-chart"),
     NavItem("integraciones",    "Integraciones",                  "activity"),
     NavItem("mensajeria",       "Configuración de mensajería",    "settings"),
 ]
+
+# Removed for now (2026-08-26), to restore just re-add the NavItem -- the
+# Automatizaciones screen, views and templates are all still in place:
+#   NavItem("automatizaciones", "Automatizaciones",            "bot")
+#   NavItem("performance-hub",  "Performance HUB",             "gauge")
+#   NavItem("crecimiento",      "Herramientas de Crecimiento", "trending-up")
 
 # --- Secondary group -------------------------------------------------------
 # Pinned to the bottom of the sidebar, separated by a divider.

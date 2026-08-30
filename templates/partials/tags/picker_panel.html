@@ -1,0 +1,77 @@
+{% comment %}
+  The tag picker's contents -- what core.views.conversation_tags renders on
+  open (GET), on search (GET ?q=) and after every toggle (POST).
+
+  Checking/unchecking a tag applies immediately (no Save button); the
+  response is this same panel plus, on mutations (oob_pills), out-of-band
+  swaps of every place the conversation's pills show: the list row, the chat
+  header and the details panel's removable pills. htmx ignores an
+  out-of-band id that isn't on the page (e.g. the row is filtered out).
+
+  The search input keeps focus across swaps because it has a stable id --
+  htmx restores focus to the same id after settling.
+
+  Context: conversation, picker_tags, applied_ids, q, offer_create, tag_error,
+           oob_pills (POST responses only)
+{% endcomment %}
+
+{% if oob_pills %}
+  <span id="conv-tags-{{ conversation.pk }}" hx-swap-oob="innerHTML">
+    {% include "partials/tags/pills.html" with tags=conversation.tags.all %}
+  </span>
+  <span id="chat-tags-{{ conversation.pk }}" hx-swap-oob="innerHTML">
+    {% include "partials/tags/pills.html" with tags=conversation.tags.all %}
+  </span>
+  <span id="details-tags-{{ conversation.pk }}" hx-swap-oob="innerHTML">
+    {% include "partials/tags/removable_pills.html" %}
+  </span>
+{% endif %}
+
+<div class="tag-picker__body" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+
+  <input class="field__input tag-picker__search" type="search" name="q"
+         id="tag-search-{{ conversation.pk }}"
+         value="{{ q }}" placeholder="Buscar o crear etiqueta"
+         autocomplete="off" aria-label="Buscar etiqueta"
+         hx-get="{% url 'conversation_tags' conversation.pk %}"
+         hx-trigger="input changed delay:250ms"
+         hx-target="closest .tag-picker__panel"
+         hx-swap="innerHTML">
+
+  {% if tag_error %}
+    <p class="tag-picker__error" role="alert">{{ tag_error }}</p>
+  {% endif %}
+
+  <ul class="tag-picker__list">
+    {% for tag in picker_tags %}
+      <li>
+        <label class="tag-picker__row">
+          <input class="checkbox" type="checkbox"
+                 {% if tag.pk in applied_ids %}checked{% endif %}
+                 hx-post="{% url 'conversation_tags' conversation.pk %}"
+                 hx-vals='js:{tag_id: {{ tag.pk }}, action: this.checked ? "add" : "remove", q: "{{ q|escapejs }}"}'
+                 hx-target="closest .tag-picker__panel"
+                 hx-swap="innerHTML">
+          <span class="tag-pill tag-pill--{{ tag.color }}">{{ tag.name }}</span>
+        </label>
+      </li>
+    {% empty %}
+      {% if not offer_create %}
+        <li class="tag-picker__hint">
+          {% if q %}Sin resultados{% else %}Aún no hay etiquetas{% endif %}
+        </li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+
+  {% if offer_create %}
+    {# Inline invention; color auto-assigned, editable in CRM > Etiquetas. #}
+    <button type="button" class="tag-picker__create"
+            hx-post="{% url 'conversation_tags' conversation.pk %}"
+            hx-vals='{"new_name": "{{ q|escapejs }}"}'
+            hx-target="closest .tag-picker__panel"
+            hx-swap="innerHTML">
+      Crear «{{ q }}»
+    </button>
+  {% endif %}
+</div>

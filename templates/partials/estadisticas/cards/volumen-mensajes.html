@@ -1,0 +1,221 @@
+{% comment %}
+  Estadísticas > Mensajería > "Volumen de Mensajes" -- the first stat card's
+  detail screen, and the pattern the other three should follow.
+
+  This is what core.views.estadisticas_card returns for card_key
+  "volumen-mensajes" (resolved by name -- see core.estadisticas.card_template),
+  swapped into #estadisticas-panel. It is a fragment: the secondary nav to the
+  left is not re-rendered.
+
+  ONE period governs the whole screen. The picker sits by itself above the
+  content and is never repeated per chart -- two range controls on one page
+  is two sources of truth about what you are looking at.
+
+  The first render ships its report inline (tiles, table and the chart's
+  payload in a json_script tag) so the screen is readable before any JS runs;
+  only the canvas needs the bundle. Changing the period re-fetches
+  estadisticas_volumen_data and updates in place -- see static/js/stats_volumen.js.
+
+  Context: stat_card, period_start, period_end, period_label, report, channels
+{% endcomment %}
+{% load static %}
+
+<div class="stats-detail" data-volumen-root
+     data-report-url="{% url 'estadisticas_volumen_data' %}"
+     data-default-start="{{ period_start|date:'Y-m-d' }}"
+     data-default-end="{{ period_end|date:'Y-m-d' }}">
+
+  {# Back to the card grid: the Mensajería panel this card was opened from. #}
+  <a class="stats-detail__back"
+     href="{% url 'estadisticas_panel' 'mensajeria' %}"
+     hx-get="{% url 'estadisticas_panel' 'mensajeria' %}"
+     hx-target="#estadisticas-panel"
+     hx-swap="innerHTML">
+    {% include "icons/chevron-left.svg" %}
+    Estadísticas de mensajería
+  </a>
+
+  <header class="stats-detail__head">
+    <div class="stats-detail__titlerow">
+      {% comment %} The card grid's own glyph, carried through so the screen is
+         recognizably the card you clicked. {% endcomment %}
+      <span class="stats-detail__icon" aria-hidden="true">{{ stat_card.icon }}</span>
+      <h1 class="stats-detail__title">{{ stat_card.title }}</h1>
+
+      <button type="button" class="pill-info" data-dialog-open="volumen-howto-dialog">
+        {% include "icons/info.svg" %}
+        ¿Cómo funciona?
+      </button>
+    </div>
+
+    <p class="stats-detail__subtitle">
+      Cantidad de mensajes agregados por plataforma y horarios de mayor actividad
+    </p>
+  </header>
+
+  {# --- Period filter: governs every number below ------------------------- #}
+  <div class="stats-filters">
+    <div class="daterange" data-daterange>
+      {% comment %} The field is a button, not an input: the value is a formatted range,
+         not something you type into. The popover holds the two real dates. {% endcomment %}
+      <button type="button" class="daterange__field" data-range-open
+              aria-haspopup="dialog" aria-expanded="false"
+              aria-controls="volumen-range-pop">
+        <span class="daterange__label">Periodo</span>
+        <span class="daterange__value" data-range-label>{{ period_label }}</span>
+      </button>
+
+      <button type="button" class="daterange__btn" data-range-reset
+              title="Restablecer a los últimos 30 días"
+              aria-label="Restablecer el periodo a los últimos 30 días">
+        {% include "icons/x.svg" %}
+      </button>
+      <button type="button" class="daterange__btn" data-range-open
+              title="Elegir fechas"
+              aria-label="Elegir fechas del periodo"
+              aria-controls="volumen-range-pop">
+        {% include "icons/calendar.svg" %}
+      </button>
+
+      {% comment %} Native date inputs on purpose: a real calendar, keyboard entry and
+         locale formatting for free, with no date-picker dependency. {% endcomment %}
+      <div class="daterange__pop" id="volumen-range-pop" data-range-pop hidden
+           role="dialog" aria-label="Seleccionar periodo">
+        <div class="daterange__fields">
+          <label class="daterange__input">
+            <span>Desde</span>
+            <input type="date" data-range-start value="{{ period_start|date:'Y-m-d' }}">
+          </label>
+          <label class="daterange__input">
+            <span>Hasta</span>
+            <input type="date" data-range-end value="{{ period_end|date:'Y-m-d' }}">
+          </label>
+        </div>
+        <p class="daterange__error" data-range-error hidden role="alert"></p>
+        <div class="daterange__actions">
+          <button type="button" class="btn-outline" data-range-cancel>Cancelar</button>
+          <button type="button" class="btn-primary" data-range-apply>Aplicar</button>
+        </div>
+      </div>
+    </div>
+
+    {% comment %} Only visible while a fetch is in flight -- the period governs the whole
+       screen, so it is the screen that says it is busy. {% endcomment %}
+    <span class="stats-filters__busy" data-busy hidden aria-live="polite">Actualizando…</span>
+  </div>
+
+  {% comment %} --- KPI tiles ---------------------------------------------------------
+     Two groups, not four loose tiles: the first three measure the period,
+     the fourth is a different kind of number, and the gap between the groups
+     is what says so. --------------------------------------------------- {% endcomment %}
+  <div class="kpi-row">
+    <section class="kpi-group" aria-labelledby="kpi-group-period">
+      <h2 class="kpi-group__label" id="kpi-group-period">Volumen del período</h2>
+      <div class="kpi-group__tiles">
+        {% for tile in report.tiles %}{% if tile.key != 'total' %}
+          <article class="kpi kpi--{{ tile.tone }}">
+            <p class="kpi__label">
+              {{ tile.label }}
+              <span class="info-dot" tabindex="0" role="img"
+                    data-tip="{{ tile.tip }}" aria-label="{{ tile.tip }}">
+                {% include "icons/info.svg" %}
+              </span>
+            </p>
+            <p class="kpi__value" data-kpi-value="{{ tile.key }}">{{ tile.value }}</p>
+            <p class="kpi__note" data-kpi-note="{{ tile.key }}">{{ tile.note }}</p>
+          </article>
+        {% endif %}{% endfor %}
+      </div>
+    </section>
+
+    <section class="kpi-group kpi-group--total" aria-labelledby="kpi-group-total">
+      <h2 class="kpi-group__label" id="kpi-group-total">Total</h2>
+      <div class="kpi-group__tiles">
+        {% for tile in report.tiles %}{% if tile.key == 'total' %}
+          <article class="kpi kpi--{{ tile.tone }} kpi--filled">
+            <p class="kpi__label">
+              {{ tile.label }}
+              <span class="info-dot" tabindex="0" role="img"
+                    data-tip="{{ tile.tip }}" aria-label="{{ tile.tip }}">
+                {% include "icons/info.svg" %}
+              </span>
+            </p>
+            <p class="kpi__value" data-kpi-value="{{ tile.key }}">{{ tile.value }}</p>
+            <p class="kpi__note" data-kpi-note="{{ tile.key }}">{{ tile.note }}</p>
+          </article>
+        {% endif %}{% endfor %}
+      </div>
+    </section>
+  </div>
+
+  {# --- Line chart -------------------------------------------------------- #}
+  <section class="chart-card" aria-labelledby="volumen-chart-title">
+    <header class="chart-card__head">
+      <h2 class="chart-card__title" id="volumen-chart-title">
+        Mensajes por plataforma en el tiempo
+        <span class="info-dot" tabindex="0" role="img"
+              data-tip="Un punto por día y canal, contando mensajes recibidos y enviados juntos. Los días sin mensajes valen cero."
+              aria-label="Un punto por día y canal, contando mensajes recibidos y enviados juntos. Los días sin mensajes valen cero.">
+          {% include "icons/info.svg" %}
+        </span>
+      </h2>
+      <p class="chart-card__subtitle">Evolución diaria del volumen de mensajes por canal</p>
+    </header>
+
+    {% comment %} ECharts draws to canvas, which assistive tech cannot read. The chart is
+       labelled as an image and the "Ver tabla" table below is its accessible
+       equivalent -- that table, plus the legend, is also why identity is never
+       carried by color alone here. {% endcomment %}
+    <div class="chart-card__plot" data-chart role="img"
+         aria-label="Gráfico de líneas: mensajes por día y canal. Los mismos datos están en la tabla «Ver tabla» debajo."></div>
+
+    <p class="chart-card__empty" data-chart-empty {% if report.series %}hidden{% endif %}>
+      No hay mensajes en el período seleccionado.
+    </p>
+
+    <div class="chart-card__foot">
+      <button type="button" class="linkish" data-table-toggle
+              aria-expanded="false" aria-controls="volumen-table">
+        Ver tabla
+      </button>
+    </div>
+
+    {% comment %} Rendered server-side so it is complete without JS; re-rendered from the
+       same report when the period changes. {% endcomment %}
+    <div class="chart-table" id="volumen-table" data-table hidden>
+      <table class="data-table">
+        <caption class="sr-only">
+          Mensajes por día y canal en el periodo <span data-table-range>{{ period_label }}</span>
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Fecha</th>
+            {% for entry in report.series %}<th scope="col">{{ entry.label }}</th>{% endfor %}
+            <th scope="col">Total</th>
+          </tr>
+        </thead>
+        <tbody data-table-body>
+          {% for row in report.table %}
+            <tr>
+              <th scope="row">{{ row.label }}</th>
+              {% for value in row.values %}<td>{{ value }}</td>{% endfor %}
+              <td>{{ row.total }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {% comment %} The chart's payload, handed over as data rather than inlined as script --
+     json_script escapes it safely and keeps the template free of JS. {% endcomment %}
+  {{ report|json_script:"volumen-report" }}
+</div>
+
+{% include "partials/estadisticas/volumen_howto_dialog.html" %}
+
+{% comment %} Loaded by the panel, not base.html: only this screen pays for the bundle.
+   Both files tolerate re-execution -- see the guards in stats_volumen.js. {% endcomment %}
+<script src="{% static 'js/vendor/echarts.min.js' %}"></script>
+<script src="{% static 'js/stats_chart.js' %}"></script>
+<script src="{% static 'js/stats_volumen.js' %}"></script>

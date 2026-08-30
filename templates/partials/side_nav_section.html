@@ -9,7 +9,8 @@
     it toggles, is keyboard operable and announces its expanded state to
     assistive tech for free, and still works if JS never loads. Each include is
     its own <details>, so sections expand and collapse independently. The
-    chevron is one glyph rotated by CSS on [open]; all sections start expanded.
+    chevron is one glyph rotated by CSS on [open]; all sections start
+    collapsed, showing only their title until the user opens them.
   * flat=True -- the same title and rows as a plain, always-open group: no
     chevron, nothing to toggle. Campañas mounts the account nav this way.
 
@@ -38,7 +39,7 @@
     </div>
   </div>
 {% else %}
-  <details class="side-nav__section" open>
+  <details class="side-nav__section">
     <summary class="side-nav__row side-nav__row--summary">
       <span class="side-nav__icon">{% include section.icon_template %}</span>
       <span class="side-nav__label">{{ section.title }}</span>

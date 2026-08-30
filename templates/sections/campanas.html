@@ -2,17 +2,17 @@
   Campañas -- the two columns that fill the sidebar's content area.
 
   Campañas mounts the SAME "Mi cuenta" nav and panels as the CRM (core.crm):
-  same sections, same views, same crm_panel endpoint. Only the mount differs --
-  this section's slug in the pushed URLs, its own panel id, and the flat nav
-  (sections render as plain always-open groups here, not <details> dropdowns)
-  -- so a panel built once lights up under both sidebar entry points.
+  same sections, same views, same crm_panel endpoint, same collapsible
+  <details> dropdowns. Only the mount differs -- this section's slug in the
+  pushed URLs and its own panel id -- so a panel built once lights up under
+  both sidebar entry points.
 
   This whole file is what HTMX drops into #content when the Campañas sidebar
   icon is selected, so it is a fragment: no <html>, no sidebar, just the screen.
 {% endcomment %}
 
 <div class="crm">
-  {% include "partials/account_nav_panel.html" with sections=crm_sections active_view=active_view section_key="campanas" panel_url_name="crm_panel" panel_target="campanas-panel" flat=True %}
+  {% include "partials/account_nav_panel.html" with sections=crm_sections active_view=active_view section_key="campanas" panel_url_name="crm_panel" panel_target="campanas-panel" %}
 
   {# HTMX swap target for core.views.crm_panel -- shared with the CRM mount. #}
   <main class="crm__panel" id="campanas-panel">

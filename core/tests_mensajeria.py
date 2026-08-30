@@ -1,7 +1,10 @@
 """Tests for the Configuración de mensajería screen: headless flat nav, the
-Plantillas de WhatsApp tabbed table, and the two-half empty state."""
+Plantillas de WhatsApp tabbed table, the two-half empty state, and the
+template chooser modal both create buttons open."""
 
-from django.test import TestCase
+import tempfile
+
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from core.mensajeria import TABLE_COLUMNS, TABS, VIEWS
@@ -13,8 +16,8 @@ HTMX = {"HX-Request": "true"}
 def make_template(name: str, status: str = "pendiente", active: bool = True):
     """One template row; tests create their own data, there are no seeds."""
     return MessageTemplate.objects.create(
-        name=name, template_type="Texto", category="Marketing",
-        text=f"Hola, {name}", team="Ventas", status=status, is_active=active,
+        name=name, sub_type="custom", category="marketing",
+        body=f"Hola, {name}", team="Ventas", status=status, is_active=active,
     )
 
 
@@ -102,28 +105,19 @@ class PlantillasPanelTests(TestCase):
         )
         self.assertContains(response, "Usa plantillas para iniciar conversaciones")
         self.assertContains(response, "Crear nueva plantilla")
-        self.assertContains(response, "tpl-art")  # the placeholder illustration
+        self.assertContains(response, "tpl-empty__art")  # the shared illustration slot
 
-    def test_both_create_buttons_share_the_same_route(self):
+    def test_both_create_buttons_open_the_chooser(self):
         html = self.client.get(reverse("section", args=["mensajeria"])).content.decode()
-        url = reverse("plantilla_create")
-        self.assertEqual(html.count(f'hx-get="{url}"'), 2)   # toolbar + empty state
-        self.assertEqual(html.count(f'href="{url}"'), 2)     # non-JS fallback on both
-        # Scoped to the panel: the nav rows carry the same hx-target.
-        panel = html.split('id="mensajeria-panel"', 1)[1]
-        self.assertEqual(panel.count('hx-target="#mensajeria-panel"'), 2)
-
-    def test_create_route_returns_a_placeholder_panel(self):
-        response = self.client.get(reverse("plantilla_create"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Crear plantilla — próximamente")
+        # Toolbar + empty state, both triggering the one dialog the panel hosts.
+        self.assertEqual(html.count('data-dialog-open="template-chooser-dialog"'), 2)
+        self.assertEqual(html.count('id="template-chooser-dialog"'), 1)
 
     def test_empty_state_hidden_once_templates_exist(self):
         make_template("Bienvenida")
         html = self.client.get(reverse("section", args=["mensajeria"])).content.decode()
         self.assertIn("Bienvenida", html)
         self.assertNotIn("tpl-empty", html)
-        self.assertNotIn("tpl-art", html)
 
 
 class PlantillasTabTests(TestCase):
@@ -174,8 +168,8 @@ class PlantillasTabTests(TestCase):
     def test_row_renders_every_column_value(self):
         html = self.client.get(reverse("section", args=["mensajeria"])).content.decode()
         row = html.split("Aceptada B", 1)[1].split("</tr>", 1)[0]
-        self.assertIn("Texto", row)         # tipo
-        self.assertIn("Marketing", row)     # categoría
+        self.assertIn("Mensaje personalizado", row)  # tipo (sub_type display)
+        self.assertIn("Marketing", row)     # categoría (display name)
         self.assertIn("Hola, Aceptada B", row)
         self.assertIn("Ventas", row)        # equipo
         self.assertIn("<td>Sí</td>", row)   # activo
@@ -215,9 +209,12 @@ class PlantillasTableEndpointTests(TestCase):
             self.client.get("/mensajeria/plantillas/tab/bogus/").status_code, 404
         )
 
-    def test_tab_slugs_do_not_swallow_the_create_route(self):
+    def test_tab_slugs_do_not_swallow_the_chooser_routes(self):
         self.assertEqual(
-            self.client.get("/mensajeria/plantillas/nueva/").status_code, 200
+            self.client.get("/mensajeria/plantillas/galeria/").status_code, 200
+        )
+        self.assertEqual(
+            self.client.get("/mensajeria/plantillas/editor/").status_code, 200
         )
 
     def test_tabs_target_the_table_region(self):
@@ -234,6 +231,354 @@ class PlantillasTableEndpointTests(TestCase):
         ).content.decode()
         page = self.client.get(reverse("section", args=["mensajeria"])).content.decode()
         self.assertIn(fragment.strip(), page)
+
+
+class TemplateChooserTests(TestCase):
+    """The '¿Cómo quieres crear tu plantilla?' modal and its two destinations."""
+
+    def get_page(self):
+        return self.client.get(reverse("section", args=["mensajeria"])).content.decode()
+
+    def test_dialog_carries_the_copy_and_a11y_wiring(self):
+        html = self.get_page()
+        self.assertIn("¿Cómo quieres crear tu plantilla de WhatsApp?", html)
+        self.assertIn("Selecciona cómo deseas comenzar", html)
+        self.assertIn('aria-labelledby="template-chooser-title"', html)
+        self.assertIn("data-dialog-backdrop-close", html)
+        self.assertIn('aria-label="Cerrar"', html)
+
+    def test_cards_link_their_destinations_with_href_fallbacks(self):
+        html = self.get_page()
+        for name in ("plantilla_gallery", "plantilla_editor"):
+            with self.subTest(name):
+                url = reverse(name)
+                self.assertEqual(html.count(f'hx-get="{url}"'), 1)
+                self.assertEqual(html.count(f'href="{url}"'), 1)
+        # Both cards swap the panel and close the dialog once that succeeds.
+        self.assertEqual(html.count("data-close-on-success"), 2)
+
+    def test_card_copy_keeps_the_button_hierarchy(self):
+        html = self.get_page()
+        self.assertIn("Elige la plantilla que mejor se adapte a tus objetivos.", html)
+        self.assertIn("Diseña tu plantilla desde cero", html)
+        # Solid button on the recommended path, outlined on the from-scratch one.
+        recommended = html.split("Crear desde plantilla", 1)[1].split("</a>", 1)[0]
+        self.assertIn("btn-primary", recommended)
+        scratch = html.split("Crear desde cero", 1)[1].split("</a>", 1)[0]
+        self.assertIn("btn-outline", scratch)
+
+    def test_gallery_route_returns_its_placeholder(self):
+        response = self.client.get(reverse("plantilla_gallery"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Galería de plantillas — próximamente")
+
+    def test_editor_route_returns_the_editor(self):
+        response = self.client.get(reverse("plantilla_editor"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Crear plantilla")
+        self.assertContains(response, "Nombre de la plantilla")
+
+    def test_dialog_stays_out_of_the_swapped_table_region(self):
+        fragment = self.client.get(
+            reverse("plantillas_table", args=["todas"])
+        ).content.decode()
+        self.assertNotIn('id="template-chooser-dialog"', fragment)
+        # The empty state's trigger still works: the dialog lives in the panel.
+        self.assertIn('data-dialog-open="template-chooser-dialog"', fragment)
+
+
+# Header uploads land in MEDIA_ROOT; keep test files out of the real one.
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="mvp-crm-test-media-"))
+class PlantillaEditorTests(TestCase):
+    """The Crear plantilla editor: rendering, validation and the happy path."""
+
+    def valid_payload(self, **overrides):
+        payload = {
+            "name": "bienvenida_1",
+            "category": "marketing",
+            "sub_type": "custom",
+            "language": "es",
+            "team": "",
+            "header_type": "none",
+            "header_text": "",
+            "body": "Hola {{1}}, bienvenido a {{2}}.",
+            "sample_1": "Ana",
+            "sample_2": "MVP CRM",
+            "footer": "Responde STOP para salir",
+            "button_kind": "none",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_editor_renders_every_section(self):
+        html = self.client.get(reverse("plantilla_editor")).content.decode()
+        for fragment in (
+            "Crear plantilla", "Nombre de la plantilla", "Elige la categoría",
+            "Información básica", "Escoge la cabecera del mensaje",
+            "Cuerpo del mensaje", "Pie de página", "Botones",
+            "Vista previa", "Ejemplo de tu mensaje",
+        ):
+            with self.subTest(fragment):
+                self.assertIn(fragment, html)
+
+    def test_marketing_offers_three_sub_types_others_one(self):
+        html = self.client.get(reverse("plantilla_editor")).content.decode()
+        for label in ("Mensaje personalizado", "Oferta de tiempo limitado",
+                      "Carrusel", "Código de autenticación"):
+            with self.subTest(label):
+                self.assertIn(label, html)
+        # Only the default category's group is visible on first render.
+        def group_tag(key):
+            return html.split(f'data-subtype-group="{key}"', 1)[1].split(">", 1)[0]
+
+        self.assertNotIn("hidden", group_tag("marketing"))
+        self.assertIn("hidden", group_tag("utility"))
+        self.assertIn("hidden", group_tag("authentication"))
+
+    def test_valid_htmx_post_saves_pendiente_and_returns_the_list(self):
+        response = self.client.post(
+            reverse("plantilla_editor"), self.valid_payload(), headers=HTMX
+        )
+        self.assertEqual(response.status_code, 200)
+        template = MessageTemplate.objects.get(name="bienvenida_1")
+        self.assertEqual(template.status, "pendiente")
+        self.assertEqual(template.body_sample_values, ["Ana", "MVP CRM"])
+        self.assertEqual(template.buttons, [])
+        # The response is the Plantillas panel, not the editor again.
+        self.assertContains(response, "plantillas__toolbar")
+        self.assertContains(response, "bienvenida_1")
+
+    def test_valid_plain_post_redirects_to_the_list(self):
+        response = self.client.post(reverse("plantilla_editor"), self.valid_payload())
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/s/mensajeria/?view=plantillas-whatsapp")
+        self.assertEqual(MessageTemplate.objects.count(), 1)
+
+    def test_plain_get_renders_inside_the_page_shell(self):
+        html = self.client.get(reverse("plantilla_editor")).content.decode()
+        self.assertIn("<html", html)
+        self.assertIn("side-nav", html)          # the mensajería secondary nav
+        self.assertIn("Nombre de la plantilla", html)
+
+    def test_htmx_get_returns_a_bare_fragment(self):
+        body = self.client.get(
+            reverse("plantilla_editor"), headers=HTMX
+        ).content.decode()
+        self.assertNotIn("<html", body)
+        self.assertNotIn("side-nav", body)
+        self.assertIn("Nombre de la plantilla", body)
+
+    def test_name_and_team_lengths_are_capped(self):
+        response = self.client.post(
+            reverse("plantilla_editor"), self.valid_payload(name="a" * 121)
+        )
+        self.assertContains(response, "Máximo 120 caracteres.")
+        response = self.client.post(
+            reverse("plantilla_editor"), self.valid_payload(team="x" * 81)
+        )
+        self.assertContains(response, "Máximo 80 caracteres.")
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+
+    def test_header_text_rejects_variables(self):
+        response = self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(header_type="text", header_text="Hola {{1}}"),
+        )
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+        self.assertContains(response, "La cabecera no admite variables.")
+
+    def test_zero_padded_variables_are_rejected(self):
+        response = self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(body="Hola {{01}}", sample_1="Ana"),
+        )
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+        self.assertContains(response, "sin ceros a la izquierda")
+
+    def test_cta_needs_a_real_url_and_phone_shape(self):
+        response = self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(
+                button_kind="cta", cta_url_text="Ir", cta_url="https://"
+            ),
+        )
+        self.assertContains(response, "URL válida")
+        response = self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(
+                button_kind="cta", cta_phone_text="Llámanos", cta_phone="abc"
+            ),
+        )
+        self.assertContains(response, "teléfono válido")
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+
+    def test_media_header_rejects_a_mismatched_file_type(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        bad = SimpleUploadedFile("nota.txt", b"hola", content_type="text/plain")
+        response = self.client.post(
+            reverse("plantilla_editor"),
+            {**self.valid_payload(header_type="image"), "header_media": bad},
+        )
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+        self.assertContains(response, "no coincide con el tipo de cabecera")
+
+        good = SimpleUploadedFile("foto.png", b"\x89PNG", content_type="image/png")
+        self.client.post(
+            reverse("plantilla_editor"),
+            {**self.valid_payload(header_type="image"), "header_media": good},
+        )
+        self.assertEqual(MessageTemplate.objects.count(), 1)
+
+    def test_samples_store_in_numeric_order_even_if_body_reverses_them(self):
+        self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(
+                body="Pedido {{2}} para {{1}}.", sample_1="Ana", sample_2="A-9"
+            ),
+        )
+        template = MessageTemplate.objects.get(name="bienvenida_1")
+        # Element i is the sample for {{i+1}}, whatever the reading order.
+        self.assertEqual(template.body_sample_values, ["Ana", "A-9"])
+
+    def test_name_must_match_the_meta_regex(self):
+        for bad_name in ("Bienvenida", "hola mundo", "hola-mundo", "ñandu", ""):
+            with self.subTest(bad_name):
+                response = self.client.post(
+                    reverse("plantilla_editor"), self.valid_payload(name=bad_name)
+                )
+                self.assertEqual(MessageTemplate.objects.count(), 0)
+                self.assertContains(response, "tpl-editor__error")
+
+    def test_name_is_unique_per_language(self):
+        self.client.post(reverse("plantilla_editor"), self.valid_payload())
+        response = self.client.post(reverse("plantilla_editor"), self.valid_payload())
+        self.assertEqual(MessageTemplate.objects.count(), 1)
+        self.assertContains(response, "Ya existe una plantilla")
+        # Same name in another language is fine.
+        self.client.post(
+            reverse("plantilla_editor"), self.valid_payload(language="en_US")
+        )
+        self.assertEqual(MessageTemplate.objects.count(), 2)
+
+    def test_body_is_required_and_capped(self):
+        response = self.client.post(
+            reverse("plantilla_editor"), self.valid_payload(body="")
+        )
+        self.assertContains(response, "El cuerpo del mensaje es obligatorio.")
+        response = self.client.post(
+            reverse("plantilla_editor"), self.valid_payload(body="x" * 1025)
+        )
+        self.assertContains(response, "Máximo 1024 caracteres.")
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+
+    def test_every_variable_needs_a_sample_value(self):
+        response = self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(sample_2=""),
+        )
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+        self.assertContains(
+            response, "Escribe un valor de ejemplo para cada variable."
+        )
+
+    def test_variables_must_be_sequential_from_one(self):
+        response = self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(body="Hola {{1}} y {{3}}", sample_1="a", sample_3="b"),
+        )
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+        self.assertContains(response, "sin saltos")
+
+    def test_footer_rejects_variables_and_overflow(self):
+        response = self.client.post(
+            reverse("plantilla_editor"), self.valid_payload(footer="Adiós {{1}}")
+        )
+        self.assertContains(response, "El pie de página no admite variables.")
+        response = self.client.post(
+            reverse("plantilla_editor"), self.valid_payload(footer="x" * 61)
+        )
+        self.assertContains(response, "Máximo 60 caracteres.")
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+
+    def test_text_header_requires_its_text(self):
+        response = self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(header_type="text", header_text=""),
+        )
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+        self.assertContains(response, "Escribe el texto de la cabecera.")
+
+    def test_media_header_requires_a_file(self):
+        response = self.client.post(
+            reverse("plantilla_editor"), self.valid_payload(header_type="image")
+        )
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+        self.assertContains(response, "Sube un archivo de ejemplo")
+
+    def test_quick_reply_buttons_are_saved(self):
+        self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(
+                button_kind="quick", quick_reply_1="Sí", quick_reply_2="No"
+            ),
+        )
+        template = MessageTemplate.objects.get(name="bienvenida_1")
+        self.assertEqual(
+            template.buttons,
+            [
+                {"type": "quick_reply", "text": "Sí"},
+                {"type": "quick_reply", "text": "No"},
+            ],
+        )
+
+    def test_quick_kind_without_any_button_errors(self):
+        response = self.client.post(
+            reverse("plantilla_editor"), self.valid_payload(button_kind="quick")
+        )
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+        self.assertContains(response, "al menos un botón")
+
+    def test_cta_url_button_is_validated_and_saved(self):
+        response = self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(
+                button_kind="cta", cta_url_text="Ver tienda", cta_url="tienda.com"
+            ),
+        )
+        self.assertContains(response, "http://")
+        self.assertEqual(MessageTemplate.objects.count(), 0)
+
+        self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(
+                button_kind="cta",
+                cta_url_text="Ver tienda",
+                cta_url="https://tienda.com",
+            ),
+        )
+        template = MessageTemplate.objects.get(name="bienvenida_1")
+        self.assertEqual(
+            template.buttons,
+            [{"type": "url", "text": "Ver tienda", "url": "https://tienda.com"}],
+        )
+
+    def test_errors_keep_what_was_typed(self):
+        response = self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(name="MAYUSCULAS", footer="Mi pie"),
+        )
+        self.assertContains(response, 'value="MAYUSCULAS"')
+        self.assertContains(response, 'value="Mi pie"')
+        self.assertContains(response, "Hola {{1}}, bienvenido a {{2}}.")
+
+    def test_sub_type_outside_the_category_falls_back(self):
+        self.client.post(
+            reverse("plantilla_editor"),
+            self.valid_payload(category="authentication", sub_type="carousel"),
+        )
+        template = MessageTemplate.objects.get(name="bienvenida_1")
+        self.assertEqual(template.sub_type, "auth_code")
 
 
 class MensajeriaPanelEndpointTests(TestCase):

@@ -30,10 +30,11 @@ class ComercioScreenTests(TestCase):
             self.client.get(reverse("section", args=["mi-comercio"])), "Mi cuenta"
         )
 
-    def test_four_collapsible_sections_all_open(self):
+    def test_four_collapsible_sections_start_collapsed(self):
         html = self.client.get(reverse("section", args=["mi-comercio"])).content.decode()
         self.assertEqual(len(SECTIONS), 4)
-        self.assertEqual(html.count('<details class="side-nav__section" open>'), 4)
+        self.assertEqual(html.count('<details class="side-nav__section">'), 4)
+        self.assertNotIn('<details class="side-nav__section" open>', html)
         for section in SECTIONS:
             with self.subTest(section.key):
                 self.assertIn(section.title, html)

@@ -1,10 +1,12 @@
 {% comment %}
-  Placeholder empty-state illustration: a tilted phone/chat card in the
-  reference's palette (navy edge, pale teal screen, gray text lines, yellow
-  bar, green WhatsApp badge). Deliberately simple -- swap this file for a
-  real asset when one exists. Decorative only, hence aria-hidden.
+  Shared illustration: a tilted template/chat card with a WhatsApp badge, in
+  the reference's palette (navy edge, pale teal screen, gray text lines,
+  yellow bar, green badge). Used by the Plantillas empty state and the
+  template chooser modal; size it from the including context, e.g.
+  `.modal-choice__art .illus { width: ... }`. Decorative only, hence
+  aria-hidden.
 {% endcomment %}
-<svg class="tpl-art" viewBox="0 0 250 240" width="250" height="240"
+<svg class="illus" viewBox="0 0 250 240" width="250" height="240"
      aria-hidden="true" focusable="false">
   <g transform="rotate(9 125 120)">
     {# Navy card edge, offset behind the screen. #}

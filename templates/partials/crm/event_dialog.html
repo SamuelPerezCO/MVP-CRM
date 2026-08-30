@@ -1,0 +1,130 @@
+{% comment %}
+  The create/edit event modal for Mi calendario -- one dialog for both:
+  calendario.js fills the fields (empty, a dragged range, or an existing
+  event) before showing it, switches the title/submit copy, and reveals the
+  Eliminar button only in edit mode.
+
+  A native <dialog> on the shared `.modal` shell; open/close/backdrop are
+  the generic shell.js wiring. The form does NOT post natively -- fetch in
+  calendario.js sends it to calendar_event_create/update and refetches the
+  grid, so there is no action fallback (the calendar itself needs JS
+  anyway). Errors land in the [data-event-errors] alert line.
+
+  Context: event_types, reminder_choices, contacts, advisors
+{% endcomment %}
+
+<dialog class="modal modal--event" id="event-dialog"
+        aria-labelledby="event-dialog-title"
+        data-dialog-backdrop-close>
+  <button type="button" class="modal__close" data-dialog-close aria-label="Cerrar">
+    {% include "icons/x.svg" %}
+  </button>
+
+  <div class="modal__body">
+    <h2 class="modal__title modal__title--start" id="event-dialog-title"
+        data-event-dialog-title>Crear evento</h2>
+
+    <form data-event-form novalidate>
+      <input type="hidden" name="event_id" value="">
+
+      <div class="ffield">
+        <input class="ffield__input" type="text" name="title" id="event-title"
+               maxlength="120" placeholder=" " autocomplete="off">
+        <label class="ffield__label" for="event-title">Título</label>
+      </div>
+
+      {# Searchable contact picker: the input filters the select below. #}
+      <div class="event-contact">
+        <div class="ffield">
+          <input class="ffield__input" type="text" id="event-contact-filter"
+                 placeholder=" " autocomplete="off" data-contact-filter
+                 aria-describedby="event-contact-filter-status">
+          <label class="ffield__label" for="event-contact-filter">Buscar cliente</label>
+        </div>
+        <p class="sr-only" role="status" id="event-contact-filter-status"
+           data-contact-filter-status></p>
+        <div class="ffield ffield--select">
+          <select class="ffield__input" name="contact" id="event-contact">
+            <option value="">Sin cliente</option>
+            {% for contact in contacts %}
+              <option value="{{ contact.pk }}">{{ contact.full_name }}</option>
+            {% endfor %}
+          </select>
+          <label class="ffield__label" for="event-contact">Cliente</label>
+        </div>
+      </div>
+
+      <div class="event-when">
+        <div class="ffield">
+          <input class="ffield__input" type="date" name="date" id="event-date">
+          <label class="ffield__label" for="event-date">Fecha</label>
+        </div>
+        <div class="ffield" data-time-field>
+          <input class="ffield__input" type="time" name="start_time" id="event-start">
+          <label class="ffield__label" for="event-start">Inicio</label>
+        </div>
+        <div class="ffield" data-time-field>
+          <input class="ffield__input" type="time" name="end_time" id="event-end">
+          <label class="ffield__label" for="event-end">Fin</label>
+        </div>
+        {# Only for all-day events: the (inclusive) last day. #}
+        <div class="ffield" data-end-date-field hidden>
+          <input class="ffield__input" type="date" name="end_date" id="event-end-date">
+          <label class="ffield__label" for="event-end-date">Hasta</label>
+        </div>
+      </div>
+
+      <label class="event-allday">
+        <input type="checkbox" name="all_day" value="1" data-all-day>
+        <span>Todo el día</span>
+      </label>
+
+      <div class="event-pair">
+        <div class="ffield ffield--select">
+          <select class="ffield__input" name="event_type" id="event-type">
+            {% for type in event_types %}
+              <option value="{{ type.key }}"
+                      {% if type.key == "reunion" %}selected{% endif %}>{{ type.label }}</option>
+            {% endfor %}
+          </select>
+          <label class="ffield__label" for="event-type">Tipo</label>
+        </div>
+        <div class="ffield ffield--select">
+          <select class="ffield__input" name="assigned_to" id="event-assigned">
+            <option value="">Sin asignar</option>
+            {% for advisor in advisors %}
+              <option value="{{ advisor.pk }}">{{ advisor.get_full_name|default:advisor.username }}</option>
+            {% endfor %}
+          </select>
+          <label class="ffield__label" for="event-assigned">Asignado a</label>
+        </div>
+      </div>
+
+      <div class="ffield ffield--area">
+        <textarea class="ffield__input" name="description" id="event-description"
+                  rows="3" placeholder=" "></textarea>
+        <label class="ffield__label" for="event-description">Descripción</label>
+      </div>
+
+      <div class="ffield ffield--select">
+        <select class="ffield__input" name="reminder" id="event-reminder">
+          {% for value, label in reminder_choices %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <label class="ffield__label" for="event-reminder">Recordatorio</label>
+      </div>
+
+      <p class="event-form__error" id="event-dialog-errors" data-event-errors
+         role="alert" hidden></p>
+
+      <div class="event-actions">
+        <button type="button" class="btn-ghost event-actions__delete"
+                data-event-delete hidden>Eliminar</button>
+        <span class="event-actions__spacer"></span>
+        <button type="button" class="btn-ghost" data-dialog-close>Cancelar</button>
+        <button type="submit" class="btn-primary" data-event-submit>Crear evento</button>
+      </div>
+    </form>
+  </div>
+</dialog>

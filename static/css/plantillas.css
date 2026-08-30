@@ -1,0 +1,491 @@
+/* ==========================================================================
+   Crear plantilla — the template editor and its live WhatsApp preview.
+   Builds on the tokens from sidebar.css / inbox.css and the shared
+   .btn-primary / .btn-ghost. The .wa-preview block is reusable (the template
+   gallery will mount it too); everything else is editor-only.
+   ========================================================================== */
+
+/* Text-safe variants of the accent and error hues: the base tokens pass 3:1
+   for borders/icons but not 4.5:1 for the small text this screen sets. */
+:root {
+  --accent-text: #1a66c9;
+  --error-text: #c73e3e;
+}
+
+/* --- Layout ---------------------------------------------------------------- */
+
+.tpl-editor {
+  flex: 1;
+  padding: 18px 22px 28px;
+  background: var(--content-bg);
+  overflow-y: auto;
+}
+
+.tpl-editor__title {
+  margin: 0 0 14px;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tpl-editor__grid {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+}
+
+.tpl-editor__card {
+  flex: 1;
+  min-width: 0;
+  padding: 28px 32px 24px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.tpl-editor__preview {
+  width: 320px;
+  flex-shrink: 0;
+  position: sticky;
+  inset-block-start: 18px;
+}
+
+/* Preview drops below the form when the panel gets narrow. */
+@media (max-width: 1080px) {
+  .tpl-editor__grid { flex-direction: column; }
+  .tpl-editor__preview { position: static; width: 100%; }
+}
+
+/* --- Shared editor bits ----------------------------------------------------- */
+
+.tpl-editor__heading {
+  margin: 26px 0 12px;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tpl-editor__optional { font-weight: 400; color: var(--muted); }
+
+.tpl-editor__hint {
+  margin: 6px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tpl-editor__error {
+  margin: 6px 2px 0;
+  font-size: 12.5px;
+  color: var(--error-text);
+}
+
+/* Radio groups are fieldsets so their headings double as group names. */
+.tpl-editor__group {
+  margin: 26px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.tpl-editor__group legend { padding: 0; margin-block-end: 12px; }
+.tpl-editor__group .tpl-editor__heading { margin-block-start: 0; }
+
+.tpl-editor__pair {
+  display: flex;
+  gap: 14px;
+}
+
+.tpl-editor__pair > .ffield { flex: 1; }
+
+.tpl-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-block-start: 28px;
+}
+
+/* --- Floating-label field --------------------------------------------------- */
+
+.ffield {
+  position: relative;
+  margin-block-start: 14px;
+}
+
+.ffield__input {
+  width: 100%;
+  padding: 20px 12px 7px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--text);
+  transition: border-color var(--speed) ease;
+}
+
+.ffield__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.ffield__label {
+  position: absolute;
+  inset-block-start: 14px;
+  inset-inline-start: 13px;
+  font-size: 13.5px;
+  color: var(--muted);
+  pointer-events: none;
+  transition: all var(--speed) ease;
+}
+
+/* Float the label when the field has content or focus (placeholder=" " makes
+   :placeholder-shown mean "empty"); selects always have a value, so their
+   label stays floated. */
+.ffield__input:focus ~ .ffield__label,
+.ffield__input:not(:placeholder-shown) ~ .ffield__label,
+.ffield--select .ffield__label {
+  inset-block-start: 5px;
+  font-size: 11px;
+  color: var(--accent-text);
+}
+
+.ffield__input:not(:focus):not(:placeholder-shown) ~ .ffield__label,
+.ffield--select .ffield__input:not(:focus) ~ .ffield__label {
+  color: var(--muted);
+}
+
+.ffield--select .ffield__input { appearance: auto; cursor: pointer; }
+
+.ffield--area .ffield__input {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
+}
+
+.ffield__count {
+  position: absolute;
+  inset-block-end: 6px;
+  inset-inline-end: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ffield--area .ffield__count { inset-block-end: 8px; }
+
+/* Keep typed text clear of the counter in single-line fields. */
+.ffield:has(.ffield__count) input.ffield__input { padding-inline-end: 64px; }
+
+/* Error state: red border + red label, toggled live by shell.js and
+   rendered by the server after a failed POST. */
+.ffield--error .ffield__input { border-color: var(--badge); }
+.ffield--error .ffield__label { color: var(--error-text); }
+
+/* --- Category cards --------------------------------------------------------- */
+
+.cat-cards {
+  display: flex;
+  gap: 12px;
+}
+
+.cat-card {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color var(--speed) ease, background-color var(--speed) ease;
+}
+
+/* Thickness doubles as the non-color cue: it survives color blindness and
+   forced-colors mode, where the accent border/background are stripped. */
+.cat-card:has(.cat-card__radio:checked) {
+  border: 2px solid var(--accent);
+  padding: 13px;
+  background: var(--accent-soft);
+}
+
+.cat-card:has(.cat-card__radio:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The radio is functional but invisible; the card itself is the control. */
+.cat-card__radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.cat-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cat-card__head .icon { width: 17px; height: 17px; color: var(--icon-idle); }
+
+.cat-card__text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .cat-cards { flex-direction: column; }
+}
+
+/* --- Sub-type rows ---------------------------------------------------------- */
+
+.subtype-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-block-start: 14px;
+}
+
+/* display:flex on the class would otherwise beat the hidden attribute's
+   UA display:none -- shell.js toggles these via [hidden]. */
+.subtype-group[hidden] { display: none; }
+
+.subtype-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color var(--speed) ease, background-color var(--speed) ease;
+}
+
+.subtype-row:has(.subtype-row__radio:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.subtype-row:has(.subtype-row__radio:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.subtype-row__radio {
+  margin-block-start: 3px;
+  accent-color: var(--accent);
+}
+
+.subtype-row__copy { display: flex; flex-direction: column; gap: 2px; }
+
+.subtype-row__label {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.subtype-row__text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* --- Segmented radio row (cabecera / botones) ------------------------------- */
+
+.seg {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.seg__option { cursor: pointer; }
+
+.seg__radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.seg__label {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-pill);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  transition: border-color var(--speed) ease, background-color var(--speed) ease,
+              color var(--speed) ease;
+}
+
+.seg__option:has(.seg__radio:checked) .seg__label {
+  border: 2px solid var(--accent);
+  padding: 6px 13px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.seg__option:has(.seg__radio:focus-visible) .seg__label {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- Body tools, samples, upload -------------------------------------------- */
+
+.tpl-editor__body-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-start: 6px;
+}
+
+.tpl-editor__samples {
+  margin-block-start: 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--sidebar-border);
+  border-radius: 10px;
+}
+
+.tpl-editor__samples-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tpl-editor__upload {
+  display: block;
+  margin-block-start: 14px;
+  padding: 16px;
+  border: 1px dashed var(--sidebar-border);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tpl-editor__upload input[type="file"] { display: block; margin-block-start: 8px; font-size: 12px; }
+
+/* --- WhatsApp preview (reusable: editor now, gallery later) ------------------ */
+
+.wa-preview {
+  padding: 18px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.wa-preview__title {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.wa-preview__sub {
+  margin: 2px 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Amber callout: fixed hexes on purpose, no amber tokens exist yet. */
+.wa-preview__note {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #f2dfa8;
+  border-radius: 8px;
+  background: #fdf6e3;
+  color: #775b06;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.wa-preview__note p { margin: 0; }
+.wa-preview__note .icon { flex-shrink: 0; width: 15px; height: 15px; margin-block-start: 1px; }
+
+/* WhatsApp-toned chat canvas behind the bubble. */
+.wa-preview__canvas {
+  margin-block-start: 12px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #e8e0d4;
+  min-height: 180px;
+}
+
+.wa-preview__empty {
+  height: 90px;
+  border-radius: 8px;
+  background: #d9d2c7;
+}
+
+.wa-bubble {
+  max-width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border-start-start-radius: 0;
+  background: #fff;
+  box-shadow: 0 1px 1px rgb(15 30 50 / 15%);
+  font-size: 12.5px;
+  color: #111b21;
+  overflow-wrap: break-word;  /* inherited: header, footer, buttons too */
+}
+
+.wa-bubble__header {
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+
+/* Same [hidden]-vs-display:flex guard as .subtype-group above. */
+.wa-bubble__media[hidden] { display: none; }
+
+.wa-bubble__media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 84px;
+  margin: 0 0 6px;
+  border-radius: 6px;
+  background: #e6f6f8;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.wa-bubble__body {
+  margin: 0;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.wa-bubble__footer {
+  margin: 5px 0 0;
+  font-size: 11px;
+  color: #667781;
+}
+
+/* Buttons the way WhatsApp draws them: full-width, divided, blue text. */
+.wa-bubble__buttons {
+  margin-block-start: 8px;
+  border-block-start: 1px solid #e9edf2;
+}
+
+.wa-bubble__button {
+  display: block;
+  padding: 8px 0;
+  text-align: center;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.wa-bubble__button + .wa-bubble__button {
+  border-block-start: 1px solid #e9edf2;
+}

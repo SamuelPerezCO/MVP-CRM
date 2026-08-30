@@ -22,12 +22,9 @@
         {% include "icons/list-filter.svg" %}
       </button>
 
-      {# Wired to a placeholder route; the creation flow itself is not built yet. #}
-      <a class="btn-primary plantillas__create"
-         href="{% url 'plantilla_create' %}"
-         hx-get="{% url 'plantilla_create' %}"
-         hx-target="#mensajeria-panel"
-         hx-swap="innerHTML">Crear plantilla +</a>
+      {# Opens the chooser modal included at the bottom of this panel. #}
+      <button type="button" class="btn-primary plantillas__create"
+              data-dialog-open="template-chooser-dialog">Crear plantilla +</button>
     </div>
   </header>
 
@@ -35,4 +32,7 @@
   <div id="template-table">
     {% include "partials/mensajeria/template_table.html" %}
   </div>
+
+  {# Outside #template-table so it survives tab swaps; closed until opened. #}
+  {% include "partials/mensajeria/template_chooser_dialog.html" %}
 </div>

@@ -1,0 +1,96 @@
+{% comment %}
+  The tag table -- the swappable region inside #tag-table, re-rendered by
+  every create/edit/archive action.
+
+  Each tag renders as its actual pill, so the table doubles as a palette
+  preview. Archived tags stay listed (sorted below the active ones, muted)
+  because they still label old conversations; "Restaurar" brings one back to
+  the pickers. There is deliberately no delete button -- see the archiving
+  rationale on the Tag model.
+
+  Context: tags (annotated with .usage), tag_colors, tag_error (optional)
+{% endcomment %}
+
+{% if tag_error %}
+  <p class="tag-error" role="alert">{{ tag_error }}</p>
+{% endif %}
+
+{% if tags %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">Etiqueta</th>
+        <th scope="col">Color</th>
+        <th scope="col">Conversaciones</th>
+        <th scope="col">Creada por</th>
+        <th scope="col">Fecha</th>
+        <th scope="col" class="table__actions-col">Acciones</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for tag in tags %}
+        <tr{% if tag.is_archived %} class="tag-row--archived"{% endif %}>
+          <td>
+            <span class="tag-pill tag-pill--{{ tag.color }}{% if tag.is_archived %} tag-pill--archived{% endif %}">{{ tag.name }}</span>
+            {% if tag.is_archived %}<span class="table__muted"> · archivada</span>{% endif %}
+          </td>
+
+          <td class="table__muted">{{ tag.get_color_display }}</td>
+
+          <td>{{ tag.usage }}</td>
+
+          <td class="table__muted">
+            {% if tag.created_by %}
+              {{ tag.created_by.get_full_name|default:tag.created_by.username }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+
+          <td class="table__muted">{{ tag.created_at|date:"d/m/Y" }}</td>
+
+          <td class="table__actions-col">
+            <div class="row-actions">
+              {% if not tag.is_archived %}
+                <button type="button" class="icon-btn icon-btn--bare"
+                        data-dialog-open="tag-dialog-{{ tag.pk }}"
+                        aria-label="Editar {{ tag.name }}">
+                  {% include "icons/pencil.svg" %}
+                </button>
+                <button type="button" class="icon-btn icon-btn--bare"
+                        hx-post="{% url 'tag_archive' tag.pk %}"
+                        hx-vals='{"archived": "1"}'
+                        hx-target="#tag-table"
+                        hx-swap="innerHTML"
+                        aria-label="Archivar {{ tag.name }}">
+                  {% include "icons/archive.svg" %}
+                </button>
+              {% else %}
+                <button type="button" class="icon-btn icon-btn--bare"
+                        hx-post="{% url 'tag_archive' tag.pk %}"
+                        hx-vals='{"archived": "0"}'
+                        hx-target="#tag-table"
+                        hx-swap="innerHTML"
+                        aria-label="Restaurar {{ tag.name }}">
+                  {% include "icons/history.svg" %}
+                </button>
+              {% endif %}
+            </div>
+
+            {% if not tag.is_archived %}
+              {% include "partials/crm/tag_dialog.html" with title="Editar etiqueta" submit_label="Guardar cambios" %}
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+{% else %}
+  <div class="empty empty--list">
+    <div class="empty__icon">{% include "icons/tag.svg" %}</div>
+    <p class="empty__title">Aún no hay etiquetas</p>
+    <p class="empty__text">Crea la primera con «+ Crear etiqueta» y aplícala desde el Inbox.</p>
+  </div>
+{% endif %}

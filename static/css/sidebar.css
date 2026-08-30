@@ -17,7 +17,7 @@
   /* Ink */
   --icon-idle: #1b2a41;       /* dark navy of the unselected icons */
   --text: #12263f;
-  --muted: #6b7c93;
+  --muted: #65768d;          /* 4.6:1 on white -- AA even at small sizes */
 
   /* Accent — the blue of the "Crear embudo" / "Activar Mercately" buttons */
   --accent: #2f80ed;
@@ -32,6 +32,12 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+
+/* The UA hides [hidden] with `display: none`, which ANY author display
+   declaration then outranks -- a `display: flex` block silently stops
+   honouring the attribute, and every JS `el.hidden = true` in the app
+   quietly stops working on it. Restate it as the winner once, here. */
+[hidden] { display: none !important; }
 
 html, body { height: 100%; }
 

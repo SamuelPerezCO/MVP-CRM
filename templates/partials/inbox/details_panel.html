@@ -1,6 +1,14 @@
 {% comment %}
   Inbox column 5 -- client details for the open conversation.
+
+  With ?chat= in the URL the details render directly; otherwise the empty
+  state shows until a conversation is opened, which fills this element via
+  inbox_chat's out-of-band swap (see chat_swap.html).
 {% endcomment %}
 <aside class="details-panel" id="details-panel" aria-label="Detalles del cliente">
-  {% include "partials/inbox/details_empty.html" %}
+  {% if active_conversation %}
+    {% include "partials/inbox/details_content.html" %}
+  {% else %}
+    {% include "partials/inbox/details_empty.html" %}
+  {% endif %}
 </aside>

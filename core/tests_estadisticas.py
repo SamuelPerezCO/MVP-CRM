@@ -119,11 +119,13 @@ class MensajeriaCardsTests(TestCase):
             self.assertIn('hx-target="#estadisticas-panel"', tag.split(">", 1)[0])
 
     def test_card_route_returns_a_placeholder_panel(self):
+        # "volumen-mensajes" has a real screen now (tests_estadisticas_volumen);
+        # the other three still resolve to the placeholder.
         response = self.client.get(
-            reverse("estadisticas_card", args=["volumen-mensajes"])
+            reverse("estadisticas_card", args=["tiempos-respuesta"])
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Volumen de Mensajes — próximamente")
+        self.assertContains(response, "Tiempos de Respuesta — próximamente")
 
     def test_unknown_card_is_404(self):
         self.assertEqual(

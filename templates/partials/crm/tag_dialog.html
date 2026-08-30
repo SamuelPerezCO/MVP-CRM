@@ -1,0 +1,54 @@
+{% comment %}
+  The create/edit tag modal -- one template for both: with ``tag`` it edits
+  (fields pre-filled, posts to tag_update), without it creates.
+
+  A native <dialog>, opened by any [data-dialog-open="<id>"] button and
+  closed by [data-dialog-close] / a successful submit / Esc -- all wired in
+  shell.js, which also drives the live preview: typing updates the pill's
+  text, picking a swatch its color.
+
+  Colors are the preset palette only, rendered as radio swatches -- no free
+  hex input, so every pill stays readable.
+
+  Context: tag (or None), title, submit_label, tag_colors
+{% endcomment %}
+
+<dialog class="tag-dialog" id="{% if tag %}tag-dialog-{{ tag.pk }}{% else %}tag-dialog-create{% endif %}">
+  <form method="post"
+        hx-post="{% if tag %}{% url 'tag_update' tag.pk %}{% else %}{% url 'tag_create' %}{% endif %}"
+        hx-target="#tag-table"
+        hx-swap="innerHTML"
+        data-close-on-success>
+    {% csrf_token %}
+
+    <h2 class="tag-dialog__title">{{ title }}</h2>
+
+    <label class="tag-dialog__label" for="{% if tag %}tag-name-{{ tag.pk }}{% else %}tag-name-create{% endif %}">Nombre</label>
+    <input class="field__input" type="text" name="name" maxlength="40" required
+           id="{% if tag %}tag-name-{{ tag.pk }}{% else %}tag-name-create{% endif %}"
+           value="{{ tag.name|default:'' }}" placeholder="p. ej. CLIENTE NUEVO"
+           autocomplete="off" data-tag-name-input>
+
+    <fieldset class="tag-swatches">
+      <legend class="tag-dialog__label">Color</legend>
+      {% for key, color_label in tag_colors %}
+        <label class="tag-swatch" title="{{ color_label }}">
+          <input type="radio" name="color" value="{{ key }}"
+                 {% if tag and tag.color == key %}checked{% elif not tag and forloop.first %}checked{% endif %}>
+          <span class="tag-swatch__chip tag-pill--{{ key }}"></span>
+          <span class="sr-only">{{ color_label }}</span>
+        </label>
+      {% endfor %}
+    </fieldset>
+
+    <p class="tag-dialog__label">Vista previa</p>
+    <p class="tag-dialog__preview">
+      <span class="tag-pill tag-pill--{{ tag.color|default:'green' }}" data-tag-preview>{{ tag.name|default:"ETIQUETA" }}</span>
+    </p>
+
+    <div class="tag-dialog__actions">
+      <button type="button" class="btn-ghost" data-dialog-close>Cancelar</button>
+      <button type="submit" class="btn-primary">{{ submit_label }}</button>
+    </div>
+  </form>
+</dialog>

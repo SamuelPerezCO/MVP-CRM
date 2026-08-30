@@ -9,10 +9,66 @@ urlpatterns = [
     # Root is the welcome screen: the shell before any section is chosen. It is
     # deliberately not a `section` route, so no sidebar icon matches "/".
     path("", views.welcome, name="home"),
-    # Inbox column 3, fetched on its own when a conversation filter is picked.
+    # Inbox column 3, fetched on its own when a conversation filter is picked
+    # (and re-fetched by the list's poll).
     path("inbox/list/<slug:filter_key>/", views.inbox_list, name="inbox_list"),
+    # One open conversation: columns 4 + 5 in a single response.
+    path("inbox/chat/<int:conversation_id>/", views.inbox_chat, name="inbox_chat"),
+    # Just the message thread, re-fetched by the open chat's poll.
+    path(
+        "inbox/chat/<int:conversation_id>/mensajes/",
+        views.inbox_thread,
+        name="inbox_thread",
+    ),
+    # The composer posts here; answers with the refreshed thread.
+    path(
+        "inbox/chat/<int:conversation_id>/enviar/",
+        views.inbox_send,
+        name="inbox_send",
+    ),
+    # One conversation's tag picker: GET renders it, POST toggles/creates.
+    path(
+        "inbox/conversacion/<int:conversation_id>/etiquetas/",
+        views.conversation_tags,
+        name="conversation_tags",
+    ),
+    # Bulk add/remove of one tag over the checked conversations.
+    path("inbox/etiquetas/bulk/", views.inbox_tags_bulk, name="inbox_tags_bulk"),
+    # Etiquetas admin (CRM > Gestión de clientes > Etiquetas) mutations; all
+    # answer with the re-rendered #tag-table region.
+    path("crm/etiquetas/nueva/", views.tag_create, name="tag_create"),
+    path("crm/etiquetas/<int:tag_id>/editar/", views.tag_update, name="tag_update"),
+    path("crm/etiquetas/<int:tag_id>/archivo/", views.tag_archive, name="tag_archive"),
     # CRM column 3, fetched on its own when a secondary-nav page is picked.
     path("crm/panel/<slug:view_key>/", views.crm_panel, name="crm_panel"),
+    # Mi calendario: the grid's JSON feed plus event/preference mutations,
+    # fetched by static/js/calendario.js (not HTMX -- FullCalendar consumes).
+    path("crm/calendario/eventos/", views.calendar_events, name="calendar_events"),
+    path(
+        "crm/calendario/eventos/nuevo/",
+        views.calendar_event_create,
+        name="calendar_event_create",
+    ),
+    path(
+        "crm/calendario/eventos/<int:event_id>/editar/",
+        views.calendar_event_update,
+        name="calendar_event_update",
+    ),
+    path(
+        "crm/calendario/eventos/<int:event_id>/mover/",
+        views.calendar_event_move,
+        name="calendar_event_move",
+    ),
+    path(
+        "crm/calendario/eventos/<int:event_id>/eliminar/",
+        views.calendar_event_delete,
+        name="calendar_event_delete",
+    ),
+    path(
+        "crm/calendario/preferencias/",
+        views.calendar_prefs,
+        name="calendar_prefs",
+    ),
     # The client table region (rows + pager), fetched on its own when paging.
     path("crm/clientes/tabla/", views.clientes_table, name="clientes_table"),
     # Placeholder target for the "+ Crear lista" button.
@@ -51,7 +107,16 @@ urlpatterns = [
         views.estadisticas_panel,
         name="estadisticas_panel",
     ),
-    # Placeholder detail target for each Mensajería stat card.
+    # Volumen de Mensajes: the report behind the period picker, fetched by
+    # static/js/stats_volumen.js (not HTMX -- ECharts consumes the JSON).
+    # Declared before the <card_key> route below, which would swallow it.
+    path(
+        "estadisticas/mensajeria/volumen/datos/",
+        views.estadisticas_volumen_data,
+        name="estadisticas_volumen_data",
+    ),
+    # One Mensajería stat card's detail screen (placeholder until its
+    # template exists -- see core.estadisticas.card_template).
     path(
         "estadisticas/mensajeria/<slug:card_key>/",
         views.estadisticas_card,
@@ -64,14 +129,25 @@ urlpatterns = [
         name="mensajeria_panel",
     ),
     # The Plantillas table region (tabs + rows), fetched on its own per tab.
-    # "tab/" keeps the slug from swallowing the nueva route below.
+    # "tab/" keeps the slug from swallowing the galeria/editor routes below.
     path(
         "mensajeria/plantillas/tab/<slug:tab_key>/",
         views.plantillas_table,
         name="plantillas_table",
     ),
-    # Placeholder target for both create-template buttons.
-    path("mensajeria/plantillas/nueva/", views.plantilla_create, name="plantilla_create"),
+    # The chooser modal's first card: pick a ready-made template (placeholder).
+    path(
+        "mensajeria/plantillas/galeria/",
+        views.plantilla_gallery,
+        name="plantilla_gallery",
+    ),
+    # The chooser modal's second card: the Crear plantilla editor. GET renders
+    # it, POST validates and saves the template.
+    path(
+        "mensajeria/plantillas/editor/",
+        views.plantilla_editor,
+        name="plantilla_editor",
+    ),
     # Every sidebar icon points here; <key> matches a NavItem.key from nav.py.
     path("s/<slug:key>/", views.section, name="section"),
 ]

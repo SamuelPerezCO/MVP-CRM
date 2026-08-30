@@ -25,11 +25,13 @@
         <p class="inbox-nav__title">{{ group.title }}</p>
 
         {% for row in group.items %}
+          {# hx-include keeps the tag filter applied across nav hops. #}
           <a class="inbox-nav__row{% if row.key == active_filter %} is-active{% endif %}"
              href="{% url 'section' 'inbox' %}?filter={{ row.key }}"
              hx-get="{% url 'inbox_list' row.key %}"
              hx-target="#conv-list"
              hx-swap="innerHTML"
+             hx-include="#tag-filter input:checked"
              hx-push-url="{% url 'section' 'inbox' %}?filter={{ row.key }}"
              data-nav-item
              {% if row.key == active_filter %}aria-current="true"{% endif %}>

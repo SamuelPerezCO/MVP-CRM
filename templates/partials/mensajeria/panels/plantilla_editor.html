@@ -1,0 +1,308 @@
+{% comment %}
+  The Crear plantilla editor -- the screen behind the chooser's "Empezar a
+  crear" card, swapped into #mensajeria-panel (or served inside the full
+  page shell for plain navigation). A two-column grid: the form card on the
+  left, the sticky live preview (partials/plantillas/whatsapp_preview.html)
+  on the right.
+
+  The form hx-posts back to plantilla_editor: success answers with the
+  Plantillas panel (back to the list), errors re-render this template with
+  inline role="alert" messages wired to their inputs via aria-describedby
+  (shell.js then focuses the first invalid field). Radio groups are
+  fieldsets so the section headings double as programmatic group names.
+  All live behavior -- name lowercasing/validation, the category-dependent
+  sub-type groups, header/button panels, counters, variable insertion,
+  sample inputs and the preview -- is delegated in static/js/shell.js off
+  the data-* hooks; core.plantillas re-validates everything server-side.
+
+  Context: categories, sub_types, languages, header_types, button_kinds,
+           teams, form, errors, body_max, header_text_max, footer_max,
+           button_text_max
+{% endcomment %}
+
+<div class="tpl-editor">
+  <h1 class="tpl-editor__title">Crear plantilla</h1>
+
+  <div class="tpl-editor__grid">
+    <form class="tpl-editor__card"
+          method="post"
+          action="{% url 'plantilla_editor' %}"
+          enctype="multipart/form-data"
+          hx-post="{% url 'plantilla_editor' %}"
+          hx-target="#mensajeria-panel"
+          hx-swap="innerHTML"
+          hx-encoding="multipart/form-data"
+          data-plantilla-form
+          novalidate>
+      {% csrf_token %}
+
+      {# --- Nombre ------------------------------------------------------- #}
+      <div class="ffield{% if errors.name %} ffield--error{% endif %}" data-name-field>
+        <input class="ffield__input" type="text" name="name" id="tpl-name"
+               value="{{ form.name }}" maxlength="120" placeholder=" "
+               autocomplete="off" spellcheck="false" data-name-input
+               aria-describedby="tpl-name-hint{% if errors.name %} tpl-name-error{% endif %}"
+               {% if errors.name %}aria-invalid="true"{% endif %}>
+        <label class="ffield__label" for="tpl-name">Nombre de la plantilla</label>
+      </div>
+      <p class="tpl-editor__hint" id="tpl-name-hint">Solo se permiten letras minúsculas,
+        caracteres alfanuméricos y guiones bajos(_)</p>
+      {% if errors.name %}
+        <p class="tpl-editor__error" id="tpl-name-error" role="alert">{{ errors.name }}</p>
+      {% endif %}
+
+      {# --- Categoría ---------------------------------------------------- #}
+      <fieldset class="tpl-editor__group">
+        <legend class="tpl-editor__heading">Elige la categoría</legend>
+        <div class="cat-cards" data-category-group>
+          {% for cat in categories %}
+            <label class="cat-card">
+              <input class="cat-card__radio" type="radio" name="category"
+                     value="{{ cat.key }}"
+                     {% if form.category == cat.key %}checked{% endif %}>
+              <span class="cat-card__head">
+                <span class="cat-card__label">{{ cat.label }}</span>
+                {% include cat.icon_template %}
+              </span>
+              <span class="cat-card__text">{{ cat.description }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      {# --- Sub-tipo (options depend on the category picked above) -------- #}
+      <fieldset class="tpl-editor__group">
+        <legend class="sr-only">Tipo de plantilla</legend>
+        <div data-subtype-groups>
+          {% for cat_key, options in sub_types.items %}
+            <div class="subtype-group" data-subtype-group="{{ cat_key }}"
+                 {% if cat_key != form.category %}hidden{% endif %}>
+              {% for opt in options %}
+                <label class="subtype-row">
+                  <input class="subtype-row__radio" type="radio" name="sub_type"
+                         value="{{ opt.key }}"
+                         {% if cat_key == form.category and opt.key == form.sub_type %}checked{% endif %}
+                         {% if cat_key != form.category %}disabled{% endif %}>
+                  <span class="subtype-row__copy">
+                    <span class="subtype-row__label">{{ opt.label }}</span>
+                    <span class="subtype-row__text">{{ opt.description }}</span>
+                  </span>
+                </label>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      {# --- Información básica ------------------------------------------- #}
+      <h2 class="tpl-editor__heading">Información básica</h2>
+      <div class="tpl-editor__pair">
+        <div class="ffield ffield--select{% if errors.language %} ffield--error{% endif %}">
+          <select class="ffield__input" name="language" id="tpl-language"
+                  {% if errors.language %}aria-invalid="true" aria-describedby="tpl-language-error"{% endif %}>
+            {% for lang in languages %}
+              <option value="{{ lang.code }}"
+                      {% if form.language == lang.code %}selected{% endif %}>
+                {{ lang.label }}
+              </option>
+            {% endfor %}
+          </select>
+          <label class="ffield__label" for="tpl-language">Idioma</label>
+        </div>
+
+        <div class="ffield ffield--select{% if errors.team %} ffield--error{% endif %}">
+          <select class="ffield__input" name="team" id="tpl-team"
+                  {% if errors.team %}aria-invalid="true" aria-describedby="tpl-team-error"{% endif %}>
+            <option value="">Todos los equipos</option>
+            {% for team in teams %}
+              <option value="{{ team }}"
+                      {% if form.team == team %}selected{% endif %}>{{ team }}</option>
+            {% endfor %}
+          </select>
+          <label class="ffield__label" for="tpl-team">Equipo</label>
+        </div>
+      </div>
+      {% if errors.language %}
+        <p class="tpl-editor__error" id="tpl-language-error" role="alert">{{ errors.language }}</p>
+      {% endif %}
+      {% if errors.team %}
+        <p class="tpl-editor__error" id="tpl-team-error" role="alert">{{ errors.team }}</p>
+      {% endif %}
+
+      {# --- Cabecera ------------------------------------------------------ #}
+      <fieldset class="tpl-editor__group">
+        <legend class="tpl-editor__heading">Escoge la cabecera del mensaje</legend>
+        <div class="seg" data-header-kinds>
+          {% for header in header_types %}
+            <label class="seg__option">
+              <input class="seg__radio" type="radio" name="header_type"
+                     value="{{ header.key }}"
+                     {% if form.header_type == header.key %}checked{% endif %}>
+              <span class="seg__label">{{ header.label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+
+        <div data-header-panel="text" {% if form.header_type != "text" %}hidden{% endif %}>
+          <div class="ffield{% if errors.header_text %} ffield--error{% endif %}">
+            <input class="ffield__input" type="text" name="header_text" id="tpl-header-text"
+                   value="{{ form.header_text }}" maxlength="{{ header_text_max }}"
+                   placeholder=" " data-counted-input
+                   aria-describedby="tpl-header-text-count{% if errors.header_text %} tpl-header-text-error{% endif %}"
+                   {% if errors.header_text %}aria-invalid="true"{% endif %}>
+            <label class="ffield__label" for="tpl-header-text">Texto de la cabecera</label>
+            <span class="ffield__count" id="tpl-header-text-count" data-count></span>
+          </div>
+          {% if errors.header_text %}
+            <p class="tpl-editor__error" id="tpl-header-text-error" role="alert">{{ errors.header_text }}</p>
+          {% endif %}
+        </div>
+
+        <div data-header-panel="media"
+             {% if form.header_type == "none" or form.header_type == "text" %}hidden{% endif %}>
+          <label class="tpl-editor__upload">
+            <span data-header-media-label>Sube un archivo de ejemplo</span>
+            <input type="file" name="header_media" id="tpl-header-media"
+                   accept="image/*,video/*,application/pdf"
+                   {% if errors.header_media %}aria-invalid="true" aria-describedby="tpl-header-media-error"{% endif %}>
+          </label>
+          {% if errors.header_media %}
+            <p class="tpl-editor__error" id="tpl-header-media-error" role="alert">{{ errors.header_media }}</p>
+          {% endif %}
+        </div>
+      </fieldset>
+
+      {# --- Cuerpo -------------------------------------------------------- #}
+      <h2 class="tpl-editor__heading">Cuerpo del mensaje</h2>
+      <div class="ffield ffield--area{% if errors.body %} ffield--error{% endif %}">
+        <textarea class="ffield__input" name="body" id="tpl-body" rows="5"
+                  maxlength="{{ body_max }}" placeholder=" "
+                  data-body-input data-counted-input
+                  aria-describedby="tpl-body-count{% if errors.body %} tpl-body-error{% endif %}"
+                  {% if errors.body %}aria-invalid="true"{% endif %}>{{ form.body }}</textarea>
+        <label class="ffield__label" for="tpl-body">Cuerpo</label>
+        <span class="ffield__count" id="tpl-body-count" data-count></span>
+      </div>
+      <div class="tpl-editor__body-tools">
+        <button type="button" class="btn-ghost" data-add-variable>+ Añadir variable</button>
+      </div>
+      {% if errors.body %}
+        <p class="tpl-editor__error" id="tpl-body-error" role="alert">{{ errors.body }}</p>
+      {% endif %}
+
+      {% comment %}
+        One sample input per {{n}} in the body -- Meta requires example
+        values and the preview substitutes them. shell.js rebuilds this list
+        as variables come and go, keeping values by input name.
+      {% endcomment %}
+      <div class="tpl-editor__samples" data-sample-list
+           {% if not form.samples %}hidden{% endif %}>
+        <p class="tpl-editor__samples-title">Valores de ejemplo</p>
+        <div data-sample-inputs>
+          {% for sample in form.samples %}
+            <div class="ffield">
+              <input class="ffield__input" type="text"
+                     name="sample_{{ sample.number }}" id="tpl-sample-{{ sample.number }}"
+                     value="{{ sample.value }}" placeholder=" ">
+              <label class="ffield__label" for="tpl-sample-{{ sample.number }}">
+                Ejemplo para {% templatetag openvariable %}{{ sample.number }}{% templatetag closevariable %}
+              </label>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% if errors.samples %}
+        <p class="tpl-editor__error" role="alert">{{ errors.samples }}</p>
+      {% endif %}
+
+      {# --- Pie de página -------------------------------------------------- #}
+      <h2 class="tpl-editor__heading">Pie de página <span class="tpl-editor__optional">(opcional)</span></h2>
+      <div class="ffield{% if errors.footer %} ffield--error{% endif %}">
+        <input class="ffield__input" type="text" name="footer" id="tpl-footer"
+               value="{{ form.footer }}" maxlength="{{ footer_max }}"
+               placeholder=" " data-counted-input
+               aria-describedby="tpl-footer-count{% if errors.footer %} tpl-footer-error{% endif %}"
+               {% if errors.footer %}aria-invalid="true"{% endif %}>
+        <label class="ffield__label" for="tpl-footer">Pie de página</label>
+        <span class="ffield__count" id="tpl-footer-count" data-count></span>
+      </div>
+      {% if errors.footer %}
+        <p class="tpl-editor__error" id="tpl-footer-error" role="alert">{{ errors.footer }}</p>
+      {% endif %}
+
+      {# --- Botones -------------------------------------------------------- #}
+      <fieldset class="tpl-editor__group">
+        <legend class="tpl-editor__heading">Botones <span class="tpl-editor__optional">(opcional)</span></legend>
+        <div class="seg" data-button-kinds>
+          {% for kind in button_kinds %}
+            <label class="seg__option">
+              <input class="seg__radio" type="radio" name="button_kind"
+                     value="{{ kind.key }}"
+                     {% if form.button_kind == kind.key %}checked{% endif %}>
+              <span class="seg__label">{{ kind.label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+
+        <div data-buttons-panel="quick" {% if form.button_kind != "quick" %}hidden{% endif %}>
+          {% for value in form.quick_replies %}
+            <div class="ffield">
+              <input class="ffield__input" type="text"
+                     name="quick_reply_{{ forloop.counter }}"
+                     id="tpl-quick-{{ forloop.counter }}"
+                     value="{{ value }}" maxlength="{{ button_text_max }}" placeholder=" ">
+              <label class="ffield__label" for="tpl-quick-{{ forloop.counter }}">
+                Botón {{ forloop.counter }}{% if not forloop.first %} (opcional){% endif %}
+              </label>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div data-buttons-panel="cta" {% if form.button_kind != "cta" %}hidden{% endif %}>
+          <div class="tpl-editor__pair">
+            <div class="ffield">
+              <input class="ffield__input" type="text" name="cta_url_text" id="tpl-cta-url-text"
+                     value="{{ form.cta_url_text }}" maxlength="{{ button_text_max }}" placeholder=" ">
+              <label class="ffield__label" for="tpl-cta-url-text">Texto del botón de URL</label>
+            </div>
+            <div class="ffield">
+              <input class="ffield__input" type="url" name="cta_url" id="tpl-cta-url"
+                     value="{{ form.cta_url }}" placeholder=" ">
+              <label class="ffield__label" for="tpl-cta-url">URL</label>
+            </div>
+          </div>
+          <div class="tpl-editor__pair">
+            <div class="ffield">
+              <input class="ffield__input" type="text" name="cta_phone_text" id="tpl-cta-phone-text"
+                     value="{{ form.cta_phone_text }}" maxlength="{{ button_text_max }}" placeholder=" ">
+              <label class="ffield__label" for="tpl-cta-phone-text">Texto del botón de teléfono</label>
+            </div>
+            <div class="ffield">
+              <input class="ffield__input" type="tel" name="cta_phone" id="tpl-cta-phone"
+                     value="{{ form.cta_phone }}" placeholder=" ">
+              <label class="ffield__label" for="tpl-cta-phone">Teléfono</label>
+            </div>
+          </div>
+        </div>
+        {% if errors.buttons %}
+          <p class="tpl-editor__error" role="alert">{{ errors.buttons }}</p>
+        {% endif %}
+      </fieldset>
+
+      {# --- Acciones ------------------------------------------------------- #}
+      <div class="tpl-editor__actions">
+        <a class="btn-ghost"
+           href="{% url 'section' 'mensajeria' %}?view=plantillas-whatsapp"
+           hx-get="{% url 'mensajeria_panel' 'plantillas-whatsapp' %}"
+           hx-target="#mensajeria-panel"
+           hx-swap="innerHTML"
+           hx-push-url="{% url 'section' 'mensajeria' %}?view=plantillas-whatsapp">Cancelar</a>
+        <button type="submit" class="btn-primary">Crear plantilla</button>
+      </div>
+    </form>
+
+    <aside class="tpl-editor__preview">
+      {% include "partials/plantillas/whatsapp_preview.html" %}
+    </aside>
+  </div>
+</div>

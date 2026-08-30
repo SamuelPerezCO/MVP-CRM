@@ -3,8 +3,9 @@
   the same bordered card as the table: copy + outlined create button on the
   left, placeholder illustration on the right.
 
-  The button triggers the same action as the toolbar's "Crear plantilla +" --
-  both point at core.views.plantilla_create.
+  The button opens the same chooser modal as the toolbar's "Crear plantilla +"
+  -- the dialog itself is included once by panels/plantillas-whatsapp.html,
+  outside the swapped #template-table region.
 {% endcomment %}
 
 <div class="tpl-empty">
@@ -19,17 +20,14 @@
       automatizados y campañas.
     </p>
 
-    <a class="btn-outline"
-       href="{% url 'plantilla_create' %}"
-       hx-get="{% url 'plantilla_create' %}"
-       hx-target="#mensajeria-panel"
-       hx-swap="innerHTML">
+    <button type="button" class="btn-outline"
+            data-dialog-open="template-chooser-dialog">
       <span>Crear nueva plantilla</span>
       <span class="btn-outline__plus" aria-hidden="true">+</span>
-    </a>
+    </button>
   </div>
 
   <div class="tpl-empty__art">
-    {% include "partials/mensajeria/_illustration.html" %}
+    {% include "illustrations/whatsapp-template.svg" %}
   </div>
 </div>

@@ -1,0 +1,323 @@
+/* ==========================================================================
+   Mi calendario — the CRM calendar: 240px sidebar (Crear +, mini month
+   picker, settings) plus the FullCalendar grid, restyled to the app.
+   Builds on the tokens from sidebar.css / inbox.css, the shared buttons,
+   the .modal shell (modal.css) and the .ffield form system + text-safe
+   tokens (--error-text/--accent-text) from plantillas.css; event colors
+   reuse the tag palette pairs from tags.css. FullCalendar v6 injects its
+   own base CSS -- the overrides here are scoped under .calendario and lean
+   on its --fc-* variables.
+   ========================================================================== */
+
+/* --- Layout ---------------------------------------------------------------- */
+
+.calendario {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  background: var(--content-bg);
+}
+
+.calendario__side {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 14px;
+  overflow-y: auto;
+}
+
+.calendario__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px 18px 4px;
+}
+
+/* --- Sidebar cards ---------------------------------------------------------- */
+
+.mini-cal,
+.cal-settings {
+  padding: 12px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.mini-cal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: 8px;
+}
+
+.mini-cal__head .icon { width: 16px; height: 16px; }
+
+.mini-cal__title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.mini-cal__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px 0;
+  justify-items: center;
+}
+
+.mini-cal__dow {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  padding-block: 3px;
+}
+
+.mini-cal__day {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.mini-cal__day:hover { background: var(--hover-bg); }
+.mini-cal__day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Muted but still AA-readable against white (4.7:1). */
+.mini-cal__day--outside { color: #64748b; }
+
+/* Today: outlined; selected: filled -- visually distinct on purpose. */
+.mini-cal__day--today { box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+.mini-cal__day--selected,
+.mini-cal__day--selected:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* --- Settings card ----------------------------------------------------------- */
+
+.cal-settings { display: flex; flex-direction: column; gap: 12px; }
+
+.cal-settings__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.cal-settings__row--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  cursor: default;
+}
+
+.cal-settings__check { accent-color: var(--accent); width: 15px; height: 15px; }
+
+.cal-settings__select {
+  padding: 7px 10px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+/* --- Toolbar ----------------------------------------------------------------- */
+
+.cal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-block-end: 12px;
+}
+
+/* The shared .btn-outline carries a top margin for the empty states. */
+.cal-toolbar__today { margin-block-start: 0; padding: 7px 16px; font-size: 12.5px; }
+
+.cal-toolbar .icon-btn { width: 32px; height: 32px; }
+.cal-toolbar .icon { width: 16px; height: 16px; }
+
+.cal-toolbar__title {
+  margin: 0 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: none;
+}
+
+.cal-toolbar__view {
+  margin-inline-start: auto;
+  padding: 7px 10px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+/* --- FullCalendar reskin ------------------------------------------------------ */
+
+.cal-grid { flex: 1; min-height: 0; }
+
+.calendario .fc {
+  --fc-border-color: var(--sidebar-border);
+  --fc-today-bg-color: var(--accent-soft);
+  --fc-now-indicator-color: var(--badge);
+  --fc-page-bg-color: #fff;
+  --fc-event-border-color: transparent;
+  --fc-highlight-color: rgb(47 128 237 / 12%);
+  font-size: 12.5px;
+}
+
+.calendario .fc .fc-scrollgrid { background: #fff; border-radius: 10px; }
+
+/* Roomy rows: without this all 24 hours nearly fit the viewport and the
+   "start the day at 07:00" scroll has nowhere to go. */
+.calendario .fc .fc-timegrid-slot { height: 26px; }
+
+.calendario .fc .fc-col-header-cell-cushion {
+  padding: 8px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.calendario .fc .fc-day-today .fc-col-header-cell-cushion { color: var(--accent-text, var(--accent)); }
+
+.calendario .fc .fc-timegrid-slot-label-cushion,
+.calendario .fc .fc-timegrid-axis-cushion {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.calendario .fc .fc-daygrid-day-number {
+  font-size: 12px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.calendario .fc .fc-event {
+  border-radius: 6px;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.calendario .fc .fc-timegrid-event .fc-event-main { padding: 3px 5px; }
+
+/* Event colors, keyed by PALETTE COLOR: core.calendario.EventType.css_class
+   maps each event type to one of these, so a new type only needs a color
+   assignment in Python -- no new CSS. Pairs are the tag palette's. */
+.calendario .fc .cal-event--green { background: var(--tag-green-bg); border-inline-start: 3px solid var(--tag-green-fg); }
+.calendario .fc .cal-event--green .fc-event-main { color: var(--tag-green-fg); }
+.calendario .fc .cal-event--blue { background: var(--tag-blue-bg); border-inline-start: 3px solid var(--tag-blue-fg); }
+.calendario .fc .cal-event--blue .fc-event-main { color: var(--tag-blue-fg); }
+.calendario .fc .cal-event--yellow { background: var(--tag-yellow-bg); border-inline-start: 3px solid var(--tag-yellow-fg); }
+.calendario .fc .cal-event--yellow .fc-event-main { color: var(--tag-yellow-fg); }
+.calendario .fc .cal-event--gray { background: var(--tag-gray-bg); border-inline-start: 3px solid var(--tag-gray-fg); }
+.calendario .fc .cal-event--gray .fc-event-main { color: var(--tag-gray-fg); }
+
+/* --- Event modal -------------------------------------------------------------- */
+
+.modal--event { width: min(520px, calc(100vw - 32px)); }
+
+.modal--event .modal__title { text-align: start; font-size: 18px; }
+
+.event-when { display: flex; gap: 10px; }
+.event-when .ffield { flex: 1; }
+
+.event-pair { display: flex; gap: 10px; }
+.event-pair .ffield { flex: 1; }
+
+.event-contact { display: flex; flex-direction: column; }
+
+.event-allday {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-block-start: 12px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.event-allday input { accent-color: var(--accent); width: 15px; height: 15px; }
+
+.event-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-block-start: 18px;
+}
+
+.event-actions__spacer { flex: 1; }
+
+.event-actions__delete { color: var(--error-text, #c73e3e); }
+
+/* .btn-ghost's display:inline-flex would beat the hidden attribute -- the
+   button only exists in edit mode. */
+.event-actions__delete[hidden] { display: none; }
+
+/* The modal's single error line (associated to inputs via aria). */
+.event-form__error {
+  margin: 12px 2px 0;
+  font-size: 12.5px;
+  color: var(--error-text, #c73e3e);
+}
+
+/* --- Toast --------------------------------------------------------------------- */
+
+.calendario { position: relative; }
+
+.cal-toast {
+  position: absolute;
+  inset-block-end: 18px;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  border-radius: 8px;
+  background: var(--icon-idle);
+  color: #fff;
+  font-size: 12.5px;
+  box-shadow: 0 8px 24px rgb(15 30 50 / 25%);
+  z-index: 40;
+}
+
+/* display:flex on the class would beat the hidden attribute. */
+.cal-toast[hidden] { display: none; }
+
+.cal-toast__close {
+  display: inline-flex;
+  padding: 3px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+.cal-toast__close .icon { width: 14px; height: 14px; }
+.cal-toast__close:hover { background: rgb(255 255 255 / 15%); }
+.cal-toast__close:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
