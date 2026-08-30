@@ -137,7 +137,7 @@ MAILERS = {
 
 
 # Messaging
-# Which provider backs sending and webhooks: 'fake' | 'twilio' | 'meta'.
+# Which provider backs sending and webhooks: 'fake' | 'twilio' | 'meta' | 'baileys'.
 # Swapping to a real provider is this one variable plus its credentials below
 # (see .env.example). Values come from the environment so no credential ever
 # lands in this file.
@@ -157,3 +157,9 @@ META_ACCESS_TOKEN = os.environ.get('META_ACCESS_TOKEN', '')
 META_PHONE_NUMBER_ID = os.environ.get('META_PHONE_NUMBER_ID', '')
 META_APP_SECRET = os.environ.get('META_APP_SECRET', '')
 META_VERIFY_TOKEN = os.environ.get('META_VERIFY_TOKEN', '')
+
+# Baileys (unofficial WhatsApp Web/Desktop connection via a Node sidecar --
+# see whatsapp-sidecar/. QR-code pairing, no Meta Developers app needed; good
+# for demos, not for production -- see whatsapp-sidecar/README.md).
+BAILEYS_SIDECAR_URL = os.environ.get('BAILEYS_SIDECAR_URL', 'http://localhost:4000')
+BAILEYS_SIDECAR_SECRET = os.environ.get('BAILEYS_SIDECAR_SECRET', 'dev-sidecar-secret')
