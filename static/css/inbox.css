@@ -263,7 +263,161 @@
   flex-direction: column;
 }
 
+.list-panel__form {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Selection count chip on the Acciones pill. */
+.list-panel__count {
+  display: grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* The Acciones dropdown only means something with rows checked; shell.js
+   flips .has-selection on the form as checkboxes change. */
+.list-panel__actions { display: none; }
+.has-selection .list-panel__actions { display: block; }
+
 .conv-items { list-style: none; margin: 0; padding: 0; }
+
+/* One conversation: [checkbox] [avatar] [stacked lines], one clean block.
+   The li owns the padding, the divider and the hover/selected backgrounds
+   so the highlight spans the checkbox too. */
+.conv-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-block-end: 1px solid var(--sidebar-border);
+  transition: background-color var(--speed) ease;
+}
+
+.conv-item:hover { background: var(--hover-bg); }
+.conv-item:has(.conv-row.is-active) { background: var(--accent-soft); }
+
+/* Left edge, vertically centered with the avatar; visible on hover, when
+   checked, and while any selection is in progress. Reserved width, so
+   appearing never shifts the row. */
+.conv-item__check {
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--speed) ease;
+}
+
+.conv-item:hover .conv-item__check,
+.conv-item__check:checked,
+.conv-item__check:focus-visible,
+.has-selection .conv-item__check { opacity: 1; }
+
+/* The row link fills the rest; backgrounds live on the li. */
+.conv-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.conv-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.conv-row__avatar {
+  position: relative;           /* anchors the unread dot */
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Unread: a green dot riding the avatar's corner — no extra column. */
+.conv-row__dot {
+  position: absolute;
+  inset-block-start: -1px;
+  inset-inline-end: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #25b45c;
+  border: 2px solid #fff;
+}
+
+.conv-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.conv-row__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.conv-row__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.conv-row__time {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Line 2: agent name with the channel mark beside it. */
+.conv-row__sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.conv-row__agent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.conv-row__channel { display: flex; flex-shrink: 0; }
+.conv-row__channel .icon { width: 14px; height: 14px; }
+
+/* Tag pills wrap to as many lines as they need. */
+.conv-row__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 
 /* ==========================================================================
    Columns 4 and 5 — chat and client details
@@ -283,6 +437,244 @@
   background: #fff;
   border-inline-start: 1px solid var(--sidebar-border);
 }
+
+/* --- Open conversation (column 4 with a thread loaded) -------------------- */
+
+.chat-thread {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-thread__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px;
+  border-block-end: 1px solid var(--sidebar-border);
+}
+
+.chat-thread__head-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Tags under the contact line; the picker button rides at the end. */
+.chat-thread__tagbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-thread__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-width: 0;
+}
+
+.chat-thread__who { flex: 1; min-width: 0; }
+
+.chat-thread__name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-thread__meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 1px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.chat-thread__meta .icon { width: 13px; height: 13px; }
+
+.chat-thread__status {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.chat-thread__status--open     { background: var(--accent-soft); color: var(--accent); }
+.chat-thread__status--pending  { background: #fdf3e0; color: #b97a12; }
+.chat-thread__status--resolved { background: #e6f6ec; color: #1e8f4d; }
+
+/* The chat's scrollback, softly tinted like WhatsApp's wallpaper. */
+.chat-thread__messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 18px;
+  background: var(--panel-alt-bg);
+}
+
+.chat-thread__none {
+  margin: auto;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* One message: bubble plus a small time/status line under it. */
+.msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 68%;
+}
+
+.msg--in  { align-items: flex-start; align-self: flex-start; }
+.msg--out { align-items: flex-end;   align-self: flex-end; }
+
+.msg__bubble {
+  padding: 7px 11px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.msg--in  .msg__bubble { background: #fff; border: 1px solid var(--sidebar-border); border-start-start-radius: 4px; }
+.msg--out .msg__bubble { background: var(--accent-soft); border-start-end-radius: 4px; }
+
+.msg__media {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-block-end: 4px;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.msg__media .icon { width: 14px; height: 14px; }
+
+.msg__meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.msg__status { display: grid; place-items: center; }
+.msg__status .icon { width: 14px; height: 14px; }
+
+/* Tick colours follow WhatsApp's language: gray until read, blue on read,
+   red on failure, a muted clock while queued. */
+.msg__status--read   { color: var(--accent); }
+.msg__status--failed { color: #d64545; }
+
+.msg-error {
+  align-self: center;
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #d64545;
+}
+
+/* The composer bar under the thread. */
+.composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-block-start: 1px solid var(--sidebar-border);
+  background: #fff;
+}
+
+.composer__input { flex: 1; height: 36px; }
+
+/* Window-closed notice replacing the composer (WhatsApp's 24h rule). */
+.composer--closed {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.composer--closed .icon { width: 16px; height: 16px; flex-shrink: 0; }
+
+.composer__notice { margin: 0; line-height: 1.45; }
+.composer__notice a { color: var(--accent); }
+
+/* --- Client details (column 5 with a conversation open) ------------------- */
+
+.details {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px 16px;
+}
+
+.details__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-block-end: 14px;
+  border-block-end: 1px solid var(--sidebar-border);
+  text-align: center;
+}
+
+.details__avatar {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.details__name { margin: 6px 0 0; font-size: 14px; font-weight: 700; }
+
+.details__channel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.details__channel .icon { width: 13px; height: 13px; }
+
+.details__list {
+  margin: 14px 0 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 12px;
+  font-size: 12.5px;
+}
+
+.details__list dt { color: var(--muted); }
+.details__list dd { margin: 0; overflow-wrap: anywhere; }
+
+.details__wa {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1e8f4d;
+  text-decoration: none;
+}
+
+.details__wa:hover { text-decoration: underline; }
+.details__wa .icon { width: 15px; height: 15px; }
 
 /* ==========================================================================
    Shared empty states

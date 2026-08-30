@@ -1,8 +1,22 @@
 {% comment %}
-  Inbox column 3 -- search / filter chrome plus the swappable list region.
+  Inbox column 3 -- search chrome, the filter/bulk toolbar, and the swappable
+  list region.
 
-  Only #conv-list is replaced when a nav filter is picked; the search box and
-  the filter pills above it stay put.
+  Only #conv-list is replaced on filter picks, polls and bulk actions; the
+  search box and the toolbar stay put. The whole lower half is one form so
+  the row checkboxes, the hidden "filter" input (inside #conv-list) and the
+  tag-filter checkboxes all travel automatically with any hx-post fired from
+  inside it -- which is exactly what the bulk buttons do.
+
+  The two dropdowns:
+  * #tag-filter -- narrows the list to chats carrying ALL the checked tags
+    (AND); changing any box refreshes the list at once (the poll element in
+    conversation_list.html listens for it). Its state lives here, outside
+    the swap region, so it survives filter changes and polls.
+  * Acciones -- appears once something is checked; applies/removes one tag
+    on every selected conversation via core.views.inbox_tags_bulk.
+
+  Context: all_tags, selected_tag_ids
 {% endcomment %}
 
 <section class="list-panel" aria-label="Conversaciones">
@@ -16,20 +30,83 @@
     <button type="button" class="icon-btn" aria-label="Filtrar">{% include "icons/funnel.svg" %}</button>
   </div>
 
-  <div class="list-panel__filters">
-    <input class="checkbox" type="checkbox" aria-label="Seleccionar todas las conversaciones">
+  <form id="bulk-form" class="list-panel__form">
+    {% csrf_token %}
 
-    {# Static pills for now -- they become real selects once there's data to sort. #}
-    <button type="button" class="pill">
-      <span>Actividad</span>{% include "icons/chevron-down.svg" %}
-    </button>
-    <button type="button" class="pill">
-      <span>Por resolver</span>{% include "icons/chevron-down.svg" %}
-    </button>
-  </div>
+    <div class="list-panel__filters">
+      <input class="checkbox" type="checkbox" data-select-all
+             aria-label="Seleccionar todas las conversaciones">
 
-  {# HTMX swap target for core.views.inbox_list. #}
-  <div class="list-panel__body" id="conv-list">
-    {% include "partials/inbox/conversation_list.html" %}
-  </div>
+      <details class="dropdown" id="tag-filter" data-dropdown data-hold-poll>
+        <summary class="pill">
+          <span>Etiquetas</span>{% include "icons/chevron-down.svg" %}
+        </summary>
+        <div class="dropdown__panel">
+          {# AND semantics, said out loud so nobody has to guess. #}
+          <p class="dropdown__hint">Muestra los chats que tienen <strong>todas</strong> las etiquetas elegidas.</p>
+          <ul class="dropdown__list">
+            {% for tag in all_tags %}
+              <li>
+                <label class="tag-picker__row">
+                  <input class="checkbox" type="checkbox" name="tags" value="{{ tag.pk }}"
+                         {% if tag.pk in selected_tag_ids %}checked{% endif %}>
+                  <span class="tag-pill tag-pill--{{ tag.color }}">{{ tag.name }}</span>
+                </label>
+              </li>
+            {% empty %}
+              <li class="dropdown__hint">Aún no hay etiquetas. Créalas en CRM &gt; Etiquetas.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </details>
+
+      <details class="dropdown list-panel__actions" data-dropdown data-hold-poll>
+        <summary class="pill">
+          <span>Acciones</span>
+          <span class="list-panel__count" data-selection-count hidden></span>
+          {% include "icons/chevron-down.svg" %}
+        </summary>
+        <div class="dropdown__panel dropdown__panel--end">
+          <p class="dropdown__hint">Sobre las conversaciones seleccionadas.</p>
+          {% if all_tags %}
+            <p class="dropdown__title">Añadir etiqueta</p>
+            <ul class="dropdown__list">
+              {% for tag in all_tags %}
+                <li>
+                  <button type="button" class="dropdown__item"
+                          hx-post="{% url 'inbox_tags_bulk' %}"
+                          hx-vals='js:{tag_id: {{ tag.pk }}, action: "add", active: document.querySelector("[data-conversation-id]")?.dataset.conversationId || ""}'
+                          hx-target="#conv-list"
+                          hx-swap="innerHTML">
+                    <span class="tag-pill tag-pill--{{ tag.color }}">{{ tag.name }}</span>
+                  </button>
+                </li>
+              {% endfor %}
+            </ul>
+            <p class="dropdown__title">Quitar etiqueta</p>
+            <ul class="dropdown__list">
+              {% for tag in all_tags %}
+                <li>
+                  <button type="button" class="dropdown__item"
+                          hx-post="{% url 'inbox_tags_bulk' %}"
+                          hx-vals='js:{tag_id: {{ tag.pk }}, action: "remove", active: document.querySelector("[data-conversation-id]")?.dataset.conversationId || ""}'
+                          hx-target="#conv-list"
+                          hx-swap="innerHTML">
+                    <span class="tag-pill tag-pill--{{ tag.color }}">{{ tag.name }}</span>
+                  </button>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="dropdown__hint">Aún no hay etiquetas. Créalas en CRM &gt; Etiquetas.</p>
+          {% endif %}
+        </div>
+      </details>
+    </div>
+
+    {# HTMX swap target for core.views.inbox_list and inbox_tags_bulk. #}
+    <div class="list-panel__body" id="conv-list">
+      {% include "partials/inbox/conversation_list.html" %}
+    </div>
+  </form>
 </section>

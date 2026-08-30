@@ -1,0 +1,488 @@
+/* ==========================================================================
+   Stat detail screens — the layout behind one Mensajería card (Volumen de
+   Mensajes first). Everything here is written to be reused by the other
+   three cards: the page header, the period filter, the KPI tiles, the chart
+   card and its accessible table are all generic blocks.
+
+   Builds on the tokens from sidebar.css and the shared .btn-primary /
+   .btn-outline / .info-dot. The dark block at the bottom is scoped to this
+   screen: the app has no app-wide dark theme yet, but the chart palette does
+   (core.estadisticas_volumen.Channel carries a dark step), and a dark chart
+   sitting in a white card would be worse than either.
+   ========================================================================== */
+
+.stats-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 26px 32px;
+  background: var(--stats-page-bg, #fff);
+}
+
+/* --- Header --------------------------------------------------------------- */
+
+.stats-detail__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin-inline-start: -6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color var(--speed) ease, background-color var(--speed) ease;
+}
+
+.stats-detail__back:hover { color: var(--text); background: var(--hover-bg); }
+.stats-detail__back:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.stats-detail__back .icon { width: 16px; height: 16px; }
+
+.stats-detail__head { display: flex; flex-direction: column; gap: 6px; }
+
+.stats-detail__titlerow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* The card grid's colored emoji, carried through at title size. */
+.stats-detail__icon { font-size: 20px; line-height: 1; }
+
+.stats-detail__title {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.stats-detail__subtitle {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+/* The "¿Cómo funciona?" pill — soft blue field, blue ink. */
+.pill-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-soft, #e8f1fd);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.pill-info:hover { background: #d9e8fc; }
+.pill-info:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pill-info .icon { width: 14px; height: 14px; }
+
+/* --- Info dots ------------------------------------------------------------
+   crm.css defines .info-dot; this adds the hover/focus tooltip the stat
+   screens need. Focusable, so the explanation is reachable by keyboard and
+   not only by pointer. ---------------------------------------------------- */
+
+.info-dot[data-tip] { position: relative; }
+
+.info-dot[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  inset-block-end: calc(100% + 8px);
+  inset-inline-start: 50%;
+  z-index: 20;
+  width: max-content;
+  max-width: 240px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: var(--tip-bg);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: start;
+  white-space: normal;
+  translate: -50% 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--speed) ease, visibility var(--speed) ease;
+}
+
+.info-dot[data-tip]:hover::after,
+.info-dot[data-tip]:focus-visible::after { opacity: 1; visibility: visible; }
+.info-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* --- Period filter --------------------------------------------------------
+   One row, one control: this filter governs the whole page, so it sits above
+   the content rather than being repeated per chart. ---------------------- */
+
+.stats-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stats-filters__busy { font-size: 12.5px; color: var(--muted); }
+
+.daterange {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 300px;
+  max-width: 100%;
+  padding-inline-end: 6px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.daterange:focus-within { border-color: var(--accent); }
+
+/* The value field is a button: the range is a formatted string, not
+   something you type. The floating label sits above it, always up — there is
+   never an empty state to float down to. */
+.daterange__field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.daterange__field:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.daterange__label { font-size: 11px; color: var(--muted); }
+
+.daterange__value {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.daterange__btn {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 5px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--speed) ease, background-color var(--speed) ease;
+}
+
+.daterange__btn:hover { color: var(--text); background: var(--hover-bg); }
+.daterange__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.daterange__btn .icon { width: 16px; height: 16px; }
+
+.daterange__pop {
+  position: absolute;
+  inset-block-start: calc(100% + 6px);
+  inset-inline-start: 0;
+  z-index: 30;
+  width: 320px;
+  padding: 14px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgb(15 30 50 / 16%);
+}
+
+.daterange__fields { display: flex; gap: 10px; }
+
+.daterange__input {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.daterange__input input {
+  padding: 7px 8px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 7px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.daterange__input input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.daterange__error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #c0392b;
+}
+
+.daterange__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-block-start: 12px;
+}
+
+/* --- KPI tiles ------------------------------------------------------------
+   Two groups on one row. The gap between them is load-bearing: the first
+   three measure the period, the fourth is a different kind of number. ----- */
+
+.kpi-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 26px;
+}
+
+.kpi-group { flex: 1 1 0; min-width: 0; }
+
+/* The fourth tile is one tile wide, not a third of the row. */
+.kpi-group--total { flex: 0 1 300px; }
+
+.kpi-group__label {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kpi-group__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+/* The 4px left border is where the tile's identity lives — and the only
+   place. The number stays dark ink: coloring it too would encode the same
+   thing twice, and the lighter accents (teal especially) land under 3:1 on
+   white at any size. */
+.kpi {
+  padding: 13px 16px 15px;
+  border: 1px solid var(--sidebar-border);
+  border-inline-start: 4px solid var(--kpi-tone, var(--accent));
+  border-radius: 10px;
+  background: #fff;
+}
+
+.kpi--teal   { --kpi-tone: #0f9b8e; }
+.kpi--green  { --kpi-tone: #1DA851; }
+.kpi--purple { --kpi-tone: #7c5cd6; }
+.kpi--blue   { --kpi-tone: #2f80ed; }
+
+/* The totals tile is a different kind of number, so it gets a different
+   field as well as a different group. */
+.kpi--filled { background: #eff5fe; border-color: #d7e6fb; }
+
+.kpi__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kpi__label .info-dot .icon { width: 13px; height: 13px; }
+
+.kpi__value {
+  margin: 0 0 3px;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--text);          /* dark ink — see the note above */
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi__note { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* --- Chart card ------------------------------------------------------------ */
+
+.chart-card {
+  padding: 16px 18px 14px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.chart-card__head { margin-block-end: 6px; }
+
+.chart-card__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.chart-card__subtitle { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+/* An explicit height: ECharts measures its container, and a container that
+   sizes to its (empty) content mounts the canvas at zero. */
+.chart-card__plot { height: 340px; width: 100%; }
+
+.chart-card__empty {
+  display: grid;
+  place-items: center;
+  height: 340px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.chart-card__foot {
+  display: flex;
+  justify-content: flex-start;
+  margin-block-start: 4px;
+}
+
+/* The "Ver tabla" toggle — a button that reads as a link. */
+.linkish {
+  padding: 4px 6px;
+  margin-inline-start: -6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.linkish:hover { background: var(--hover-bg); }
+.linkish:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* --- The chart's accessible table ------------------------------------------
+   Same data as the chart, in the same series order. This is what makes the
+   canvas usable with a screen reader, and — with the legend — why channel
+   identity here is never carried by color alone. ------------------------- */
+
+.chart-table {
+  max-height: 300px;
+  margin-block-start: 10px;
+  overflow: auto;                /* wide tables scroll here, not the page */
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 7px 12px;
+  text-align: end;
+  white-space: nowrap;
+  border-block-end: 1px solid var(--sidebar-border);
+}
+
+.data-table thead th {
+  position: sticky;
+  inset-block-start: 0;
+  background: #fff;
+  color: var(--muted);
+  font-weight: 700;
+  text-align: end;
+}
+
+.data-table th:first-child,
+.data-table thead th:first-child { text-align: start; }
+
+.data-table tbody th {
+  font-weight: 600;
+  color: var(--text);
+  text-align: start;
+}
+
+.data-table td { color: var(--text); font-variant-numeric: tabular-nums; }
+.data-table tbody tr:last-child th,
+.data-table tbody tr:last-child td { border-block-end: 0; }
+
+/* --- Prose modal ("¿Cómo funciona?") --------------------------------------- */
+
+.modal--prose { width: min(560px, calc(100vw - 32px)); }
+
+.prose-list { margin: 22px 0 0; }
+
+.prose-list dt {
+  margin-block-start: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.prose-list dt:first-child { margin-block-start: 0; }
+
+.prose-list dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.prose-list dd strong { color: var(--text); font-weight: 600; }
+
+/* (.sr-only, used by the table's caption, is defined once in tags.css.) */
+
+/* --- Small screens --------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .stats-detail { padding: 16px 16px 26px; }
+  .kpi-row { gap: 18px; }
+  .kpi-group,
+  .kpi-group--total { flex: 1 1 100%; }
+  .chart-card__plot,
+  .chart-card__empty { height: 300px; }
+}
+
+/* --- Dark ------------------------------------------------------------------
+   Intentionally absent, and worth explaining because the chart clearly has a
+   dark palette: each series ships a validated dark step from the server
+   (core.estadisticas_volumen.Channel) and static/js/stats_chart.js has a
+   matching THEME.dark.
+
+   What is missing is an app-wide dark theme. The shell — rail, secondary
+   nav, panel — is light-only, so honouring prefers-color-scheme *here* would
+   paint one dark panel into an otherwise white app, which is worse than
+   either consistent answer. So the chart picks its palette by measuring the
+   luminance of the surface it is actually drawn on (onDarkSurface in
+   stats_chart.js) rather than by asking the OS. Give this screen dark
+   surfaces — via a theme, a body class, whatever lands — and the canvas
+   follows on its own, with no change to the chart code.
+
+   If you do add that block, keep its values in step with THEME.dark in
+   static/js/stats_chart.js: canvas cannot read a custom property. ------- */

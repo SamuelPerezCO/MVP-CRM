@@ -1,0 +1,371 @@
+/* ==========================================================================
+   Tags — pills, pickers, dropdowns and the Etiquetas admin dialog.
+   Builds on the tokens defined in sidebar.css / inbox.css.
+   .tag-dialog is deliberately its own compact dialog skin, not on the
+   shared .modal shell (modal.css) -- only the shell.js behavior is shared.
+   ========================================================================== */
+
+/* The preset palette. Every pair is dark-on-soft with AA+ contrast; a future
+   dark theme restyles every pill by redefining these variables only. Tag
+   colors are stored as tokens (Tag.COLOR_CHOICES) that name these pairs —
+   never raw hex. */
+:root {
+  --tag-green-bg:  #d7f2e2;  --tag-green-fg:  #116a39;
+  --tag-yellow-bg: #fbeec2;  --tag-yellow-fg: #775b06;
+  --tag-purple-bg: #eae2fb;  --tag-purple-fg: #5b2ba2;
+  --tag-blue-bg:   #dceafc;  --tag-blue-fg:   #1a5cb0;
+  --tag-red-bg:    #fbdfdf;  --tag-red-fg:    #9e2424;
+  --tag-orange-bg: #fbe7d2;  --tag-orange-fg: #8f4a08;
+  --tag-teal-bg:   #d3f1ef;  --tag-teal-fg:   #0b615c;
+  --tag-pink-bg:   #fadeee;  --tag-pink-fg:   #992260;
+  --tag-indigo-bg: #e1e4fb;  --tag-indigo-fg: #2f3b97;
+  --tag-gray-bg:   #e7eaee;  --tag-gray-fg:   #3f474e;
+}
+
+/* --- The pill ------------------------------------------------------------- */
+
+.tag-pill {
+  display: inline-block;
+  max-width: 100%;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.tag-pill--green  { background: var(--tag-green-bg);  color: var(--tag-green-fg); }
+.tag-pill--yellow { background: var(--tag-yellow-bg); color: var(--tag-yellow-fg); }
+.tag-pill--purple { background: var(--tag-purple-bg); color: var(--tag-purple-fg); }
+.tag-pill--blue   { background: var(--tag-blue-bg);   color: var(--tag-blue-fg); }
+.tag-pill--red    { background: var(--tag-red-bg);    color: var(--tag-red-fg); }
+.tag-pill--orange { background: var(--tag-orange-bg); color: var(--tag-orange-fg); }
+.tag-pill--teal   { background: var(--tag-teal-bg);   color: var(--tag-teal-fg); }
+.tag-pill--pink   { background: var(--tag-pink-bg);   color: var(--tag-pink-fg); }
+.tag-pill--indigo { background: var(--tag-indigo-bg); color: var(--tag-indigo-fg); }
+.tag-pill--gray   { background: var(--tag-gray-bg);   color: var(--tag-gray-fg); }
+
+/* Archived tags stay visible on old chats, just visually retired. */
+.tag-pill--archived { opacity: 0.55; }
+
+/* --- Shared dropdown (tag filter, Acciones) -------------------------------- */
+
+details.dropdown { position: relative; }
+
+details.dropdown > summary {
+  list-style: none;      /* no disclosure triangle */
+  cursor: pointer;
+}
+details.dropdown > summary::marker { content: ""; }
+details.dropdown > summary::-webkit-details-marker { display: none; }
+
+.dropdown__panel {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-start: 0;
+  z-index: 30;
+  min-width: 210px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(15 30 50 / 12%);
+}
+
+.dropdown__panel--end {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+}
+
+.dropdown__hint {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.dropdown__title {
+  margin: 8px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.dropdown__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dropdown__item {
+  display: block;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.dropdown__item:hover { background: var(--hover-bg); }
+.dropdown__item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* --- The per-conversation picker (details panel, column 5) ----------------- */
+
+.tag-picker { position: relative; }
+
+/* "+ Añadir etiqueta" -- a quiet dashed button matching the create actions. */
+.tag-picker > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border: 1px dashed var(--sidebar-border);
+  border-radius: 7px;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: background-color var(--speed) ease;
+}
+.tag-picker > summary::marker { content: ""; }
+.tag-picker > summary::-webkit-details-marker { display: none; }
+.tag-picker > summary:hover { background: var(--accent-soft); }
+.tag-picker > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Floats over the panel content, anchored to the button -- opening it never
+   pushes the details fields down. */
+.tag-picker__panel {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-start: 0;
+  z-index: 30;
+  width: 230px;
+  padding: 10px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(15 30 50 / 12%);
+}
+
+.tag-picker__search { height: 30px; margin-block-end: 8px; padding: 0 9px; }
+
+.tag-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 190px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tag-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 5px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.tag-picker__row:hover { background: var(--hover-bg); }
+
+.tag-picker__hint {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tag-picker__error {
+  margin: 4px 0;
+  font-size: 12px;
+  color: #d64545;
+}
+
+/* The inline «Crear "..."» escape hatch. */
+.tag-picker__create {
+  display: block;
+  width: 100%;
+  margin-block-start: 6px;
+  padding: 6px 8px;
+  border: 1px dashed var(--sidebar-border);
+  border-radius: 7px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.tag-picker__create:hover { background: var(--accent-soft); }
+
+/* --- Details panel: the Etiquetas section ---------------------------------- */
+
+.details__tags-section {
+  margin-block-start: 14px;
+  padding-block-start: 12px;
+  border-block-start: 1px solid var(--sidebar-border);
+}
+
+/* Matches the dt style of the fields above it. */
+.details__label {
+  margin: 0 0 7px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.details__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-block-end: 9px;
+}
+
+.details__tags-none { font-size: 12px; color: var(--muted); }
+
+/* Pills here carry an × that fades in on hover; the button always occupies
+   its width so appearing never shifts the pill. */
+.tag-pill--removable {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-inline-end: 5px;
+}
+
+.tag-pill__remove {
+  border: 0;
+  padding: 0 2px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--speed) ease;
+}
+
+.tag-pill--removable:hover .tag-pill__remove,
+.tag-pill__remove:focus-visible { opacity: 1; }
+
+/* --- Etiquetas admin: dialog, swatches, errors ----------------------------- */
+
+.tag-dialog {
+  width: 340px;
+  padding: 20px;
+  border: 0;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgb(15 30 50 / 25%);
+}
+
+.tag-dialog::backdrop { background: rgb(15 30 50 / 35%); }
+
+.tag-dialog__title {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tag-dialog__label {
+  display: block;
+  margin: 12px 0 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.tag-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.tag-swatches legend { padding: 0; }
+
+.tag-swatch { position: relative; cursor: pointer; }
+
+/* The radio itself stays focusable/screen-readable but invisible; its state
+   draws the ring on the chip. */
+.tag-swatch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.tag-swatch__chip {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  transition: transform var(--speed) ease;
+}
+
+.tag-swatch input:checked + .tag-swatch__chip {
+  border-color: var(--accent);
+  transform: scale(1.1);
+}
+
+.tag-swatch input:focus-visible + .tag-swatch__chip {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tag-dialog__preview { margin: 0; }
+
+.tag-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-block-start: 18px;
+}
+
+.tag-error {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fbdfdf;
+  color: #9e2424;
+  font-size: 12.5px;
+}
+
+.tag-row--archived td { color: var(--muted); }
+
+/* Visually hidden, read by assistive tech (swatch color names). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

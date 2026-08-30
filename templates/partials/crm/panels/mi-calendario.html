@@ -1,0 +1,96 @@
+{% comment %}
+  CRM column 3 -- the Mi calendario page: a 240px calendar sidebar (Crear +,
+  mini month picker, settings card) and the FullCalendar grid.
+
+  This is what core.views.crm_panel returns when "Mi calendario" is picked.
+  All behavior lives in static/js/calendario.js, driven by the data-* hooks
+  and the endpoint URLs on the root element; the vendored FullCalendar
+  bundle loads here (not in base.html) so only this screen pays for it.
+  calendario.js boots by polling for the FullCalendar global -- scripts
+  swapped in by HTMX load async, so order is not guaranteed.
+
+  Context: calendar_prefs, event_types, slot_choices, reminder_choices,
+           contacts, advisors
+{% endcomment %}
+{% load static %}
+
+<div class="calendario" data-calendar-root
+     data-csrf="{{ csrf_token }}"
+     data-events-url="{% url 'calendar_events' %}"
+     data-create-url="{% url 'calendar_event_create' %}"
+     data-prefs-url="{% url 'calendar_prefs' %}"
+     data-weekends="{{ calendar_prefs.weekends|yesno:'1,0' }}"
+     data-slot="{{ calendar_prefs.slot }}">
+
+  <aside class="calendario__side">
+    <button type="button" class="btn-primary btn-primary--block"
+            data-event-new>Crear +</button>
+
+    {# The mini month picker; calendario.js renders the grid into it. #}
+    <div class="mini-cal" data-mini-cal>
+      <div class="mini-cal__head">
+        <button type="button" class="icon-btn icon-btn--bare" data-mini-prev
+                aria-label="Mes anterior">{% include "icons/chevron-left.svg" %}</button>
+        <span class="mini-cal__title" data-mini-title aria-live="polite"></span>
+        <button type="button" class="icon-btn icon-btn--bare" data-mini-next
+                aria-label="Mes siguiente">{% include "icons/chevron-right.svg" %}</button>
+      </div>
+      <div class="mini-cal__grid" data-mini-grid></div>
+    </div>
+
+    <div class="cal-settings">
+      <label class="cal-settings__row">
+        <input class="cal-settings__check" type="checkbox" data-pref-weekends
+               {% if calendar_prefs.weekends %}checked{% endif %}>
+        <span>Mostrar fines de semana</span>
+      </label>
+
+      <label class="cal-settings__row cal-settings__row--stack">
+        <span>Duración del slot</span>
+        <select class="cal-settings__select" data-pref-slot>
+          {% for key, label in slot_choices %}
+            <option value="{{ key }}"
+                    {% if calendar_prefs.slot == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+  </aside>
+
+  <div class="calendario__main">
+    <div class="cal-toolbar">
+      <button type="button" class="btn-outline cal-toolbar__today" data-cal-today>Hoy</button>
+      <button type="button" class="icon-btn" data-cal-prev aria-label="Periodo anterior">
+        {% include "icons/chevron-left.svg" %}
+      </button>
+      <button type="button" class="icon-btn" data-cal-next aria-label="Periodo siguiente">
+        {% include "icons/chevron-right.svg" %}
+      </button>
+      <h1 class="cal-toolbar__title">
+        <span class="sr-only">Mi calendario</span>
+        <span data-cal-title aria-live="polite"></span>
+      </h1>
+
+      <select class="cal-toolbar__view" data-cal-view aria-label="Vista del calendario">
+        <option value="timeGridDay">Día</option>
+        <option value="timeGridWeek" selected>Semana</option>
+        <option value="dayGridMonth">Mes</option>
+      </select>
+    </div>
+
+    {# FullCalendar mounts here; it manages its own internal scroller. #}
+    <div class="cal-grid" data-calendar-grid></div>
+  </div>
+
+  {% include "partials/crm/event_dialog.html" %}
+
+  {# One persistent toast: errors stay until dismissed (calendario.js). #}
+  <div class="cal-toast" data-cal-toast role="alert" hidden>
+    <span data-cal-toast-msg></span>
+    <button type="button" class="cal-toast__close" data-cal-toast-close
+            aria-label="Cerrar aviso">{% include "icons/x.svg" %}</button>
+  </div>
+</div>
+
+<script src="{% static 'js/vendor/fullcalendar.min.js' %}"></script>
+<script src="{% static 'js/calendario.js' %}"></script>

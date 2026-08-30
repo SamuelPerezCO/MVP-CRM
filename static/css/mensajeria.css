@@ -95,7 +95,7 @@
 
 .tpl-empty__art { flex-shrink: 0; }
 
-.tpl-art { display: block; max-width: 100%; height: auto; }
+.tpl-empty__art .illus { display: block; max-width: 100%; height: auto; }
 
 /* Single column when the panel gets narrow: the copy keeps priority. */
 @media (max-width: 1080px) {

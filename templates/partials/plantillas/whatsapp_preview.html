@@ -1,0 +1,47 @@
+{% comment %}
+  Reusable WhatsApp-style preview column: heading, the "solo es una
+  previsualización" callout, and a message bubble on a chat-toned canvas.
+
+  Two ways to use it:
+  * Live (the Crear plantilla editor): include with no context. The bubble
+    starts hidden behind the gray empty-state box and shell.js re-renders it
+    from the form on every input ([data-plantilla-form] -> [data-wa-*]).
+  * Static (the template gallery, later): pass ``preview`` -- a dict with
+    header_text, body, footer and buttons (list of {"text": ...}) -- and the
+    bubble renders server-side with no JS involved.
+
+  Context: preview (optional dict; omit for the editor's live mode)
+{% endcomment %}
+
+<div class="wa-preview" data-wa-preview>
+  <h2 class="wa-preview__title">Vista previa</h2>
+  <p class="wa-preview__sub">Ejemplo de tu mensaje</p>
+
+  <div class="wa-preview__note">
+    {% include "icons/info.svg" %}
+    <p>Esta solo es una previsualización, puede que la vista del mensaje
+      cambie al enviarlo por Whatsapp.</p>
+  </div>
+
+  <div class="wa-preview__canvas">
+    <div class="wa-bubble" data-wa-bubble {% if not preview %}hidden{% endif %}>
+      <p class="wa-bubble__header" data-wa-header
+         {% if not preview.header_text %}hidden{% endif %}>{{ preview.header_text }}</p>
+      <div class="wa-bubble__media" data-wa-media hidden>
+        <span class="wa-bubble__media-label" data-wa-media-label></span>
+      </div>
+      <p class="wa-bubble__body" data-wa-body>{{ preview.body }}</p>
+      <p class="wa-bubble__footer" data-wa-footer
+         {% if not preview.footer %}hidden{% endif %}>{{ preview.footer }}</p>
+      <div class="wa-bubble__buttons" data-wa-buttons
+           {% if not preview.buttons %}hidden{% endif %}>
+        {% for button in preview.buttons %}
+          <span class="wa-bubble__button">{{ button.text }}</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Shown until there is something to preview. #}
+    <div class="wa-preview__empty" data-wa-empty {% if preview %}hidden{% endif %}></div>
+  </div>
+</div>

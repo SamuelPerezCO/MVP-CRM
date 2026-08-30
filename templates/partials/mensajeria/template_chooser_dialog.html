@@ -1,0 +1,65 @@
+{% comment %}
+  The "¿Cómo quieres crear tu plantilla de WhatsApp?" chooser -- opened by
+  both create buttons (toolbar and empty state) via data-dialog-open.
+
+  A native <dialog> on the shared `.modal` shell (modal.css): showModal()
+  supplies the focus trap, Escape handling and focus return natively (the
+  explicit aria-modal below is belt-and-braces for older assistive tech);
+  shell.js adds backdrop-click close (opt-in via data-dialog-backdrop-close)
+  and closes the dialog once a card's HTMX request succeeds
+  (data-close-on-success). The .modal__body wrapper scrolls on short
+  viewports so the X stays pinned.
+
+  Each card is one link -- the whole surface is clickable and the "button"
+  inside is a styled span, so keyboard users get a single Tab stop per card.
+  The solid/outlined pairing is deliberate: "desde plantilla" is the
+  recommended path.
+
+  Context: (none)
+{% endcomment %}
+
+<dialog class="modal" id="template-chooser-dialog"
+        aria-labelledby="template-chooser-title"
+        aria-modal="true"
+        data-dialog-backdrop-close>
+  <button type="button" class="modal__close" data-dialog-close aria-label="Cerrar">
+    {% include "icons/x.svg" %}
+  </button>
+
+  <div class="modal__body">
+    <h2 class="modal__title" id="template-chooser-title">
+      ¿Cómo quieres crear tu plantilla de WhatsApp?
+    </h2>
+    <p class="modal__subtitle">Selecciona cómo deseas comenzar</p>
+
+    <div class="modal-choice">
+      <a class="modal-choice__card"
+         href="{% url 'plantilla_gallery' %}"
+         hx-get="{% url 'plantilla_gallery' %}"
+         hx-target="#mensajeria-panel"
+         hx-swap="innerHTML"
+         data-close-on-success>
+        <h3 class="modal-choice__heading">Crear desde plantilla</h3>
+        <span class="modal-choice__art">{% include "illustrations/whatsapp-template.svg" %}</span>
+        <p class="modal-choice__text">
+          Elige la plantilla que mejor se adapte a tus objetivos.
+        </p>
+        <span class="btn-primary modal-choice__action">Seleccionar plantilla</span>
+      </a>
+
+      <a class="modal-choice__card"
+         href="{% url 'plantilla_editor' %}"
+         hx-get="{% url 'plantilla_editor' %}"
+         hx-target="#mensajeria-panel"
+         hx-swap="innerHTML"
+         data-close-on-success>
+        <h3 class="modal-choice__heading">Crear desde cero</h3>
+        <span class="modal-choice__art">{% include "illustrations/pencil-draft.svg" %}</span>
+        <p class="modal-choice__text">
+          Diseña tu plantilla desde cero, totalmente adaptada a tus necesidades.
+        </p>
+        <span class="btn-outline modal-choice__action">Empezar a crear</span>
+      </a>
+    </div>
+  </div>
+</dialog>

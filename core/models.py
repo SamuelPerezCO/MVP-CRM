@@ -1,5 +1,6 @@
 """Domain models for the CRM."""
 
+from django.conf import settings
 from django.db import models
 
 
@@ -45,6 +46,12 @@ class Client(models.Model):
     @property
     def full_name(self) -> str:
         return f"{self.first_name} {self.last_name}".strip()
+
+    @property
+    def initials(self) -> str:
+        """Up to two letters for the Inbox's avatar circles."""
+        letters = f"{self.first_name[:1]}{self.last_name[:1]}".upper()
+        return letters or "?"
 
     @property
     def has_whatsapp(self) -> bool:
@@ -138,14 +145,41 @@ class ClientList(models.Model):
 
 
 class MessageTemplate(models.Model):
-    """A WhatsApp message template -- one row in the Plantillas table.
+    """A WhatsApp message template -- one row in the Plantillas table and the
+    product of the Crear plantilla editor.
 
-    Fields map directly onto the table columns. ``is_active`` (Activo) is the
-    account's own on/off toggle; ``status`` (Estado) is the WhatsApp approval
-    verdict -- separate fields because they move independently: an approved
-    template can be switched off. The Desactivadas tab filters on the toggle,
-    the other tabs on the status.
+    ``is_active`` (Activo) is the account's own on/off toggle; ``status``
+    (Estado) is the WhatsApp approval verdict -- separate fields because they
+    move independently: an approved template can be switched off. The
+    Desactivadas tab filters on the toggle, the other tabs on the status.
+
+    The choice lists here are flat unions so stored values always display;
+    which sub-types each *category* actually offers, the language list and
+    the editor's validation all live in core.plantillas. ``team`` and
+    ``created_by`` stay plain text until the app grows real users/auth (same
+    stance as ClientList.created_by).
     """
+
+    CATEGORY_CHOICES = [
+        ("marketing", "Marketing"),
+        ("utility", "Utility"),
+        ("authentication", "Autenticación"),
+    ]
+
+    SUB_TYPE_CHOICES = [
+        ("custom", "Mensaje personalizado"),
+        ("limited_time_offer", "Oferta de tiempo limitado"),
+        ("carousel", "Carrusel"),
+        ("auth_code", "Código de autenticación"),
+    ]
+
+    HEADER_CHOICES = [
+        ("none", "Ninguno"),
+        ("text", "Texto"),
+        ("image", "Imagen"),
+        ("video", "Video"),
+        ("document", "Documento"),
+    ]
 
     STATUS_CHOICES = [
         ("pendiente", "Pendiente"),
@@ -153,23 +187,132 @@ class MessageTemplate(models.Model):
         ("rechazada", "Rechazada"),
     ]
 
+    # Meta constraint, not a style choice: lowercase, digits and _ only.
+    # The regex itself lives in core.plantillas.NAME_RE (single source).
     name = models.CharField("nombre", max_length=120)
-    template_type = models.CharField("tipo", max_length=40, blank=True)
-    category = models.CharField("categoría", max_length=60, blank=True)
-    text = models.TextField("texto", blank=True)
+    category = models.CharField(
+        "categoría", max_length=20, choices=CATEGORY_CHOICES, default="marketing"
+    )
+    sub_type = models.CharField(
+        "tipo", max_length=30, choices=SUB_TYPE_CHOICES, default="custom"
+    )
+    language = models.CharField("idioma", max_length=10, default="es")
     team = models.CharField("equipo", max_length=80, blank=True)
+
+    header_type = models.CharField(
+        "cabecera", max_length=10, choices=HEADER_CHOICES, default="none"
+    )
+    header_text = models.CharField("texto de cabecera", max_length=60, blank=True)
+    header_media = models.FileField(
+        "archivo de cabecera", upload_to="plantillas/", blank=True
+    )
+
+    body = models.TextField("cuerpo", blank=True)
+    #: One sample string per {{n}} variable, element i pairing with {{i+1}} --
+    #: Meta requires example values at submission time and the preview
+    #: substitutes them live.
+    body_sample_values = models.JSONField(
+        "valores de ejemplo", default=list, blank=True
+    )
+    footer = models.CharField("pie de página", max_length=60, blank=True)
+    #: List of {"type": "quick_reply"|"url"|"phone", "text": ..., ...} dicts.
+    buttons = models.JSONField("botones", default=list, blank=True)
 
     is_active = models.BooleanField("activo", default=True)
     status = models.CharField(
         "estado", max_length=10, choices=STATUS_CHOICES, default="pendiente"
     )
+    rejection_reason = models.TextField("motivo de rechazo", blank=True)
 
+    created_by = models.CharField("creado por", max_length=80, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = "plantilla de WhatsApp"
         verbose_name_plural = "plantillas de WhatsApp"
         ordering = ["name"]
+        constraints = [
+            # Meta scopes template names per language, so the pair is the key.
+            models.UniqueConstraint(
+                fields=["name", "language"], name="unique_template_name_per_language"
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.name
+
+class CalendarEvent(models.Model):
+    """One entry in the CRM's Mi calendario.
+
+    ``contact`` is the reason a calendar lives inside a CRM: an event links
+    to a client ("llamada con Camila") so the record is one click away. The
+    user FKs are nullable following the Conversation precedent -- the app
+    has no real login yet, so events created from the UI carry no user.
+
+    Times are stored in UTC (USE_TZ); entry and display happen in
+    core.calendario.CALENDAR_TZ. ``event_type`` picks the color, reusing a
+    tag palette pair -- see core.calendario.EVENT_TYPES.
+    """
+
+    TYPE_CHOICES = [
+        ("llamada", "Llamada"),
+        ("reunion", "Reunión"),
+        ("seguimiento", "Seguimiento"),
+        ("otro", "Otro"),
+    ]
+
+    title = models.CharField("título", max_length=120)
+    description = models.TextField("descripción", blank=True)
+
+    start = models.DateTimeField("inicio")
+    end = models.DateTimeField("fin")
+    #: All-day events span whole days: start at midnight, end exclusive.
+    all_day = models.BooleanField("todo el día", default=False)
+
+    contact = models.ForeignKey(
+        Client,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="calendar_events",
+        verbose_name="cliente",
+    )
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="calendar_events",
+        verbose_name="asignado a",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_calendar_events",
+        verbose_name="creado por",
+    )
+
+    event_type = models.CharField(
+        "tipo", max_length=20, choices=TYPE_CHOICES, default="reunion"
+    )
+    reminder_minutes_before = models.PositiveIntegerField(
+        "recordatorio (minutos antes)", null=True, blank=True
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "evento de calendario"
+        verbose_name_plural = "eventos de calendario"
+        ordering = ["start"]
+        indexes = [
+            # The grid's query: events in a window, per advisor.
+            models.Index(fields=["start", "assigned_to"], name="calendar_start_advisor_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.title

@@ -42,9 +42,9 @@
         {% for template in templates %}
           <tr>
             <td class="table__name">{{ template.name }}</td>
-            <td>{{ template.template_type }}</td>
-            <td>{{ template.category }}</td>
-            <td class="tpl-table__text">{{ template.text|truncatechars:60 }}</td>
+            <td>{{ template.get_sub_type_display }}</td>
+            <td>{{ template.get_category_display }}</td>
+            <td class="tpl-table__text">{{ template.body|truncatechars:60 }}</td>
             <td>{{ template.team }}</td>
             <td>{% if template.is_active %}Sí{% else %}No{% endif %}</td>
             <td>{{ template.get_status_display }}</td>

@@ -1,0 +1,24 @@
+{% comment %}
+  The details panel's tag pills: each with an "×" (shown on hover) that
+  removes the tag from this conversation immediately. The × posts the same
+  toggle endpoint the picker uses; its response refreshes the (possibly
+  hidden) picker panel that sits after these pills -- hence "next" -- and
+  out-of-band updates every pill location, including this one.
+
+  Context: conversation
+{% endcomment %}
+
+{% for tag in conversation.tags.all %}
+  <span class="tag-pill tag-pill--{{ tag.color }}{% if tag.is_archived %} tag-pill--archived{% endif %} tag-pill--removable">
+    {{ tag.name }}
+    <button type="button" class="tag-pill__remove"
+            hx-post="{% url 'conversation_tags' conversation.pk %}"
+            hx-vals='{"tag_id": "{{ tag.pk }}", "action": "remove"}'
+            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+            hx-target="next .tag-picker__panel"
+            hx-swap="innerHTML"
+            aria-label="Quitar etiqueta {{ tag.name }}">×</button>
+  </span>
+{% empty %}
+  <span class="details__tags-none">Sin etiquetas</span>
+{% endfor %}

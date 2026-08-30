@@ -1,0 +1,39 @@
+{% comment %}
+  Shared illustration: a pencil writing on a tilted page, sibling of
+  whatsapp-template.svg -- same palette (navy edge, near-white page, pale
+  teal band, gray lines, yellow pencil) and the same rotated-card style.
+  Used by the template chooser modal's "Crear desde cero" card; size it from
+  the including context. Decorative only, hence aria-hidden.
+{% endcomment %}
+<svg class="illus" viewBox="0 0 250 240" width="250" height="240"
+     aria-hidden="true" focusable="false">
+  <g transform="rotate(-8 125 120)">
+    {# Navy page edge, offset behind the sheet. #}
+    <rect x="42" y="26" width="146" height="184" rx="16" fill="#1b2a41"/>
+    {# Near-white sheet. #}
+    <rect x="50" y="20" width="146" height="184" rx="16" fill="#f4fbfd"/>
+
+    {# Header band with a yellow title chip. #}
+    <rect x="68" y="40" width="110" height="24" rx="8" fill="#e6f6f8"/>
+    <rect x="76" y="47" width="42" height="10" rx="5" fill="#f7c948"/>
+
+    {# Written lines; the teal one is still being drawn by the pencil. #}
+    <rect x="68" y="84" width="110" height="9" rx="4.5" fill="#c9d5df"/>
+    <rect x="68" y="101" width="94" height="9" rx="4.5" fill="#c9d5df"/>
+    <rect x="68" y="118" width="104" height="9" rx="4.5" fill="#c9d5df"/>
+    <rect x="68" y="135" width="58" height="9" rx="4.5" fill="#bfe9f2"/>
+  </g>
+
+  {# Pencil leaning onto the end of the teal line, tip at (129,139). #}
+  <g transform="rotate(38 129 139)">
+    {# Eraser, ferrule, body, sharpened wood, lead. #}
+    <rect x="116" y="24" width="26" height="14" rx="6" fill="#bfe9f2"/>
+    <rect x="116" y="38" width="26" height="7" fill="#1b2a41"/>
+    <rect x="116" y="45" width="26" height="68" fill="#f7c948"/>
+    <path d="M129 139 L142 113 H116 Z" fill="#f4fbfd"/>
+    <path d="M129 139 L134 129 H124 Z" fill="#1b2a41"/>
+  </g>
+
+  {# Writing swoosh, echoing the sibling card's cursor swoosh. #}
+  <path d="M112 158 l-24 14" stroke="#1b2a41" stroke-width="5" stroke-linecap="round" fill="none"/>
+</svg>

@@ -53,6 +53,9 @@ DEFAULT_VIEW = "mensajeria"
 #: Rendered for any view that has no panel template yet.
 PLACEHOLDER_PANEL = "partials/estadisticas/panels/_placeholder.html"
 
+#: Rendered for any Mensajería card whose detail screen isn't built yet.
+PLACEHOLDER_CARD = "partials/estadisticas/panels/_card_detail.html"
+
 
 def panel_template(view_key: str) -> str:
     """Return ``partials/estadisticas/panels/<view_key>.html`` if it exists,
@@ -118,3 +121,16 @@ CARDS = [
 ]
 
 CARD_BY_KEY = {card.key: card for card in CARDS}
+
+
+def card_template(card_key: str) -> str:
+    """Return ``partials/estadisticas/cards/<card_key>.html`` if it exists,
+    else the placeholder -- same stance as :func:`panel_template`, so
+    building one of the four detail screens means adding a file (and any
+    context builder it needs) rather than branching the view."""
+    candidate = f"partials/estadisticas/cards/{card_key}.html"
+    try:
+        get_template(candidate)
+    except TemplateDoesNotExist:
+        return PLACEHOLDER_CARD
+    return candidate

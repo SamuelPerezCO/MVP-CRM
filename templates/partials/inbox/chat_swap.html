@@ -1,0 +1,13 @@
+{% comment %}
+  What inbox_chat answers a conversation click with: the chat thread (swapped
+  into #chat-panel, the request's hx-target) plus the details panel content,
+  delivered out-of-band into #details-panel -- one click, both columns.
+
+  Context: active_conversation, chat_messages, window_open
+{% endcomment %}
+
+{% include "partials/inbox/chat_thread.html" %}
+
+<div id="details-panel" hx-swap-oob="innerHTML">
+  {% include "partials/inbox/details_content.html" %}
+</div>

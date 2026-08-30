@@ -55,9 +55,10 @@ class CrmScreenTests(TestCase):
                 self.assertIn(f"?view={view.key}", html)
                 self.assertIn(view.label, html)
 
-    def test_both_sections_start_expanded(self):
+    def test_both_sections_start_collapsed(self):
         html = self.client.get(reverse("section", args=["crm"])).content.decode()
-        self.assertEqual(html.count('<details class="side-nav__section" open>'), 2)
+        self.assertEqual(html.count('<details class="side-nav__section">'), 2)
+        self.assertNotIn('<details class="side-nav__section" open>', html)
 
     def test_clientes_is_the_default_view(self):
         response = self.client.get(reverse("section", args=["crm"]))
@@ -67,9 +68,16 @@ class CrmScreenTests(TestCase):
         )
 
     def test_view_query_param_selects_the_panel(self):
+        # Etiquetas used to render the placeholder; it is a real page now.
         response = self.client.get(reverse("section", args=["crm"]), {"view": "etiquetas"})
         self.assertEqual(response.context["active_view"], "etiquetas")
-        self.assertContains(response, "Etiquetas — próximamente")
+        self.assertContains(response, "+ Crear etiqueta")
+
+    def test_still_placeholder_views_say_so(self):
+        response = self.client.get(
+            reverse("section", args=["crm"]), {"view": "exportaciones"}
+        )
+        self.assertContains(response, "Exportaciones — próximamente")
 
     def test_unknown_view_falls_back_instead_of_404(self):
         response = self.client.get(reverse("section", args=["crm"]), {"view": "bogus"})

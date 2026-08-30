@@ -1,0 +1,57 @@
+{% comment %}
+  Inbox column 5 content when a conversation is open: who you're talking to.
+  Rendered by the full page (?chat=) and, out-of-band, by inbox_chat swaps.
+
+  Context: active_conversation
+{% endcomment %}
+
+<div class="details">
+
+  <div class="details__head">
+    <span class="details__avatar" aria-hidden="true">{{ active_conversation.contact.initials }}</span>
+    <p class="details__name">{{ active_conversation.contact.full_name }}</p>
+    <p class="details__channel">
+      {% include active_conversation.icon_template %}
+      <span>{{ active_conversation.get_channel_display }}</span>
+    </p>
+  </div>
+
+  <dl class="details__list">
+    <dt>Teléfono</dt>
+    <dd>{{ active_conversation.contact.flag }} {{ active_conversation.contact.phone }}</dd>
+
+    <dt>Mail</dt>
+    <dd>{{ active_conversation.contact.email|default:"—" }}</dd>
+
+    <dt>Estado</dt>
+    <dd>{{ active_conversation.get_status_display }}</dd>
+
+    <dt>Asignada a</dt>
+    <dd>{{ active_conversation.assigned_to|default:"Sin asignar" }}</dd>
+
+    <dt>Cliente desde</dt>
+    <dd>{{ active_conversation.contact.created_at|date:"d/m/Y" }}</dd>
+  </dl>
+
+  {% comment %}
+    Where this conversation's tags are edited (the only per-chat place --
+    bulk happens in the list's Acciones menu). Current tags render with an
+    × to remove; the button below opens the searchable picker, floating
+    over the panel. The pills span's id is one of the picker's out-of-band
+    targets, so both stay in sync with the row and chat header.
+  {% endcomment %}
+  <div class="details__tags-section">
+    <p class="details__label">Etiquetas</p>
+    <span class="details__tags" id="details-tags-{{ active_conversation.pk }}">
+      {% include "partials/tags/removable_pills.html" with conversation=active_conversation %}
+    </span>
+    {% include "partials/tags/picker.html" with conversation=active_conversation %}
+  </div>
+
+  {% if active_conversation.contact.has_whatsapp %}
+    <a class="details__wa" href="{{ active_conversation.contact.whatsapp_url }}"
+       target="_blank" rel="noopener">
+      {% include "icons/brands/whatsapp.svg" %}<span>Abrir en WhatsApp</span>
+    </a>
+  {% endif %}
+</div>

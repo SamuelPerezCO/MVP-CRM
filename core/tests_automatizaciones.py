@@ -1,5 +1,13 @@
 """Tests for the Automatizaciones screen: secondary nav (with the expandable
-MIA row), the Academy banner and the minimal Flujos empty state."""
+MIA row), the Academy banner and the minimal Flujos empty state.
+
+The Automatizaciones tab was removed from the sidebar for now (see the note in
+core.nav.PRIMARY_NAV), which makes /s/automatizaciones/ a 404 -- the screen's
+code is still in place, so these tests are skipped rather than deleted. When
+the tab returns, drop the decorators and everything below applies again.
+"""
+
+from unittest import skip
 
 from django.test import TestCase
 from django.urls import reverse
@@ -8,7 +16,17 @@ from core.automatizaciones import VIEWS
 
 HTMX = {"HX-Request": "true"}
 
+TAB_REMOVED = "Automatizaciones tab removed from the sidebar for now"
 
+
+class AutomatizacionesRemovedTests(TestCase):
+    def test_section_url_is_404_while_the_tab_is_off(self):
+        self.assertEqual(
+            self.client.get("/s/automatizaciones/").status_code, 404
+        )
+
+
+@skip(TAB_REMOVED)
 class AutomatizacionesScreenTests(TestCase):
     def test_renders_both_columns(self):
         response = self.client.get(reverse("section", args=["automatizaciones"]))
@@ -67,6 +85,7 @@ class AutomatizacionesScreenTests(TestCase):
         self.assertIn("is-active", active)
 
 
+@skip(TAB_REMOVED)
 class AcademyBannerTests(TestCase):
     def test_banner_copy_renders(self):
         response = self.client.get(reverse("section", args=["automatizaciones"]))
@@ -86,6 +105,7 @@ class AcademyBannerTests(TestCase):
         self.assertIn('aria-valuenow="0"', html)
 
 
+@skip(TAB_REMOVED)
 class FlujosEmptyStateTests(TestCase):
     def test_header_row_renders(self):
         response = self.client.get(reverse("section", args=["automatizaciones"]))
@@ -118,6 +138,7 @@ class FlujosEmptyStateTests(TestCase):
         self.assertContains(response, "Añadir flujo — próximamente")
 
 
+@skip(TAB_REMOVED)
 class AutomatizacionesPanelEndpointTests(TestCase):
     def test_returns_only_the_panel_fragment(self):
         response = self.client.get(

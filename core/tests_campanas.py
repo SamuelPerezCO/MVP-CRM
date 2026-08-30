@@ -30,19 +30,16 @@ class CampanasScreenTests(TestCase):
                 self.assertIn(f"?view={view.key}", html)
                 self.assertIn(view.label, html)
 
-    def test_nav_sections_are_flat_not_collapsible(self):
-        # Campañas mounts the account nav with flat=True: same sections and
-        # rows as the CRM, but as plain always-open groups. The CRM keeps the
-        # <details> dropdowns.
-        campanas = self.client.get(
-            reverse("section", args=["campanas"])
-        ).content.decode()
-        self.assertNotIn("<details", campanas)
-        self.assertIn("side-nav__row--static", campanas)
-
-        crm = self.client.get(reverse("section", args=["crm"])).content.decode()
-        self.assertIn("<details", crm)
-        self.assertNotIn("side-nav__row--static", crm)
+    def test_nav_sections_are_collapsible_like_the_crm(self):
+        # Campañas mounts the account nav the same way the CRM does: every
+        # section is a <details> dropdown, none renders as a flat static group.
+        for slug in ("campanas", "crm"):
+            with self.subTest(section=slug):
+                html = self.client.get(
+                    reverse("section", args=[slug])
+                ).content.decode()
+                self.assertIn("<details", html)
+                self.assertNotIn("side-nav__row--static", html)
 
     def test_clientes_is_the_default_view_here_too(self):
         response = self.client.get(reverse("section", args=["campanas"]))

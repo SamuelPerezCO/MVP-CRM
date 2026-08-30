@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -38,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'core',
+    'messaging',
 ]
 
 MIDDLEWARE = [
@@ -118,6 +120,11 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 
+# User uploads (template header media). Served by Django in DEBUG only --
+# see config/urls.py.
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
@@ -127,3 +134,26 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+
+# Messaging
+# Which provider backs sending and webhooks: 'fake' | 'twilio' | 'meta'.
+# Swapping to a real provider is this one variable plus its credentials below
+# (see .env.example). Values come from the environment so no credential ever
+# lands in this file.
+
+MESSAGING_PROVIDER = os.environ.get('MESSAGING_PROVIDER', 'fake')
+
+# Fake provider: the shared secret dev webhooks must send in X-Fake-Signature.
+MESSAGING_FAKE_SECRET = os.environ.get('MESSAGING_FAKE_SECRET', 'dev-secret')
+
+# Twilio (unused until providers/twilio.py is implemented).
+TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
+TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')
+TWILIO_WHATSAPP_FROM = os.environ.get('TWILIO_WHATSAPP_FROM', '')
+
+# Meta Cloud API (unused until providers/meta.py is implemented).
+META_ACCESS_TOKEN = os.environ.get('META_ACCESS_TOKEN', '')
+META_PHONE_NUMBER_ID = os.environ.get('META_PHONE_NUMBER_ID', '')
+META_APP_SECRET = os.environ.get('META_APP_SECRET', '')
+META_VERIFY_TOKEN = os.environ.get('META_VERIFY_TOKEN', '')

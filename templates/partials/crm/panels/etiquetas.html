@@ -1,0 +1,38 @@
+{% comment %}
+  CRM column 3 -- the Etiquetas page: tag administration.
+
+  This is what core.views.crm_panel returns when "Etiquetas" is picked in the
+  secondary nav. Only #tag-table below is replaced by create/edit/archive
+  actions -- the header and the create dialog stay put.
+
+  hx-headers on #tag-table supplies the CSRF token to every hx-post inside
+  the swappable region (the archive/restore buttons and the per-row edit
+  dialogs are not classic forms with their own token in all cases).
+
+  Context: tags (annotated with .usage), tag_colors
+{% endcomment %}
+
+<div class="crm-panel">
+
+  <header class="crm-panel__head">
+    <h1 class="crm-panel__title">
+      Etiquetas
+      <span class="info-dot" role="img" aria-label="Información sobre etiquetas">
+        {% include "icons/info.svg" %}
+      </span>
+    </h1>
+
+    <div class="crm-panel__toolbar">
+      <button type="button" class="btn-primary" data-dialog-open="tag-dialog-create">
+        + Crear etiqueta
+      </button>
+    </div>
+  </header>
+
+  {# HTMX swap target for tag_create / tag_update / tag_archive. #}
+  <div id="tag-table" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+    {% include "partials/crm/tag_table.html" %}
+  </div>
+
+  {% include "partials/crm/tag_dialog.html" with tag=None title="Crear etiqueta" submit_label="Crear etiqueta" %}
+</div>

@@ -1,7 +1,15 @@
 {% comment %}
   Inbox column 4 -- the open conversation. Flexible width, fills the gap
   between the list and the client details.
+
+  With ?chat= in the URL the thread renders directly (full-page loads stay
+  linkable); otherwise the empty state shows until a row is clicked, which
+  swaps this element's contents via core.views.inbox_chat.
 {% endcomment %}
 <section class="chat-panel" id="chat-panel" aria-label="Conversación">
-  {% include "partials/inbox/chat_empty.html" %}
+  {% if active_conversation %}
+    {% include "partials/inbox/chat_thread.html" %}
+  {% else %}
+    {% include "partials/inbox/chat_empty.html" %}
+  {% endif %}
 </section>

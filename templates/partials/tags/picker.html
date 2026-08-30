@@ -1,0 +1,25 @@
+{% comment %}
+  The "+ Añadir etiqueta" dropdown in the details panel (column 5) -- the
+  one place tags are added/removed one conversation at a time (bulk happens
+  via the list's Acciones menu).
+
+  The panel floats over the details content (absolutely positioned, anchored
+  to the button) so opening it never pushes the panel fields down. Its body
+  is fetched lazily from core.views.conversation_tags when the dropdown
+  opens ("toggle" fires on open and close; the close refetch is harmless and
+  keeps the trigger simple). data-dropdown gives it the shared outside-click
+  and Escape closing in shell.js.
+
+  Context: conversation
+{% endcomment %}
+
+<details class="tag-picker" data-dropdown>
+  <summary class="tag-picker__btn">+ Añadir etiqueta</summary>
+  <div class="tag-picker__panel"
+       hx-get="{% url 'conversation_tags' conversation.pk %}"
+       hx-trigger="toggle from:closest details"
+       hx-target="this"
+       hx-swap="innerHTML">
+    <p class="tag-picker__hint">Cargando…</p>
+  </div>
+</details>

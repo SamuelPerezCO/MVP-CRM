@@ -1,0 +1,77 @@
+{% comment %}
+  "¿Cómo funciona?" -- opened by the pill beside the Volumen de Mensajes
+  title via data-dialog-open.
+
+  On the shared `.modal` shell (modal.css) like the template chooser:
+  showModal() supplies the focus trap, Escape and focus return; shell.js adds
+  backdrop-click close. Nothing here is HTMX -- it is explanatory copy only,
+  so there is no data-close-on-success.
+
+  The copy answers the question people actually ask of a stats screen: what
+  counts, in whose clock, and how fresh is it. Keep it in step with
+  core.estadisticas_volumen -- these are that module's rules in prose.
+
+  Context: (none)
+{% endcomment %}
+
+<dialog class="modal modal--prose" id="volumen-howto-dialog"
+        aria-labelledby="volumen-howto-title"
+        aria-modal="true"
+        data-dialog-backdrop-close>
+  <button type="button" class="modal__close" data-dialog-close aria-label="Cerrar">
+    {% include "icons/x.svg" %}
+  </button>
+
+  <div class="modal__body">
+    <h2 class="modal__title" id="volumen-howto-title">¿Cómo se calculan estas métricas?</h2>
+    <p class="modal__subtitle">Volumen de Mensajes</p>
+
+    <dl class="prose-list">
+      <dt>Qué se cuenta</dt>
+      <dd>
+        Cada mensaje individual de todas tus conversaciones, en ambos
+        sentidos. <strong>Recibidos</strong> son los que te escribieron tus
+        clientes; <strong>enviados</strong>, los que salieron de tu cuenta,
+        sean de un asesor o de una automatización.
+        <strong>Mensajes totales</strong> es la suma de los dos.
+      </dd>
+
+      <dt>El período</dt>
+      <dd>
+        Todo lo que ves en la pantalla —las cuatro tarjetas, la gráfica y la
+        tabla— corresponde al período elegido arriba, con ambas fechas
+        incluidas. Por defecto son los últimos 30 días.
+      </dd>
+
+      <dt>Hora pico</dt>
+      <dd>
+        Es la franja de una hora con más mensajes, sumando esa misma franja
+        de todos los días del período: si el período tiene 30 días, la franja
+        de 10 a 11 a.m. suma los 30 días. No es una hora concreta de un día
+        concreto.
+      </dd>
+
+      <dt>Canales</dt>
+      <dd>
+        Cada línea de la gráfica es un canal. Los mensajes de páginas de
+        Facebook se cuentan dentro de <strong>Messenger</strong>, y los
+        mensajes directos de Instagram dentro de <strong>Instagram</strong>.
+        Un canal sin mensajes en el período no se dibuja, y los demás
+        conservan su color.
+      </dd>
+
+      <dt>Zona horaria</dt>
+      <dd>
+        Los días y las horas se agrupan en hora de Colombia (UTC-5). Un
+        mensaje de las 10:30 p.m. cuenta en ese día, no en el siguiente.
+      </dd>
+
+      <dt>Actualización</dt>
+      <dd>
+        Los cálculos se guardan unos minutos para no repetir la consulta en
+        cada carga, así que los mensajes de los últimos minutos pueden
+        tardar un poco en aparecer.
+      </dd>
+    </dl>
+  </div>
+</dialog>

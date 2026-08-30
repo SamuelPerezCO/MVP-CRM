@@ -1,0 +1,12 @@
+{% comment %}
+  A row of tag pills. Reused by the conversation rows, the chat header and
+  the Etiquetas table -- one markup, one look.
+
+  Archived tags still render (history stays visible on tagged chats); they
+  just can't be newly applied.
+
+  Context: tags (iterable of Tag)
+{% endcomment %}
+{% for tag in tags %}
+  <span class="tag-pill tag-pill--{{ tag.color }}{% if tag.is_archived %} tag-pill--archived{% endif %}">{{ tag.name }}</span>
+{% endfor %}

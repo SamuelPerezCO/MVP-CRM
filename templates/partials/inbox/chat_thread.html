@@ -1,0 +1,70 @@
+{% comment %}
+  Inbox column 4 content when a conversation is open: header, message thread
+  and composer. Rendered by the full page (?chat=) and by inbox_chat swaps.
+
+  data-conversation-id is load-bearing: the conversation list's poll reads it
+  to keep the open row highlighted across re-renders.
+
+  #chat-messages polls its own contents every 5s -- only the messages, so a
+  half-typed draft in the composer below is never clobbered by the swap.
+
+  Context: active_conversation, chat_messages, window_open
+{% endcomment %}
+
+<div class="chat-thread" data-conversation-id="{{ active_conversation.pk }}">
+
+  <header class="chat-thread__head">
+    <div class="chat-thread__head-row">
+      <span class="conv-row__avatar" aria-hidden="true">{{ active_conversation.contact.initials }}</span>
+      <div class="chat-thread__who">
+        <p class="chat-thread__name">{{ active_conversation.contact.full_name }}</p>
+        <p class="chat-thread__meta">
+          {% include active_conversation.icon_template %}
+          <span>{{ active_conversation.get_channel_display }}</span>
+        </p>
+      </div>
+      <span class="chat-thread__status chat-thread__status--{{ active_conversation.status }}">
+        {{ active_conversation.get_status_display }}
+      </span>
+    </div>
+
+    {# Display-only tags; editing lives in the details panel (column 5). #}
+    <div class="chat-thread__tagbar">
+      <span class="chat-thread__tags" id="chat-tags-{{ active_conversation.pk }}">
+        {% include "partials/tags/pills.html" with tags=active_conversation.tags.all %}
+      </span>
+    </div>
+  </header>
+
+  <div class="chat-thread__messages" id="chat-messages"
+       hx-get="{% url 'inbox_thread' active_conversation.pk %}"
+       hx-trigger="every 5s"
+       hx-swap="innerHTML">
+    {% include "partials/inbox/chat_messages.html" %}
+  </div>
+
+  {% if window_open %}
+    {# The response replaces only the thread above; after-request clears the input. #}
+    <form class="composer"
+          hx-post="{% url 'inbox_send' active_conversation.pk %}"
+          hx-target="#chat-messages"
+          hx-swap="innerHTML"
+          hx-on::after-request="if(event.detail.successful) this.reset()">
+      {% csrf_token %}
+      <input class="field__input composer__input" type="text" name="body"
+             placeholder="Escribe un mensaje" autocomplete="off" required
+             aria-label="Escribe un mensaje">
+      <button type="submit" class="btn-primary">Enviar</button>
+    </form>
+  {% else %}
+    {# WhatsApp's 24h rule, surfaced instead of a send that would bounce. #}
+    <div class="composer composer--closed">
+      {% include "icons/info.svg" %}
+      <p class="composer__notice">
+        La ventana de 24 horas está cerrada: solo puedes reabrir esta
+        conversación con una
+        <a href="{% url 'section' 'mensajeria' %}">plantilla aprobada</a>.
+      </p>
+    </div>
+  {% endif %}
+</div>

@@ -1,21 +1,92 @@
 {% comment %}
   Inbox column 3 body -- the swap target's contents.
 
-  This is what core.views.inbox_list returns on its own when a filter is picked,
-  and what the full page renders inside #conv-list on first load. It decides
-  between the real list and the empty state; when conversations exist, the
-  {% else %} branch is where rows get drawn.
+  This is what core.views.inbox_list returns on its own (filter pick, tag
+  filter change, or the poll) and what inbox_tags_bulk answers with; the full
+  page renders it inside #conv-list on first load.
 
-  Context: conversations, active_filter
+  Each row is one clean block: [checkbox] [avatar] then the stacked lines
+  (name + relative age, agent + channel mark, tag pills). Tags here are
+  DISPLAY ONLY -- adding/removing happens in the details panel (column 5)
+  and via the bulk Acciones dropdown; there is deliberately no picker in
+  the list. The checkbox feeds the bulk form wrapped around this region in
+  list_panel.html and shows on hover / while selecting.
+
+  The row link opens the chat: hx-get fills the chat panel (which swaps the
+  details panel out-of-band), the plain href is the no-JS fallback, and
+  [data-nav-group]/[data-nav-item] give the instant active-pill behaviour
+  from shell.js.
+
+  The hidden "filter" input rides inside the bulk form so bulk posts always
+  know which list to re-render -- it is re-rendered with every swap, so it
+  can't go stale the way an input outside this region would.
+
+  Context: conversations, active_filter, active_conversation_id
 {% endcomment %}
+{% load inbox_extras %}
+
+<input type="hidden" name="filter" value="{{ active_filter }}">
 
 {% if conversations %}
-  <ul class="conv-items">
+  <ul class="conv-items" data-nav-group>
     {% for conversation in conversations %}
-      {# Conversation rows land here once there's a model behind them. #}
-      <li class="conv-items__row">{{ conversation }}</li>
+      <li class="conv-item">
+        <input class="checkbox conv-item__check" type="checkbox"
+               name="selected" value="{{ conversation.pk }}"
+               aria-label="Seleccionar conversación con {{ conversation.contact.full_name }}">
+
+        <a class="conv-row{% if conversation.pk == active_conversation_id %} is-active{% endif %}"
+           href="{% url 'section' 'inbox' %}?filter={{ active_filter }}&chat={{ conversation.pk }}"
+           hx-get="{% url 'inbox_chat' conversation.pk %}"
+           hx-target="#chat-panel"
+           hx-swap="innerHTML"
+           hx-push-url="{% url 'section' 'inbox' %}?filter={{ active_filter }}&chat={{ conversation.pk }}"
+           data-nav-item
+           {% if conversation.pk == active_conversation_id %}aria-current="true"{% endif %}>
+
+          <span class="conv-row__avatar" aria-hidden="true">
+            {{ conversation.contact.initials }}
+            {% if conversation.unread_count %}<span class="conv-row__dot"></span>{% endif %}
+          </span>
+
+          <span class="conv-row__main">
+            <span class="conv-row__top">
+              <span class="conv-row__name">{{ conversation.contact.full_name }}</span>
+              <time class="conv-row__time">{{ conversation.last_message_at|relative_es }}</time>
+            </span>
+
+            <span class="conv-row__sub">
+              {% if conversation.assigned_to %}
+                <span class="conv-row__agent">{{ conversation.assigned_to.get_full_name|default:conversation.assigned_to.username }}</span>
+              {% endif %}
+              <span class="conv-row__channel">{% include conversation.icon_template %}</span>
+            </span>
+
+            {# id is the out-of-band target the details-panel picker refreshes. #}
+            <span class="conv-row__tags" id="conv-tags-{{ conversation.pk }}">
+              {% include "partials/tags/pills.html" with tags=conversation.tags.all %}
+            </span>
+          </span>
+        </a>
+      </li>
     {% endfor %}
   </ul>
 {% else %}
   {% include "partials/inbox/conversation_list_empty.html" %}
 {% endif %}
+
+{% comment %}
+  Self-refreshing poll: every swap re-renders this element with the current
+  filter baked in. It pauses (the [condition]) while a dropdown marked
+  data-hold-poll is open or any row is checked -- a re-render would wipe an
+  open dropdown or a half-made selection -- and fires immediately when the
+  tag filter changes ("change from:#tag-filter"). hx-include carries the
+  checked tag-filter boxes so every refresh respects them.
+{% endcomment %}
+<div hidden aria-hidden="true"
+     hx-get="{% url 'inbox_list' active_filter %}"
+     hx-trigger="every 5s [!document.querySelector('details[data-hold-poll][open], .conv-item__check:checked')], change from:#tag-filter"
+     hx-target="#conv-list"
+     hx-swap="innerHTML"
+     hx-include="#tag-filter input:checked"
+     hx-vals='js:{active: document.querySelector("[data-conversation-id]")?.dataset.conversationId || ""}'></div>

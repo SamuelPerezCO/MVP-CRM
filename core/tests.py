@@ -30,7 +30,7 @@ def a_placeholder_section() -> str:
 
 class NavDefinitionTests(TestCase):
     def test_expected_item_counts(self):
-        self.assertEqual(len(PRIMARY_NAV), 11)
+        self.assertEqual(len(PRIMARY_NAV), 8)
         self.assertEqual(len(SECONDARY_NAV), 3)
 
     def test_keys_are_unique(self):
@@ -67,7 +67,7 @@ class RoutingTests(TestCase):
 
 
 class SidebarRenderTests(TestCase):
-    def test_all_fourteen_icons_render_with_tooltips(self):
+    def test_every_icon_renders_with_a_tooltip(self):
         html = self.client.get(reverse("home")).content.decode()
         for item in ALL_NAV:
             with self.subTest(item.key):
