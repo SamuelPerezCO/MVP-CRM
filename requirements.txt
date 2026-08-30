@@ -7,3 +7,13 @@ requests>=2.31,<3
 # Postgres driver -- used when DATABASE_URL is set (e.g. on Vercel);
 # local development keeps using SQLite and never imports this.
 psycopg[binary]>=3.1,<4
+
+# Loads .env into os.environ at settings import time so DATABASE_URL and
+# friends work without a manual `export` step. Real environment variables
+# (e.g. Vercel project env vars) always win -- load_dotenv does not override.
+python-dotenv>=1.0,<2
+
+# Parses DATABASE_URL into Django's DATABASES dict. Replaces hand-rolled
+# urlparse, which silently dropped the connection string's query parameters
+# (Neon sends ?sslmode=require&channel_binding=require).
+dj-database-url>=2.1,<4
