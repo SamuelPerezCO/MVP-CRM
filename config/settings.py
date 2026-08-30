@@ -45,10 +45,16 @@ ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '').split(',
 
 # Vercel sets VERCEL_URL to the deployment's hostname (no scheme) on every
 # build, including preview deployments -- trust it automatically so the app
-# works without listing every preview URL by hand.
+# works without listing every preview URL by hand. VERCEL_URL is per-deployment
+# (e.g. mvp-crm-xxxxx.vercel.app) and does NOT cover the stable production
+# alias, so VERCEL_PROJECT_PRODUCTION_URL is trusted too.
 VERCEL_URL = os.environ.get('VERCEL_URL')
 if VERCEL_URL:
     ALLOWED_HOSTS.append(VERCEL_URL)
+
+VERCEL_PROJECT_PRODUCTION_URL = os.environ.get('VERCEL_PROJECT_PRODUCTION_URL')
+if VERCEL_PROJECT_PRODUCTION_URL:
+    ALLOWED_HOSTS.append(VERCEL_PROJECT_PRODUCTION_URL)
 
 CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS]
 

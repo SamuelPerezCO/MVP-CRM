@@ -111,7 +111,7 @@ En el dashboard del proyecto (Settings → Environment Variables) define, como m
 - `SECRET_KEY` — cualquier string largo y aleatorio (sin esto usa un valor de desarrollo inseguro).
 - `DEBUG=False`
 - `DATABASE_URL` — Postgres (por ejemplo Vercel Postgres o Neon, desde la pestaña Storage). SQLite no sirve en producción porque las funciones serverless no tienen disco persistente.
-- `ALLOWED_HOSTS` — opcional; el dominio `*.vercel.app` del deploy se confía automáticamente vía `VERCEL_URL`, agrega aquí solo dominios propios.
+- `ALLOWED_HOSTS` — opcional; el dominio del deploy y el alias de producción se confían automáticamente vía `VERCEL_URL` y `VERCEL_PROJECT_PRODUCTION_URL`, agrega aquí solo dominios propios (custom domains).
 
 Con `DATABASE_URL` configurado, corre las migraciones contra la base de producción (por ejemplo con `vercel env pull` + `python manage.py migrate` localmente, o desde una shell con las mismas variables).
 
