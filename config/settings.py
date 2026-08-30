@@ -11,11 +11,20 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
-import urllib.parse
 from pathlib import Path
+
+import dj_database_url
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load BASE_DIR/.env into os.environ before anything below reads it, so a
+# plain `python manage.py ...` picks up local credentials with no `export`
+# step. Real environment variables take precedence -- load_dotenv does not
+# override what is already set -- so Vercel's project env vars win in
+# production, where no .env file is deployed in the first place.
+load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
@@ -99,17 +108,21 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # via a Vercel Postgres / Neon integration). Local development keeps using
 # SQLite with no configuration needed.
 
+# dj_database_url carries the connection string's query parameters through
+# into OPTIONS. That matters for Neon, whose URL ends in
+# ?sslmode=require&channel_binding=require: parsing the URL by hand and
+# copying out only NAME/USER/PASSWORD/HOST/PORT drops both, and libpq then
+# falls back to sslmode=prefer, which silently accepts an unencrypted
+# connection. conn_max_age keeps a connection alive across requests instead
+# of reconnecting (and re-doing the TLS handshake) on every one.
+
 if os.environ.get('DATABASE_URL'):
-    url = urllib.parse.urlparse(os.environ['DATABASE_URL'])
     DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': url.path.lstrip('/'),
-            'USER': url.username,
-            'PASSWORD': url.password,
-            'HOST': url.hostname,
-            'PORT': url.port,
-        }
+        'default': dj_database_url.parse(
+            os.environ['DATABASE_URL'],
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
     }
 else:
     DATABASES = {
