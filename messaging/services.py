@@ -102,6 +102,8 @@ def process_inbound_events(events: list[InboundEvent]) -> None:
             with transaction.atomic():
                 if event.event_type == "status":
                     _apply_status_event(event)
+                elif event.event_type == "outbound_message":
+                    _apply_outbound_event(event)
                 else:
                     _apply_message_event(event)
         except Exception:
@@ -120,7 +122,7 @@ def _apply_message_event(event: InboundEvent) -> None:
         logger.info("skipping duplicate message %s", event.provider_message_id)
         return
 
-    contact = _upsert_contact(event)
+    contact = _upsert_contact(event.from_number, event.contact_name, event.channel)
     conversation = _get_or_create_open_conversation(contact, event.channel)
 
     timestamp = event.timestamp or timezone.now()
@@ -152,6 +154,45 @@ def _apply_message_event(event: InboundEvent) -> None:
     )
 
 
+def _apply_outbound_event(event: InboundEvent) -> None:
+    """A message we sent through a channel other than this app's own Inbox --
+    e.g. an agent replying straight from the paired WhatsApp phone instead of
+    the CRM. Recorded so the thread reflects what was actually said either
+    way, but unlike :func:`_apply_message_event` it does not touch
+    ``last_inbound_at``/``unread_count``/``status``: those track the customer
+    side of the 24h window and unread state, neither of which a message we
+    sent affects (matching :func:`send_message`, the Inbox's own send path)."""
+    if not event.to_number:
+        raise ValueError("outbound event without to_number")
+
+    if Message.objects.filter(provider_message_id=event.provider_message_id).exists():
+        logger.info("skipping duplicate message %s", event.provider_message_id)
+        return
+
+    # No contact_name here: the provider's display name on one of *our* sends
+    # is our own name, not the customer's -- useless for naming their Client.
+    contact = _upsert_contact(event.to_number, "", event.channel)
+    conversation = _get_or_create_open_conversation(contact, event.channel)
+
+    timestamp = event.timestamp or timezone.now()
+    try:
+        Message.objects.create(
+            conversation=conversation,
+            direction=Message.OUTBOUND,
+            body=event.body,
+            media_url=event.media_url,
+            status=MessageStatus.DELIVERED.value,
+            provider_message_id=event.provider_message_id,
+            timestamp=timestamp,
+        )
+    except IntegrityError:
+        logger.info("duplicate message %s lost insert race", event.provider_message_id)
+        return
+
+    conversation.last_message_at = timestamp
+    conversation.save(update_fields=["last_message_at"])
+
+
 def _apply_status_event(event: InboundEvent) -> None:
     """A delivery receipt for a message we sent: move its status forward."""
     if event.status is None:
@@ -174,20 +215,24 @@ def _apply_status_event(event: InboundEvent) -> None:
     message.save(update_fields=["status"])
 
 
-def _upsert_contact(event: InboundEvent) -> Client:
-    """Find the Client for a phone number, creating one on first contact."""
-    contact = Client.objects.filter(phone=event.from_number).first()
+def _upsert_contact(phone: str, contact_name: str, channel: str) -> Client:
+    """Find the Client for a phone number, creating one on first contact.
+
+    ``phone`` is whichever side of the event is the customer -- ``from_number``
+    for an inbound message, ``to_number`` for one of ours sent outside the
+    Inbox (see :func:`_apply_outbound_event`)."""
+    contact = Client.objects.filter(phone=phone).first()
     if contact is not None:
         return contact
 
-    name = event.contact_name.strip() or event.from_number
+    name = contact_name.strip() or phone
     return Client.objects.create(
         first_name=name[:80],
-        phone=event.from_number,
-        channel=_client_channel(event.channel),
+        phone=phone,
+        channel=_client_channel(channel),
         # +57 numbers get the Colombian flag in the CRM table; other prefixes
         # are left blank rather than guessed.
-        country="CO" if event.from_number.startswith("+57") else "",
+        country="CO" if phone.startswith("+57") else "",
     )
 
 
