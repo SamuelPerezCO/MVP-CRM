@@ -45,6 +45,18 @@ def message_event(**overrides) -> dict:
     return event
 
 
+def outbound_event(**overrides) -> dict:
+    event = {
+        "event_type": "outbound_message",
+        "provider_message_id": "prov-out-1",
+        "to_number": "+573000000099",
+        "body": "Claro, hacemos envíos a Cali.",
+        "channel": "whatsapp",
+    }
+    event.update(overrides)
+    return event
+
+
 class WebhookTests(TestCase):
     def post_webhook(self, payload: str, headers=GOOD_SIGNATURE):
         return self.client.post(
@@ -126,6 +138,70 @@ class WebhookTests(TestCase):
         )
         # Resolved threads are history: the new inbound starts a fresh one.
         self.assertEqual(Conversation.objects.count(), 2)
+
+
+class OutboundEventTests(TestCase):
+    """A message *we* sent through a channel other than the Inbox itself --
+    e.g. an agent replying straight from the paired WhatsApp phone. Contrast
+    with WebhookTests: same webhook, but this is our side of the thread, not
+    the customer's, which is why unread/last_inbound_at/status don't move."""
+
+    def post_webhook(self, payload: str, headers=GOOD_SIGNATURE):
+        return self.client.post(
+            WEBHOOK_URL, data=payload, content_type="application/json", headers=headers
+        )
+
+    def test_outbound_event_creates_contact_conversation_and_message(self):
+        response = self.post_webhook(webhook_payload([outbound_event()]))
+
+        self.assertEqual(response.status_code, 200)
+        contact = Client.objects.get(phone="+573000000099")
+        message = contact.conversations.get().messages.get()
+        self.assertEqual(message.direction, Message.OUTBOUND)
+        self.assertEqual(message.body, "Claro, hacemos envíos a Cali.")
+        self.assertEqual(message.provider_message_id, "prov-out-1")
+
+    def test_outbound_event_does_not_bump_unread_or_set_last_inbound_at(self):
+        self.post_webhook(webhook_payload([outbound_event()]))
+        conversation = Conversation.objects.get()
+        self.assertEqual(conversation.unread_count, 0)
+        self.assertIsNone(conversation.last_inbound_at)
+
+    def test_outbound_event_reuses_the_open_conversation_from_a_prior_inbound(self):
+        self.post_webhook(webhook_payload([message_event()]))
+        self.post_webhook(webhook_payload([outbound_event()]))
+
+        self.assertEqual(Conversation.objects.count(), 1)
+        conversation = Conversation.objects.get()
+        self.assertEqual(conversation.messages.count(), 2)
+        # The customer's own message still counts as unread -- only the reply
+        # (this event) shouldn't have touched it.
+        self.assertEqual(conversation.unread_count, 1)
+
+    def test_same_provider_message_id_twice_creates_one_outbound_message(self):
+        payload = webhook_payload([outbound_event()])
+        self.assertEqual(self.post_webhook(payload).status_code, 200)
+        self.assertEqual(self.post_webhook(payload).status_code, 200)
+        self.assertEqual(Message.objects.count(), 1)
+
+    def test_outbound_event_without_to_number_is_dropped_not_crashed(self):
+        """process_inbound_events isolates bad events (see its docstring) --
+        the webhook has already answered 200, so this must log, not raise."""
+        response = self.post_webhook(
+            webhook_payload([outbound_event(to_number="")])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Message.objects.count(), 0)
+        self.assertEqual(Client.objects.count(), 0)
+
+    def test_self_chat_becomes_a_conversation_with_the_paired_number(self):
+        """WhatsApp's "Yo" self-chat: to_number is the paired number's own,
+        not a customer's -- still recorded, same as any other outbound event."""
+        self.post_webhook(
+            webhook_payload([outbound_event(to_number="+573000000001", body="nota para mí")])
+        )
+        contact = Client.objects.get(phone="+573000000001")
+        self.assertEqual(contact.conversations.get().messages.get().body, "nota para mí")
 
 
 class StatusEventTests(TestCase):
