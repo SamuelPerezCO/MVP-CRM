@@ -1,0 +1,51 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iniciar sesión · MVP CRM</title>
+  <link rel="stylesheet" href="{% static 'css/sidebar.css' %}">
+  <link rel="stylesheet" href="{% static 'css/login.css' %}">
+</head>
+<body class="login-body">
+  <main class="login-card" role="main">
+    <div class="login-card__brand" aria-hidden="true">
+      {% include "icons/logo.svg" %}
+    </div>
+    <h1 class="login-card__title">MVP CRM</h1>
+    <p class="login-card__subtitle">Ingresa tus credenciales para continuar.</p>
+
+    {% if error %}
+      <p class="login-card__error" role="alert">{{ error }}</p>
+    {% endif %}
+
+    <form class="login-form" method="post" action="{% url 'login' %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ next }}">
+      <label class="login-form__label" for="id_username">Usuario</label>
+      <input
+        class="login-form__input"
+        type="text"
+        id="id_username"
+        name="username"
+        autocomplete="username"
+        autofocus
+        required>
+
+      <label class="login-form__label" for="id_password">Contraseña</label>
+      <input
+        class="login-form__input"
+        type="password"
+        id="id_password"
+        name="password"
+        autocomplete="current-password"
+        required>
+
+      <button class="login-form__submit" type="submit">
+        Iniciar sesión
+      </button>
+    </form>
+  </main>
+</body>
+</html>

@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -18,6 +19,10 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# True under `manage.py test` (and pytest). core.middleware.LoginRequiredMiddleware
+# reads this so the test client -- which never logs in -- isn't locked out.
+TESTING = 'test' in sys.argv
 
 # Load BASE_DIR/.env into os.environ before anything below reads it, so a
 # plain `python manage.py ...` picks up local credentials with no `export`
@@ -63,6 +68,14 @@ CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS]
 # CSRF checks and any secure-cookie/redirect behavior.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# Single shared login gate in front of the whole app (core.middleware.
+# LoginRequiredMiddleware) -- not django.contrib.auth, no user accounts, just
+# one username/password pair from the environment. Blank means the gate can
+# never be satisfied (see the middleware), rather than an empty/empty login
+# working.
+APP_LOGIN_USERNAME = os.environ.get('APP_LOGIN_USERNAME', '')
+APP_LOGIN_PASSWORD = os.environ.get('APP_LOGIN_PASSWORD', '')
+
 
 # Application definition
 
@@ -83,6 +96,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.middleware.LoginRequiredMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -112,7 +126,9 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # SQLite has no persistent filesystem to live on once deployed to Vercel's
 # serverless functions, so any real deployment must set DATABASE_URL (e.g.
 # via a Vercel Postgres / Neon integration). Local development keeps using
-# SQLite with no configuration needed.
+# SQLite with no configuration needed. `manage.py test` always uses SQLite too
+# (see TESTING above), even when a developer's own .env points DATABASE_URL at
+# a real database -- tests creating/dropping a scratch DB there is unwanted.
 
 # dj_database_url carries the connection string's query parameters through
 # into OPTIONS. That matters for Neon, whose URL ends in
@@ -122,7 +138,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # connection. conn_max_age keeps a connection alive across requests instead
 # of reconnecting (and re-doing the TLS handshake) on every one.
 
-if os.environ.get('DATABASE_URL'):
+if os.environ.get('DATABASE_URL') and not TESTING:
     DATABASES = {
         'default': dj_database_url.parse(
             os.environ['DATABASE_URL'],
@@ -202,9 +218,11 @@ MAILERS = {
 # Which provider backs sending and webhooks: 'fake' | 'twilio' | 'meta' | 'baileys'.
 # Swapping to a real provider is this one variable plus its credentials below
 # (see .env.example). Values come from the environment so no credential ever
-# lands in this file.
+# lands in this file. `manage.py test` always forces 'fake' (see TESTING
+# above), even when a developer's own .env is set to a real provider -- tests
+# must not depend on a live sidecar/Twilio/Meta connection to pass.
 
-MESSAGING_PROVIDER = os.environ.get('MESSAGING_PROVIDER', 'fake')
+MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER', 'fake')
 
 # Fake provider: the shared secret dev webhooks must send in X-Fake-Signature.
 MESSAGING_FAKE_SECRET = os.environ.get('MESSAGING_FAKE_SECRET', 'dev-secret')

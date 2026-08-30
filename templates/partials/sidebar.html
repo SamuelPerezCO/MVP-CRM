@@ -35,6 +35,16 @@
       {% for item in secondary_nav %}
         {% include "partials/nav_item.html" %}
       {% endfor %}
+      {% comment %}
+        Plain full-page link (no hx-get): logout swaps to the standalone
+        login.html document, which an htmx #content swap can't render.
+      {% endcomment %}
+      <li class="nav-list__row">
+        <a class="nav-item" href="{% url 'logout' %}" aria-label="Cerrar sesión">
+          {% include "icons/lock.svg" %}
+          <span class="nav-item__tip" role="tooltip" aria-hidden="true">Cerrar sesión</span>
+        </a>
+      </li>
     </ul>
   </nav>
 </aside>

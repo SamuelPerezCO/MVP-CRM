@@ -16,11 +16,15 @@ Sections that need their own data register a context builder in
 section: it is the shell at rest, with no sidebar icon selected.
 """
 
+import hmac
+
+from django.conf import settings
 from django.http import Http404, HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template import TemplateDoesNotExist
 from django.template.loader import get_template, render_to_string
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from datetime import timedelta
 
@@ -44,6 +48,7 @@ from . import (
     mensajeria,
     plantillas,
 )
+from .middleware import SESSION_KEY
 from .models import CalendarEvent, Client, ClientList, MessageTemplate
 from .nav import (
     DEFAULT_SECTION,
@@ -462,6 +467,40 @@ SECTION_CONTEXT = {
 
 
 # --- Views -----------------------------------------------------------------
+
+
+def login_view(request):
+    """The one gate in front of the whole app -- see core.middleware."""
+    error = None
+    next_url = request.GET.get('next') or request.POST.get('next') or reverse('home')
+    # ?next is attacker-reachable (it's a query param on a link anyone can send)
+    # -- without this check a crafted next=https://evil.example would redirect
+    # a successful login straight off the site, the classic post-login
+    # open-redirect phishing setup.
+    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        next_url = reverse('home')
+    if request.method == 'POST':
+        username = request.POST.get('username', '')
+        password = request.POST.get('password', '')
+        valid = (
+            bool(settings.APP_LOGIN_USERNAME)
+            and hmac.compare_digest(username, settings.APP_LOGIN_USERNAME)
+            and hmac.compare_digest(password, settings.APP_LOGIN_PASSWORD)
+        )
+        if valid:
+            request.session[SESSION_KEY] = True
+            return redirect(next_url)
+        error = 'Usuario o contraseña incorrectos.'
+    return HttpResponse(
+        render_to_string(
+            'login.html', {'error': error, 'next': next_url}, request=request
+        )
+    )
+
+
+def logout_view(request):
+    request.session.flush()
+    return redirect('login')
 
 
 def welcome(request):
