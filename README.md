@@ -102,6 +102,23 @@ Cuando lleguen credenciales reales de Twilio o Meta:
 
 El webhook verifica la firma antes de tocar el payload (401 si es inválida), es idempotente por `provider_message_id` (los reintentos del proveedor no duplican mensajes) y siempre responde 200 tras autenticar, registrando errores en el log en lugar de provocar tormentas de reintentos. El envío de texto libre está bloqueado fuera de la ventana de 24 horas ([messaging/services.py](messaging/services.py)) — fuera de ella solo cabe `send_template`, igual que en la plataforma real.
 
+## Deploy en Vercel
+
+El proyecto usa el soporte nativo de Vercel para Django (detecta `manage.py` y el `WSGI_APPLICATION` de [config/settings.py](config/settings.py) automáticamente): conecta el repo en vercel.com o corre `vercel deploy` y no hace falta build script.
+
+En el dashboard del proyecto (Settings → Environment Variables) define, como mínimo:
+
+- `SECRET_KEY` — cualquier string largo y aleatorio (sin esto usa un valor de desarrollo inseguro).
+- `DEBUG=False`
+- `DATABASE_URL` — Postgres (por ejemplo Vercel Postgres o Neon, desde la pestaña Storage). SQLite no sirve en producción porque las funciones serverless no tienen disco persistente.
+- `ALLOWED_HOSTS` — opcional; el dominio `*.vercel.app` del deploy se confía automáticamente vía `VERCEL_URL`, agrega aquí solo dominios propios.
+
+Con `DATABASE_URL` configurado, corre las migraciones contra la base de producción (por ejemplo con `vercel env pull` + `python manage.py migrate` localmente, o desde una shell con las mismas variables).
+
+Los archivos estáticos (`static/`) se recolectan y sirven automáticamente desde el CDN de Vercel — no requiere WhiteNoise ni configuración adicional. Los uploads de usuario (`media/`, ej. cabeceras de plantillas) sí requieren almacenamiento externo (Vercel Blob, S3, etc.) porque el filesystem de las funciones no persiste entre requests; sin eso, esa funcionalidad puntual no sobrevive en producción.
+
+`whatsapp-sidecar/` (el conector Baileys) es un proceso Node de larga duración con una conexión WebSocket persistente a WhatsApp — no corre en funciones serverless. Para producción con `MESSAGING_PROVIDER=baileys`, despliégalo aparte en un host con procesos persistentes (Railway, Fly.io, un VPS, etc.); para Vercel, `fake`, `twilio` o `meta` son los proveedores que funcionan tal cual.
+
 ## Tests
 
 ```powershell
