@@ -6,6 +6,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # The app-wide login gate (core.middleware.LoginRequiredMiddleware).
+    path("login/", views.login_view, name="login"),
+    path("logout/", views.logout_view, name="logout"),
     # Root is the welcome screen: the shell before any section is chosen. It is
     # deliberately not a `section` route, so no sidebar icon matches "/".
     path("", views.welcome, name="home"),

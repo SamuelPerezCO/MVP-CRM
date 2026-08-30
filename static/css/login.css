@@ -1,0 +1,104 @@
+/* ==========================================================================
+   MVP CRM — login gate
+   Builds on the tokens from sidebar.css (colours, font, [hidden] reset).
+   ========================================================================== */
+
+.login-body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--panel-bg);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 14px;
+  padding: 32px 28px 28px;
+  box-shadow: 0 1px 3px rgba(18, 38, 63, 0.06), 0 8px 24px rgba(18, 38, 63, 0.06);
+  text-align: center;
+}
+
+.login-card__brand {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.login-card__brand .brand__icon { width: 20px; height: 20px; }
+
+.login-card__title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.login-card__subtitle {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.login-card__error {
+  margin: 0 0 16px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: #fdecec;
+  color: #b3261e;
+  font-size: 13px;
+  text-align: left;
+}
+
+.login-form { display: flex; flex-direction: column; text-align: left; }
+
+.login-form__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 12px 0 6px;
+}
+
+.login-form__label:first-child { margin-top: 0; }
+
+.login-form__input {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: #fff;
+}
+
+.login-form__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.login-form__submit {
+  margin-top: 20px;
+  height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.login-form__submit:hover { background: #2a72d4; }
+.login-form__submit:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
