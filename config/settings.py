@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import urllib.parse
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -21,12 +22,31 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-r9ns&rk(gu0yvwjj&%#pepbj_oh_26h@pwex8#ch^x90+is@($'
+# Set SECRET_KEY in the environment for any real deployment (e.g. Vercel
+# project env vars); this fallback is only for local development.
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-r9ns&rk(gu0yvwjj&%#pepbj_oh_26h@pwex8#ch^x90+is@($',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h.strip()]
+
+# Vercel sets VERCEL_URL to the deployment's hostname (no scheme) on every
+# build, including preview deployments -- trust it automatically so the app
+# works without listing every preview URL by hand.
+VERCEL_URL = os.environ.get('VERCEL_URL')
+if VERCEL_URL:
+    ALLOWED_HOSTS.append(VERCEL_URL)
+
+CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS]
+
+# Vercel terminates TLS in front of the app and forwards over HTTP; without
+# this, request.is_secure() is always False behind the proxy, which breaks
+# CSRF checks and any secure-cookie/redirect behavior.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -74,13 +94,30 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
+# SQLite has no persistent filesystem to live on once deployed to Vercel's
+# serverless functions, so any real deployment must set DATABASE_URL (e.g.
+# via a Vercel Postgres / Neon integration). Local development keeps using
+# SQLite with no configuration needed.
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+if os.environ.get('DATABASE_URL'):
+    url = urllib.parse.urlparse(os.environ['DATABASE_URL'])
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': url.path.lstrip('/'),
+            'USER': url.username,
+            'PASSWORD': url.password,
+            'HOST': url.hostname,
+            'PORT': url.port,
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -119,9 +156,15 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+# Vercel's Django support runs `collectstatic` into STATIC_ROOT automatically
+# during the build and serves the result from its CDN -- no extra config.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # User uploads (template header media). Served by Django in DEBUG only --
-# see config/urls.py.
+# see config/urls.py. NOTE: Vercel's serverless functions have no persistent
+# filesystem, so files written here in production disappear after the
+# request -- wire up real object storage (e.g. Vercel Blob, S3) via a
+# django-storages backend before relying on header uploads in production.
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
