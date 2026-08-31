@@ -140,22 +140,39 @@
 }
 
 /* Float the label when the field has content or focus (placeholder=" " makes
-   :placeholder-shown mean "empty"); selects always have a value, so their
-   label stays floated. */
+   :placeholder-shown mean "empty"). */
 .ffield__input:focus ~ .ffield__label,
-.ffield__input:not(:placeholder-shown) ~ .ffield__label,
-.ffield--select .ffield__label {
+.ffield__input:not(:placeholder-shown) ~ .ffield__label {
   inset-block-start: 5px;
   font-size: 11px;
   color: var(--accent-text);
 }
 
-.ffield__input:not(:focus):not(:placeholder-shown) ~ .ffield__label,
-.ffield--select .ffield__input:not(:focus) ~ .ffield__label {
+.ffield__input:not(:focus):not(:placeholder-shown) ~ .ffield__label {
   color: var(--muted);
 }
 
-.ffield--select .ffield__input { appearance: auto; cursor: pointer; }
+/* Selects always have a value, so a floated label would always overlap —
+   but native <select> text is vertically centered in the box regardless of
+   asymmetric padding, so the floating-label trick above can't be reused
+   here. Use a plain static label above the control instead. */
+.ffield--select {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 4px;
+}
+
+.ffield--select .ffield__label {
+  position: static;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ffield--select .ffield__input {
+  padding: 8px 12px;
+  appearance: auto;
+  cursor: pointer;
+}
 
 .ffield--area .ffield__input {
   resize: vertical;
