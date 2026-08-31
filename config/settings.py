@@ -64,11 +64,14 @@ if VERCEL_PROJECT_PRODUCTION_URL:
 # Vercel also assigns this project two more stable aliases beyond
 # VERCEL_PROJECT_PRODUCTION_URL (project-name-team-slug, and the git branch
 # alias for main) -- hardcode them so they keep working without a dashboard
-# env var edit.
-ALLOWED_HOSTS += [
-    'mvp-crm-unaneaprogramadora.vercel.app',
-    'mvp-crm-git-main-unaneaprogramadora.vercel.app',
-]
+# env var edit. Only on Vercel (it sets VERCEL=1): locally these entries
+# would make ALLOWED_HOSTS non-empty and disable Django's DEBUG-mode
+# localhost fallback, locking the dev server out of its own machine.
+if os.environ.get('VERCEL'):
+    ALLOWED_HOSTS += [
+        'mvp-crm-unaneaprogramadora.vercel.app',
+        'mvp-crm-git-main-unaneaprogramadora.vercel.app',
+    ]
 
 CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS]
 
