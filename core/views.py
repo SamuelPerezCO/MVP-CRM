@@ -698,21 +698,25 @@ def inbox_send(request, conversation_id: int):
 
 
 def inbox_quick_replies(request):
-    """The Respuestas rápidas popover: approved, active plantillas ready to
-    drop into the composer.
+    """The Respuestas rápidas popover: the account's usable plantillas,
+    ready to drop into the composer.
 
     Fetched lazily the first time the picker opens (see chat_thread.html) --
-    the list is account-wide, so no conversation id. Only templates that are
-    both switched on and accepted by WhatsApp are offered: a pending or
-    rejected one could not actually be sent.
+    the list is account-wide, so no conversation id. Offered: every active
+    plantilla that isn't rechazada. Pendientes are included -- the MVP has
+    no real Meta approval pipeline, so a freshly created plantilla would
+    otherwise never show up -- but they carry a "Pendiente" badge, since a
+    real WhatsApp send outside the 24h window would need the approval.
 
     Each entry ships its body already rendered (samples substituted for
     {{n}} -- core.plantillas.render_body); clicking it fills the composer,
     where the agent can adjust before Enviar.
     """
-    templates = MessageTemplate.objects.filter(
-        is_active=True, status="aceptada"
-    ).order_by("name")
+    templates = (
+        MessageTemplate.objects.filter(is_active=True)
+        .exclude(status="rechazada")
+        .order_by("name")
+    )
     entries = [
         {"template": template, "body": plantillas.render_body(template)}
         for template in templates

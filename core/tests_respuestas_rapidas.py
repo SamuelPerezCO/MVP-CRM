@@ -63,18 +63,32 @@ class QuickRepliesEndpointTests(TestCase):
         # The picker carries the body in the attribute shell.js reads.
         self.assertIn("data-quick-body", html)
 
-    def test_pending_rejected_and_inactive_templates_are_not_offered(self):
-        template(name="pendiente_aun", status="pendiente")
+    def test_rejected_and_inactive_templates_are_not_offered(self):
         template(name="rechazada_ya", status="rechazada")
         template(name="apagada", is_active=False)
         html = self.get().content.decode()
-        for name in ["pendiente_aun", "rechazada_ya", "apagada"]:
+        for name in ["rechazada_ya", "apagada"]:
             with self.subTest(name):
                 self.assertNotIn(name, html)
 
+    def test_a_freshly_created_template_shows_up_flagged_pendiente(self):
+        # The editor saves with status "pendiente" and the MVP has no real
+        # Meta approval pipeline -- excluding pendientes would make every
+        # user-created plantilla invisible in the picker forever.
+        template(name="recien_creada", status="pendiente")
+        html = self.get().content.decode()
+        self.assertIn("recien_creada", html)
+        self.assertIn("Pendiente", html)
+
+    def test_an_accepted_template_carries_no_badge(self):
+        template(name="ya_aprobada", status="aceptada")
+        html = self.get().content.decode()
+        self.assertIn("ya_aprobada", html)
+        self.assertNotIn("quickreplies__badge", html)
+
     def test_empty_state_links_to_the_plantillas_section(self):
         html = self.get().content.decode()
-        self.assertIn("No hay plantillas aprobadas", html)
+        self.assertIn("No hay plantillas activas", html)
         self.assertIn(reverse("section", args=["mensajeria"]), html)
 
     def test_templates_come_out_in_name_order(self):
