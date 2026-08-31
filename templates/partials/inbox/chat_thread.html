@@ -26,6 +26,9 @@
       <span class="chat-thread__status chat-thread__status--{{ active_conversation.status }}">
         {{ active_conversation.get_status_display }}
       </span>
+
+      {# Who answers this chat -- saves on change, no button. #}
+      {% include "partials/inbox/assign_control.html" %}
     </div>
 
     {# Display-only tags; editing lives in the details panel (column 5). #}
@@ -51,6 +54,14 @@
           hx-swap="innerHTML"
           hx-on::after-request="if(event.detail.successful) this.reset()">
       {% csrf_token %}
+      {% comment %}
+        Placeholder: the canned-replies picker isn't built yet, so this
+        deliberately has no target and does nothing when clicked.
+      {% endcomment %}
+      <button type="button" class="composer__quick">
+        {% include "icons/zap.svg" %}
+        <span>Respuestas rápidas</span>
+      </button>
       <input class="field__input composer__input" type="text" name="body"
              placeholder="Escribe un mensaje" autocomplete="off" required
              aria-label="Escribe un mensaje">

@@ -338,8 +338,11 @@ class Command(BaseCommand):
                 f"Estadísticas charts."
             ))
         self.stdout.write(
-            f"'Tu inbox' works after logging into /admin as "
-            f"{DEMO_USERNAME!r} / {DEMO_PASSWORD!r}."
+            f"Some conversations are assigned to {DEMO_USERNAME!r} "
+            f"(/admin password {DEMO_PASSWORD!r}). To see them under "
+            f"'Tu inbox' in the app, log in as an agent from APP_AGENTS "
+            f"(see core/agents.py) and reassign a chat to yourself with the "
+            f"dropdown in the chat header."
         )
 
     def _seed_events(self, demo_user) -> int:

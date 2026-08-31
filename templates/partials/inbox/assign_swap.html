@@ -1,0 +1,17 @@
+{% comment %}
+  What core.views.inbox_assign answers a dropdown change with: the re-rendered
+  control (the request's hx-target) plus the details panel's "Asignada a" line
+  delivered out-of-band, so column 5 never disagrees with the header.
+
+  The conversation list's row picks the new agent up on its own 5s poll --
+  targeting it here would mean an OOB swap for an element that may not be in
+  the current filter's list at all.
+
+  Context: active_conversation, assign_options
+{% endcomment %}
+
+{% include "partials/inbox/assign_control.html" %}
+
+<dd id="details-assigned-{{ active_conversation.pk }}" hx-swap-oob="outerHTML">
+  {% include "partials/inbox/assigned_name.html" with conversation=active_conversation %}
+</dd>
