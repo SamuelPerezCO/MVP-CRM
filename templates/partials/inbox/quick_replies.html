@@ -1,0 +1,31 @@
+{% comment %}
+  The Respuestas rápidas list -- what core.views.inbox_quick_replies drops
+  into the composer's popover the first time it opens.
+
+  Each row is a button carrying its plantilla's rendered body (samples
+  already substituted for {{n}}); shell.js copies data-quick-body into the
+  composer input on click, so the agent reviews the text and presses Enviar.
+  Nothing here sends by itself.
+
+  Context: entries -- [{template, body}], approved + active only
+{% endcomment %}
+
+{% if entries %}
+  <p class="quickreplies__title">Plantillas aprobadas</p>
+  <ul class="quickreplies__list">
+    {% for entry in entries %}
+      <li>
+        <button type="button" class="quickreplies__item"
+                data-quick-body="{{ entry.body }}">
+          <span class="quickreplies__name">{{ entry.template.name }}</span>
+          <span class="quickreplies__preview">{{ entry.body|truncatechars:90 }}</span>
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="quickreplies__empty">
+    No hay plantillas aprobadas y activas todavía. Créalas en
+    <a href="{% url 'section' 'mensajeria' %}">Configuración de mensajería</a>.
+  </p>
+{% endif %}

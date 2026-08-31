@@ -697,6 +697,35 @@ def inbox_send(request, conversation_id: int):
     )
 
 
+def inbox_quick_replies(request):
+    """The Respuestas rápidas popover: approved, active plantillas ready to
+    drop into the composer.
+
+    Fetched lazily the first time the picker opens (see chat_thread.html) --
+    the list is account-wide, so no conversation id. Only templates that are
+    both switched on and accepted by WhatsApp are offered: a pending or
+    rejected one could not actually be sent.
+
+    Each entry ships its body already rendered (samples substituted for
+    {{n}} -- core.plantillas.render_body); clicking it fills the composer,
+    where the agent can adjust before Enviar.
+    """
+    templates = MessageTemplate.objects.filter(
+        is_active=True, status="aceptada"
+    ).order_by("name")
+    entries = [
+        {"template": template, "body": plantillas.render_body(template)}
+        for template in templates
+    ]
+    return HttpResponse(
+        render_to_string(
+            "partials/inbox/quick_replies.html",
+            {"entries": entries},
+            request=request,
+        )
+    )
+
+
 # --- Assignment -------------------------------------------------------------
 
 

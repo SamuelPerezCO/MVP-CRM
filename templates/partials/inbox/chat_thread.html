@@ -55,13 +55,26 @@
           hx-on::after-request="if(event.detail.successful) this.reset()">
       {% csrf_token %}
       {% comment %}
-        Placeholder: the canned-replies picker isn't built yet, so this
-        deliberately has no target and does nothing when clicked.
+        The plantillas picker. details/summary gives the open/close for free;
+        the panel's contents load once, on first open (hx-trigger="toggle
+        once" -- the toggle event fires on the details element itself).
+        Picking an entry fills the composer input -- see the quickreplies
+        block in shell.js -- so Enviar stays the only thing that sends.
       {% endcomment %}
-      <button type="button" class="composer__quick">
-        {% include "icons/zap.svg" %}
-        <span>Respuestas rápidas</span>
-      </button>
+      <details class="quickreplies" data-quickreplies
+               hx-get="{% url 'inbox_quick_replies' %}"
+               hx-trigger="toggle once"
+               hx-target="find [data-quickreplies-pop]"
+               hx-swap="innerHTML">
+        <summary class="composer__quick">
+          {% include "icons/zap.svg" %}
+          <span>Respuestas rápidas</span>
+        </summary>
+        <div class="quickreplies__pop" data-quickreplies-pop
+             role="menu" aria-label="Respuestas rápidas">
+          <p class="quickreplies__empty">Cargando…</p>
+        </div>
+      </details>
       <input class="field__input composer__input" type="text" name="body"
              placeholder="Escribe un mensaje" autocomplete="off" required
              aria-label="Escribe un mensaje">

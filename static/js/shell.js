@@ -644,4 +644,47 @@
       refreshSelection();
     }
   });
+
+  /* -------------------------------------------------------------------------
+   * Respuestas rápidas: the composer's plantillas picker.
+   *
+   * Picking an entry FILLS the input rather than sending -- the agent
+   * reviews (a sample value may need replacing) and Enviar stays the only
+   * send. All listeners are document-level delegation, so the picker keeps
+   * working across every chat_thread re-render.
+   * ---------------------------------------------------------------------- */
+
+  function closeQuickReplies(except) {
+    document.querySelectorAll("[data-quickreplies][open]").forEach(function (el) {
+      if (el !== except) el.open = false;
+    });
+  }
+
+  document.addEventListener("click", function (event) {
+    var item = event.target.closest("[data-quick-body]");
+    if (item) {
+      var composer = item.closest(".composer");
+      var input = composer && composer.querySelector(".composer__input");
+      if (input) {
+        input.value = item.dataset.quickBody;
+        input.focus();
+        // Cursor at the end -- ready to append, or to spot a {{n}} to fill.
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+      closeQuickReplies();
+      return;
+    }
+    // A click anywhere outside an open picker closes it (its own summary
+    // already toggles itself -- don't fight the native behavior).
+    closeQuickReplies(event.target.closest("[data-quickreplies]"));
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape") return;
+    var open = document.querySelector("[data-quickreplies][open]");
+    if (!open) return;
+    open.open = false;
+    var summary = open.querySelector("summary");
+    if (summary) summary.focus();
+  });
 })();
