@@ -29,6 +29,12 @@ urlpatterns = [
         views.inbox_send,
         name="inbox_send",
     ),
+    # The chat header's agent dropdown posts here on every change.
+    path(
+        "inbox/chat/<int:conversation_id>/asignar/",
+        views.inbox_assign,
+        name="inbox_assign",
+    ),
     # One conversation's tag picker: GET renders it, POST toggles/creates.
     path(
         "inbox/conversacion/<int:conversation_id>/etiquetas/",

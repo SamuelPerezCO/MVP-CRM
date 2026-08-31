@@ -16,9 +16,6 @@ Sections that need their own data register a context builder in
 section: it is the shell at rest, with no sidebar icon selected.
 """
 
-import hmac
-
-from django.conf import settings
 from django.http import Http404, HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template import TemplateDoesNotExist
@@ -29,6 +26,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Count
@@ -37,6 +35,7 @@ from messaging import services as messaging_services
 from messaging.models import Conversation, Tag
 
 from . import (
+    agents,
     automatizaciones,
     calendario,
     comercio,
@@ -95,6 +94,9 @@ def _thread_context(conversation) -> dict:
         "active_conversation_id": conversation.pk,
         "chat_messages": conversation.messages.all(),
         "window_open": conversation.is_within_24h_window,
+        # Options for the header's assignment dropdown -- everyone configured
+        # in APP_AGENTS, whether or not they have logged in yet.
+        "assign_options": agents.assignment_options(conversation),
     }
 
 
@@ -470,7 +472,15 @@ SECTION_CONTEXT = {
 
 
 def login_view(request):
-    """The one gate in front of the whole app -- see core.middleware."""
+    """The one gate in front of the whole app -- see core.middleware.
+
+    Credentials come from the environment (``core.agents``), but a successful
+    login also starts a *real* ``django.contrib.auth`` session against that
+    agent's mirror User. That is what makes the agent an identity rather than a
+    boolean: "Tu inbox" can filter ``assigned_to=request.user``, outbound
+    messages record who wrote them, and the Inbox's assignment dropdown has a
+    sensible default.
+    """
     error = None
     next_url = request.GET.get('next') or request.POST.get('next') or reverse('home')
     # ?next is attacker-reachable (it's a query param on a link anyone can send)
@@ -480,14 +490,20 @@ def login_view(request):
     if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
         next_url = reverse('home')
     if request.method == 'POST':
-        username = request.POST.get('username', '')
-        password = request.POST.get('password', '')
-        valid = (
-            bool(settings.APP_LOGIN_USERNAME)
-            and hmac.compare_digest(username, settings.APP_LOGIN_USERNAME)
-            and hmac.compare_digest(password, settings.APP_LOGIN_PASSWORD)
+        agent = agents.authenticate(
+            request.POST.get('username', ''), request.POST.get('password', '')
         )
-        if valid:
+        if agent is not None:
+            # The mirror User has an unusable password, so no auth backend can
+            # verify it -- name the backend explicitly instead of going through
+            # django.contrib.auth.authenticate(), which would (correctly) fail.
+            auth_login(
+                request,
+                agent.user,
+                backend='django.contrib.auth.backends.ModelBackend',
+            )
+            # After auth_login: it cycles the session key, and the gate flag
+            # must survive into the new session.
             request.session[SESSION_KEY] = True
             return redirect(next_url)
         error = 'Usuario o contraseña incorrectos.'
@@ -499,6 +515,7 @@ def login_view(request):
 
 
 def logout_view(request):
+    auth_logout(request)
     request.session.flush()
     return redirect('login')
 
@@ -676,6 +693,61 @@ def inbox_send(request, conversation_id: int):
     context["send_error"] = send_error
     return HttpResponse(
         render_to_string("partials/inbox/chat_messages.html", context, request=request)
+    )
+
+
+# --- Assignment -------------------------------------------------------------
+
+
+def inbox_assign(request, conversation_id: int):
+    """Set (or clear) the agent answering one conversation.
+
+    Posted by the dropdown in the chat header on every change. The answer is
+    the re-rendered control plus, out-of-band, the details panel's "Asignada a"
+    line -- the conversation list's own poll picks the change up on its next
+    tick, so nothing here has to know whether that row is even on screen.
+
+    An id that isn't a configured agent is rejected rather than saved: the
+    dropdown is a fixed list, so anything else is a hand-crafted POST.
+    """
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    conversation = get_object_or_404(
+        Conversation.objects.select_related("contact", "assigned_to"),
+        pk=conversation_id,
+    )
+
+    # What the dropdown was rendered with, and so what a POST may name.
+    choices = agents.assignment_options(conversation)
+    raw = (request.POST.get("agent") or "").strip()
+    if raw:
+        # Only ids from the rendered options are accepted -- an unknown one
+        # leaves the assignment untouched instead of pointing it at some
+        # arbitrary User row.
+        assignee = next((user for user in choices if str(user.pk) == raw), None)
+        if assignee is None:
+            return HttpResponse(status=400)
+    else:
+        assignee = None
+
+    if conversation.assigned_to_id != getattr(assignee, "pk", None):
+        conversation.assigned_to = assignee
+        conversation.save(update_fields=["assigned_to"])
+
+    return HttpResponse(
+        render_to_string(
+            "partials/inbox/assign_swap.html",
+            {
+                "active_conversation": conversation,
+                # Recomputed *after* the save, not reusing ``choices``: the
+                # options include the current assignee, so moving a chat off
+                # someone who is no longer in APP_AGENTS should drop them from
+                # the list rather than leave them there until the next reload.
+                "assign_options": agents.assignment_options(conversation),
+            },
+            request=request,
+        )
     )
 
 

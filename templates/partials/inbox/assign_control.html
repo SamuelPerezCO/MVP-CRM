@@ -1,0 +1,37 @@
+{% comment %}
+  The chat header's "who is answering this" dropdown, next to the status badge.
+
+  A plain <select> that posts itself on every change and is replaced by the
+  response, so there is no Guardar button and no JS beyond HTMX. The form's id
+  is the swap target, which is why this lives in its own partial rather than
+  inline in the header: core.views.inbox_assign answers with the very same
+  markup.
+
+  Nothing re-renders the chat header on a timer (only #chat-messages polls), so
+  unlike the list's dropdowns this one needs no data-hold-poll guard.
+
+  Context: active_conversation, assign_options
+{% endcomment %}
+
+<form class="assign" id="chat-assign-{{ active_conversation.pk }}"
+      hx-post="{% url 'inbox_assign' active_conversation.pk %}"
+      hx-trigger="change"
+      hx-target="this"
+      hx-swap="outerHTML">
+  {% csrf_token %}
+  <label class="sr-only" for="assign-agent-{{ active_conversation.pk }}">
+    Agente asignado
+  </label>
+  <select class="assign__select" name="agent"
+          id="assign-agent-{{ active_conversation.pk }}">
+    <option value="" {% if not active_conversation.assigned_to_id %}selected{% endif %}>
+      Sin asignar
+    </option>
+    {% for agent in assign_options %}
+      <option value="{{ agent.pk }}"
+              {% if agent.pk == active_conversation.assigned_to_id %}selected{% endif %}>
+        {{ agent.get_full_name|default:agent.username }}
+      </option>
+    {% endfor %}
+  </select>
+</form>

@@ -509,6 +509,45 @@
 .chat-thread__status--pending  { background: #fdf3e0; color: #b97a12; }
 .chat-thread__status--resolved { background: #e6f6ec; color: #1e8f4d; }
 
+/* Assignment dropdown, riding beside the status badge. Deliberately quiet --
+   it sits next to a coloured pill, so a second loud control would fight it.
+   Sized off the native select rather than a custom menu: one control, keyboard
+   and screen-reader behaviour for free, and it can't be clipped by the header's
+   overflow the way an absolutely-positioned panel would be. */
+.assign {
+  flex-shrink: 0;
+  display: flex;
+}
+
+.assign__select {
+  max-width: 150px;
+  height: 26px;
+  padding: 0 24px 0 9px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 999px;
+  background-color: #fff;
+  /* Chevron drawn in CSS so the control needs no wrapper element for it. */
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+                    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 13px) center, calc(100% - 9px) center;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  appearance: none;
+}
+
+.assign__select:hover { background-color: var(--hover-bg); }
+
+.assign__select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* The chat's scrollback, softly tinted like WhatsApp's wallpaper. */
 .chat-thread__messages {
   flex: 1;
@@ -595,6 +634,31 @@
 }
 
 .composer__input { flex: 1; height: 36px; }
+
+/* Canned replies. Sits before the input so it reads as a way to *fill* it,
+   not as a second send. No panel behind it yet -- see chat_thread.html. */
+.composer__quick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--speed) ease, color var(--speed) ease;
+}
+
+.composer__quick:hover { background: var(--hover-bg); color: var(--text); }
+.composer__quick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.composer__quick .icon { width: 15px; height: 15px; }
 
 /* Window-closed notice replacing the composer (WhatsApp's 24h rule). */
 .composer--closed {
