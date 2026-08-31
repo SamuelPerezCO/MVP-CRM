@@ -27,7 +27,10 @@
     <dd>{{ active_conversation.get_status_display }}</dd>
 
     <dt>Asignada a</dt>
-    <dd>{{ active_conversation.assigned_to|default:"Sin asignar" }}</dd>
+    {# id is the out-of-band target the header's assignment dropdown refreshes. #}
+    <dd id="details-assigned-{{ active_conversation.pk }}">
+      {% include "partials/inbox/assigned_name.html" with conversation=active_conversation %}
+    </dd>
 
     <dt>Cliente desde</dt>
     <dd>{{ active_conversation.contact.created_at|date:"d/m/Y" }}</dd>

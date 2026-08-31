@@ -80,11 +80,16 @@ CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS]
 # CSRF checks and any secure-cookie/redirect behavior.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# Single shared login gate in front of the whole app (core.middleware.
-# LoginRequiredMiddleware) -- not django.contrib.auth, no user accounts, just
-# one username/password pair from the environment. Blank means the gate can
-# never be satisfied (see the middleware), rather than an empty/empty login
-# working.
+# Who can log in, and who a conversation can be assigned to -- the same list
+# either way (see core/agents.py for the format and the reasoning). Comma-
+# separated `username:password:Nombre` entries, e.g.
+#   APP_AGENTS=Admin:sup3rsecret:Admin,Samuel:1234:Samuel
+# Blank means the gate can never be satisfied (see core.middleware), rather
+# than an empty/empty login working.
+APP_AGENTS = os.environ.get('APP_AGENTS', '')
+
+# The pre-agents single pair, kept as a fallback so an environment that only
+# sets these two still gets in -- core.agents treats it as a one-agent list.
 APP_LOGIN_USERNAME = os.environ.get('APP_LOGIN_USERNAME', '')
 APP_LOGIN_PASSWORD = os.environ.get('APP_LOGIN_PASSWORD', '')
 

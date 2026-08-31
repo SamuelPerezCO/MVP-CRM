@@ -38,7 +38,39 @@ python manage.py seed_conversations       # contactos y conversaciones de demo (
 python manage.py simulate_inbound "+573000000001" "Hola, ¿sigue disponible?"
 ```
 
-`seed_conversations` crea un usuario `asesor` / `asesor123` — inicia sesión en `/admin` con él para que el filtro "Tu inbox" tenga conversaciones. `simulate_inbound` empuja un mensaje entrante por el **mismo** código del webhook (firma, parseo, idempotencia); con el Inbox abierto lo verás llegar solo en el siguiente poll.
+`seed_conversations` crea un usuario `asesor` / `asesor123` y le asigna conversaciones de demo. `simulate_inbound` empuja un mensaje entrante por el **mismo** código del webhook (firma, parseo, idempotencia); con el Inbox abierto lo verás llegar solo en el siguiente poll.
+
+## Agentes (personas)
+
+Un **agente** es a la vez un login y un asignatario: la misma identidad que
+pasa la puerta de entrada es la que puede aparecer como responsable de una
+conversación en el Inbox. La lista vive en el entorno, no en la base de datos
+— agregar un compañero es editar una variable y volver a desplegar, sin
+pantalla de gestión de usuarios ni registro:
+
+```
+APP_AGENTS=Admin:cambia-esta-clave:Admin,Samuel:1234:Samuel
+```
+
+Entradas separadas por coma, cada una `usuario:contraseña:Nombre` (el nombre
+visible es opcional y por defecto es el usuario). Las contraseñas no pueden
+llevar `:` ni `,`, que son los separadores.
+
+Al iniciar sesión se abre una sesión real de `django.contrib.auth` contra un
+`User` espejo de ese agente ([core/agents.py](core/agents.py)), creado bajo
+demanda y con contraseña inutilizable: existe para que `assigned_to` y
+`sent_by` tengan a quién apuntar, nunca para autenticar — el entorno sigue
+siendo la única vía de entrada. Eso es lo que hace que el filtro "Tu inbox"
+funcione y que cada mensaje enviado registre quién lo escribió.
+
+En el Inbox, el desplegable junto al estado de la conversación ("Abierta")
+cambia el agente asignado y guarda al instante; "Sin asignar" la devuelve a la
+bandeja común. Todos los agentes tienen las mismas capacidades por ahora — no
+hay roles.
+
+Si `APP_AGENTS` no está definida se usa el par antiguo
+`APP_LOGIN_USERNAME`/`APP_LOGIN_PASSWORD` como lista de un solo agente, así que
+un entorno anterior a esto sigue funcionando sin tocar nada.
 
 ## Mensajería: cambiar de proveedor
 
