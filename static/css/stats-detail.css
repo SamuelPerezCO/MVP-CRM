@@ -130,10 +130,44 @@
 .stats-filters {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;             /* three controls on Tiempos -- wrap, not clip */
   gap: 12px;
 }
 
 .stats-filters__busy { font-size: 12.5px; color: var(--muted); }
+
+/* A labelled filter select, matching the daterange field's anatomy: small
+   label on top, bold value below, one bordered box around both. The label is
+   static flow, never floated over the control -- native selects center their
+   text in the box regardless of padding, which is exactly the overlap bug
+   the plantillas form had. */
+.stats-select {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 180px;
+  padding: 6px 10px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.stats-select:focus-within { border-color: var(--accent); }
+
+.stats-select__label { font-size: 11px; color: var(--muted); }
+
+.stats-select__input {
+  margin-inline-start: -4px;   /* aligns the option text with the label */
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.stats-select__input:focus-visible { outline: none; }
 
 .daterange {
   position: relative;
@@ -291,6 +325,7 @@
 .kpi--green  { --kpi-tone: #1DA851; }
 .kpi--purple { --kpi-tone: #7c5cd6; }
 .kpi--blue   { --kpi-tone: #2f80ed; }
+.kpi--orange { --kpi-tone: #e8590c; }
 
 /* The totals tile is a different kind of number, so it gets a different
    field as well as a different group. */
