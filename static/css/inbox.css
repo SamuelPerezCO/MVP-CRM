@@ -660,6 +660,89 @@
 .composer__quick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .composer__quick .icon { width: 15px; height: 15px; }
 
+/* The plantillas picker behind that button: a details/summary popover that
+   opens upward, above the composer. */
+.quickreplies { position: relative; flex-shrink: 0; }
+
+/* <summary> is the .composer__quick button; strip its disclosure marker. */
+.quickreplies summary { list-style: none; }
+.quickreplies summary::-webkit-details-marker { display: none; }
+.quickreplies[open] summary { background: var(--hover-bg); color: var(--text); }
+
+.quickreplies__pop {
+  position: absolute;
+  inset-block-end: calc(100% + 8px);
+  inset-inline-start: 0;
+  z-index: 30;
+  width: 340px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgb(15 30 50 / 16%);
+}
+
+.quickreplies__title {
+  margin: 2px 4px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.quickreplies__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quickreplies__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.quickreplies__item:hover { background: var(--hover-bg); }
+.quickreplies__item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.quickreplies__name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.quickreplies__preview {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.quickreplies__empty {
+  margin: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.quickreplies__empty a { color: var(--accent); }
+
 /* Window-closed notice replacing the composer (WhatsApp's 24h rule). */
 .composer--closed {
   color: var(--muted);

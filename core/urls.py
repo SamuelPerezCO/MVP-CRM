@@ -35,6 +35,12 @@ urlpatterns = [
         views.inbox_assign,
         name="inbox_assign",
     ),
+    # The composer's Respuestas rápidas popover, fetched when first opened.
+    path(
+        "inbox/respuestas-rapidas/",
+        views.inbox_quick_replies,
+        name="inbox_quick_replies",
+    ),
     # One conversation's tag picker: GET renders it, POST toggles/creates.
     path(
         "inbox/conversacion/<int:conversation_id>/etiquetas/",

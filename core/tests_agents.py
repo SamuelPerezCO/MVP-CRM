@@ -271,11 +271,12 @@ class ConversationAssignmentTests(TestCase):
         self.assertNotIn("Asesor Demo", response.content.decode())
 
     def test_composer_offers_quick_replies(self):
-        """Placeholder button -- present, but wired to nothing yet."""
+        """The picker is wired to its endpoint (tests_respuestas_rapidas has
+        the behavior; this pins that the composer carries it)."""
         response = self.client.get(reverse("inbox_chat", args=[self.conversation.pk]))
         html = response.content.decode()
         self.assertIn("Respuestas rápidas", html)
-        self.assertNotIn("respuestas-rapidas", html)  # no endpoint behind it
+        self.assertIn(reverse("inbox_quick_replies"), html)
 
 
 @override_settings(APP_AGENTS=TWO_AGENTS, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD="")
