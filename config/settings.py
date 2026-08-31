@@ -61,6 +61,15 @@ VERCEL_PROJECT_PRODUCTION_URL = os.environ.get('VERCEL_PROJECT_PRODUCTION_URL')
 if VERCEL_PROJECT_PRODUCTION_URL:
     ALLOWED_HOSTS.append(VERCEL_PROJECT_PRODUCTION_URL)
 
+# Vercel also assigns this project two more stable aliases beyond
+# VERCEL_PROJECT_PRODUCTION_URL (project-name-team-slug, and the git branch
+# alias for main) -- hardcode them so they keep working without a dashboard
+# env var edit.
+ALLOWED_HOSTS += [
+    'mvp-crm-unaneaprogramadora.vercel.app',
+    'mvp-crm-git-main-unaneaprogramadora.vercel.app',
+]
+
 CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS]
 
 # Vercel terminates TLS in front of the app and forwards over HTTP; without
