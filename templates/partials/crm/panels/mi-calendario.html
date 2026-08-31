@@ -12,7 +12,7 @@
   Context: calendar_prefs, event_types, slot_choices, reminder_choices,
            contacts, advisors
 {% endcomment %}
-{% load static %}
+{% load assets %}
 
 <div class="calendario" data-calendar-root
      data-csrf="{{ csrf_token }}"
@@ -92,5 +92,5 @@
   </div>
 </div>
 
-<script src="{% static 'js/vendor/fullcalendar.min.js' %}"></script>
-<script src="{% static 'js/calendario.js' %}"></script>
+<script src="{% vstatic 'js/vendor/fullcalendar.min.js' %}"></script>
+<script src="{% vstatic 'js/calendario.js' %}"></script>

@@ -1,26 +1,26 @@
-{% load static %}
+{% load assets %}
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }} · MVP CRM</title>
-  <link rel="stylesheet" href="{% static 'css/sidebar.css' %}">
-  <link rel="stylesheet" href="{% static 'css/inbox.css' %}">
-  <link rel="stylesheet" href="{% static 'css/tags.css' %}">
-  <link rel="stylesheet" href="{% static 'css/crm.css' %}">
-  <link rel="stylesheet" href="{% static 'css/embudos.css' %}">
-  <link rel="stylesheet" href="{% static 'css/automatizaciones.css' %}">
-  <link rel="stylesheet" href="{% static 'css/comercio.css' %}">
-  <link rel="stylesheet" href="{% static 'css/estadisticas.css' %}">
-  <link rel="stylesheet" href="{% static 'css/mensajeria.css' %}">
-  <link rel="stylesheet" href="{% static 'css/welcome.css' %}">
-  <link rel="stylesheet" href="{% static 'css/modal.css' %}">
-  <link rel="stylesheet" href="{% static 'css/plantillas.css' %}">
-  <link rel="stylesheet" href="{% static 'css/calendario.css' %}">
-  <link rel="stylesheet" href="{% static 'css/stats-detail.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/sidebar.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/inbox.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/tags.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/crm.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/embudos.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/automatizaciones.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/comercio.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/estadisticas.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/mensajeria.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/welcome.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/modal.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/plantillas.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/calendario.css' %}">
+  <link rel="stylesheet" href="{% vstatic 'css/stats-detail.css' %}">
   {# Vendored so the app has no CDN dependency at runtime. #}
-  <script src="{% static 'js/vendor/htmx.min.js' %}" defer></script>
+  <script src="{% vstatic 'js/vendor/htmx.min.js' %}" defer></script>
 </head>
 <body>
   <div class="app">
@@ -31,6 +31,6 @@
     </main>
   </div>
 
-  <script src="{% static 'js/shell.js' %}" defer></script>
+  <script src="{% vstatic 'js/shell.js' %}" defer></script>
 </body>
 </html>
