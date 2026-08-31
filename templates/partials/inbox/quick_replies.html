@@ -7,17 +7,22 @@
   composer input on click, so the agent reviews the text and presses Enviar.
   Nothing here sends by itself.
 
-  Context: entries -- [{template, body}], approved + active only
+  Context: entries -- [{template, body}], active and not rechazada
 {% endcomment %}
 
 {% if entries %}
-  <p class="quickreplies__title">Plantillas aprobadas</p>
+  <p class="quickreplies__title">Plantillas</p>
   <ul class="quickreplies__list">
     {% for entry in entries %}
       <li>
         <button type="button" class="quickreplies__item"
                 data-quick-body="{{ entry.body }}">
-          <span class="quickreplies__name">{{ entry.template.name }}</span>
+          <span class="quickreplies__name">
+            {{ entry.template.name }}
+            {% if entry.template.status == "pendiente" %}
+              <span class="quickreplies__badge">Pendiente</span>
+            {% endif %}
+          </span>
           <span class="quickreplies__preview">{{ entry.body|truncatechars:90 }}</span>
         </button>
       </li>
@@ -25,7 +30,7 @@
   </ul>
 {% else %}
   <p class="quickreplies__empty">
-    No hay plantillas aprobadas y activas todavía. Créalas en
+    No hay plantillas activas todavía. Créalas en
     <a href="{% url 'section' 'mensajeria' %}">Configuración de mensajería</a>.
   </p>
 {% endif %}
