@@ -1,0 +1,7 @@
+{% comment %}
+  One agent's display name, or "Sin asignar" -- the single wording for an
+  unassigned conversation, so the details panel and the assignment swap can't
+  drift apart.
+
+  Context: conversation
+{% endcomment %}{% if conversation.assigned_to %}{{ conversation.assigned_to.get_full_name|default:conversation.assigned_to.username }}{% else %}Sin asignar{% endif %}
