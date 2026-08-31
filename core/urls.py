@@ -118,6 +118,13 @@ urlpatterns = [
         views.estadisticas_volumen_data,
         name="estadisticas_volumen_data",
     ),
+    # Tiempos de Respuesta: same contract for its filter bar (period, agent,
+    # platform), fetched by static/js/stats_tiempos.js.
+    path(
+        "estadisticas/mensajeria/tiempos/datos/",
+        views.estadisticas_tiempos_data,
+        name="estadisticas_tiempos_data",
+    ),
     # One Mensajería stat card's detail screen (placeholder until its
     # template exists -- see core.estadisticas.card_template).
     path(

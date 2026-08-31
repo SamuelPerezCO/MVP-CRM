@@ -43,6 +43,7 @@ from . import (
     crm,
     embudos,
     estadisticas,
+    estadisticas_tiempos,
     estadisticas_volumen,
     inbox,
     mensajeria,
@@ -1069,11 +1070,35 @@ def _volumen_context(request) -> dict:
     }
 
 
+def _tiempos_context(request) -> dict:
+    """Data for the Tiempos de Respuesta detail screen.
+
+    Same stance as :func:`_volumen_context` -- the first render ships its
+    report inline; moving any of the three filters re-fetches
+    :func:`estadisticas_tiempos_data` -- plus the two new filters' option
+    lists (agents and platforms) and their applied values.
+    """
+    start, end = estadisticas_tiempos.parse_range(request.GET)
+    agent = estadisticas_tiempos.parse_agent(request.GET)
+    platform = estadisticas_tiempos.parse_platform(request.GET)
+    return {
+        "period_start": start,
+        "period_end": end,
+        "period_label": estadisticas_tiempos.format_range(start, end),
+        "report": estadisticas_tiempos.report(start, end, agent, platform),
+        "agents": get_user_model().objects.filter(is_active=True).order_by("username"),
+        "selected_agent": agent.pk if agent else "",
+        "platforms": estadisticas_tiempos.PLATFORMS,
+        "selected_platform": platform,
+    }
+
+
 #: Stat card key -> callable(request) -> dict, mirroring
 #: :data:`STATS_PANEL_CONTEXT`. Cards without an entry render the
 #: placeholder and need no data.
 STATS_CARD_CONTEXT = {
     "volumen-mensajes": _volumen_context,
+    "tiempos-respuesta": _tiempos_context,
 }
 
 
@@ -1112,6 +1137,19 @@ def estadisticas_volumen_data(request):
     """
     start, end = estadisticas_volumen.parse_range(request.GET)
     return JsonResponse(estadisticas_volumen.report(start, end))
+
+
+def estadisticas_tiempos_data(request):
+    """JSON feed behind the Tiempos de Respuesta screen's filters.
+
+    Same contract as :func:`estadisticas_volumen_data`: one request answers
+    the whole report, and unusable filter values fall back (default period,
+    all agents, all platforms) with the response echoing what it used.
+    """
+    start, end = estadisticas_tiempos.parse_range(request.GET)
+    agent = estadisticas_tiempos.parse_agent(request.GET)
+    platform = estadisticas_tiempos.parse_platform(request.GET)
+    return JsonResponse(estadisticas_tiempos.report(start, end, agent, platform))
 
 
 def mensajeria_panel(request, view_key: str):
