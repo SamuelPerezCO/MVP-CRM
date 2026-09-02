@@ -43,6 +43,7 @@ from . import (
     crm,
     embudos,
     estadisticas,
+    estadisticas_temas,
     estadisticas_tiempos,
     estadisticas_volumen,
     inbox,
@@ -408,11 +409,27 @@ def _etiquetas_stats_context(request) -> dict:
     }
 
 
+def _temas_stats_context(request) -> dict:
+    """Data for the Temas de conversación panel.
+
+    ``?period=`` picks the window; an unknown value falls back to the
+    default rather than erroring, and the report itself lives in
+    core.estadisticas_temas.
+    """
+    period = estadisticas_temas.parse_period(request.GET)
+    return {
+        "periods": estadisticas_temas.PERIODS,
+        "period": period,
+        "report": estadisticas_temas.report(period),
+    }
+
+
 #: Estadísticas view key -> callable(request) -> dict. Views without an entry
 #: need no data.
 STATS_PANEL_CONTEXT = {
     "mensajeria": _mensajeria_stats_context,
     "etiquetas": _etiquetas_stats_context,
+    "temas-conversacion": _temas_stats_context,
 }
 
 

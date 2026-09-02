@@ -55,9 +55,9 @@ class EtiquetasPanelTests(TestCase):
                     html, f'tag-pill--{tag.color}[^>]*>{tag.name}</span>'
                 )
         rows = html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
-        self.assertIn('tag-stats__num">3</td>', rows)
-        self.assertIn('tag-stats__num">1</td>', rows)
-        self.assertIn('tag-stats__num">2</td>', rows)
+        self.assertIn('rank-table__num">3</td>', rows)
+        self.assertIn('rank-table__num">1</td>', rows)
+        self.assertIn('rank-table__num">2</td>', rows)
 
     def test_counts_chats_not_applications(self):
         # Re-applying is a no-op row-wise (unique constraint), so the count
@@ -98,8 +98,8 @@ class EtiquetasPanelTests(TestCase):
         Tag.objects.create(name="SIN USO", color="pink")
         html = self.client.get(section_url()).content.decode()
         row = html.split(">SIN USO</span>", 1)[1].split("</tr>", 1)[0]
-        self.assertIn('tag-stats__num">0</td>', row)
-        self.assertNotIn("tag-bar__fill", row)
+        self.assertIn('rank-table__num">0</td>', row)
+        self.assertNotIn("rank-bar__fill", row)
 
     def test_panel_endpoint_returns_the_same_fragment(self):
         response = self.client.get(reverse("estadisticas_panel", args=["etiquetas"]))
