@@ -1,0 +1,119 @@
+/* Public legal pages (privacidad, eliminación de datos).
+   Standalone: these render outside the shell, without the sidebar, because
+   Meta's reviewers (and anyone reading a policy) must reach them without a
+   session -- see core.middleware.EXEMPT_PATHS. */
+
+.legal-body {
+  margin: 0;
+  background: #f5f6f8;
+  color: #1c1e21;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.65;
+}
+
+.legal-header {
+  background: #fff;
+  border-bottom: 1px solid #e4e6eb;
+  padding: 20px 24px;
+}
+
+.legal-header__inner {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.legal-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 650;
+  font-size: 16px;
+  color: #1c1e21;
+  text-decoration: none;
+}
+
+.legal-header__brand svg { width: 26px; height: 26px; }
+
+.legal-main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 40px 24px 72px;
+}
+
+.legal-main h1 {
+  font-size: 30px;
+  line-height: 1.25;
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+
+.legal-updated {
+  color: #65676b;
+  font-size: 14px;
+  margin: 0 0 32px;
+}
+
+.legal-main h2 {
+  font-size: 19px;
+  margin: 36px 0 10px;
+  letter-spacing: -0.005em;
+}
+
+.legal-main h3 {
+  font-size: 16px;
+  margin: 24px 0 6px;
+}
+
+.legal-main p,
+.legal-main li { font-size: 15px; }
+
+.legal-main ul { padding-left: 22px; }
+
+.legal-main li { margin-bottom: 6px; }
+
+.legal-main a { color: #1a56db; }
+
+.legal-card {
+  background: #fff;
+  border: 1px solid #e4e6eb;
+  border-radius: 10px;
+  padding: 20px 22px;
+  margin: 24px 0;
+}
+
+.legal-card--accent { border-left: 3px solid #1a56db; }
+
+.legal-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 14.5px;
+}
+
+.legal-table th,
+.legal-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e4e6eb;
+  vertical-align: top;
+}
+
+.legal-table th { background: #f0f2f5; font-weight: 600; }
+
+.legal-footer {
+  border-top: 1px solid #e4e6eb;
+  margin-top: 48px;
+  padding-top: 20px;
+  color: #65676b;
+  font-size: 14px;
+}
+
+.legal-footer a { color: #1a56db; }
+
+@media (max-width: 600px) {
+  .legal-main { padding: 28px 18px 56px; }
+  .legal-main h1 { font-size: 25px; }
+}

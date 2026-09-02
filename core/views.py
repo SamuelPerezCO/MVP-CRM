@@ -17,7 +17,8 @@ section: it is the shell at rest, with no sidebar icon selected.
 """
 
 from django.http import Http404, HttpResponse, HttpResponseNotAllowed, JsonResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.conf import settings
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template import TemplateDoesNotExist
 from django.template.loader import get_template, render_to_string
 from django.urls import reverse
@@ -1598,3 +1599,32 @@ def calendar_prefs(request):
         slot=request.POST.get("slot", ""),
     )
     return JsonResponse({"ok": True, **calendario.get_prefs(request.session)})
+
+
+# --- Public legal pages -----------------------------------------------------
+# Reachable without a session (see core.middleware.EXEMPT_PATHS). Meta requires
+# a publicly readable privacy policy and data-deletion URL before an app can be
+# published, and a policy sitting behind the login gate is not a policy anyone
+# -- reviewer or customer -- can actually read.
+
+#: Shown as "Last updated" on both pages. A constant rather than today's date:
+#: a policy that claims to change every time it is rendered is worthless.
+LEGAL_UPDATED = '2 de septiembre de 2026'
+
+
+def _legal_context():
+    return {
+        'updated': LEGAL_UPDATED,
+        'entity': settings.LEGAL_ENTITY_NAME,
+        'contact_email': settings.LEGAL_CONTACT_EMAIL,
+    }
+
+
+def privacy(request):
+    """The privacy policy. Public by design."""
+    return render(request, 'legal/privacidad.html', _legal_context())
+
+
+def data_deletion(request):
+    """How to ask us to delete your data. Public by design."""
+    return render(request, 'legal/eliminacion-de-datos.html', _legal_context())

@@ -94,6 +94,14 @@ APP_LOGIN_USERNAME = os.environ.get('APP_LOGIN_USERNAME', '')
 APP_LOGIN_PASSWORD = os.environ.get('APP_LOGIN_PASSWORD', '')
 
 
+# Public legal pages (core.views.privacy / data_deletion). Meta requires a
+# reachable privacy policy and data-deletion URL to publish the app; these
+# two values are what those pages name as the responsible party, so set them
+# to the real business before pointing Meta at the URLs.
+LEGAL_ENTITY_NAME = os.environ.get('LEGAL_ENTITY_NAME', 'MVP CRM')
+LEGAL_CONTACT_EMAIL = os.environ.get('LEGAL_CONTACT_EMAIL', 'sernasamuelperez@gmail.com')
+
+
 # Application definition
 
 INSTALLED_APPS = [

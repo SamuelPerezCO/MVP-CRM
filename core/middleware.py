@@ -7,8 +7,8 @@ remembered as a flag in the session. This middleware is what enforces it: any
 request without that flag is redirected to the login page, except for the
 handful of paths that must stay reachable without a browser session --
 provider webhooks (hit by Twilio/Meta/the Baileys sidecar, authenticated by
-their own signature check instead), static/media assets, and Django admin
-(gated separately by django.contrib.auth).
+their own signature check instead), the public legal pages, static/media
+assets, and Django admin (gated separately by django.contrib.auth).
 """
 
 from django.shortcuts import redirect
@@ -18,7 +18,9 @@ from django.conf import settings
 
 SESSION_KEY = 'app_authenticated'
 
-EXEMPT_PATHS = {'/login/'}
+# /privacidad/ and /eliminacion-de-datos/ are public on purpose: Meta's app
+# review reads them without an account, and so must any customer.
+EXEMPT_PATHS = {'/login/', '/privacidad/', '/eliminacion-de-datos/'}
 EXEMPT_PREFIXES = ('/webhooks/', '/static/', '/media/', '/admin/')
 
 
