@@ -43,8 +43,10 @@ from . import (
     crm,
     embudos,
     estadisticas,
+    estadisticas_periodos,
     estadisticas_temas,
     estadisticas_tiempos,
+    estadisticas_ventas,
     estadisticas_volumen,
     inbox,
     mensajeria,
@@ -424,10 +426,24 @@ def _temas_stats_context(request) -> dict:
     }
 
 
+def _ventas_stats_context(request) -> dict:
+    """Data for the Ventas panel. Same period contract as
+    :func:`_temas_stats_context`; the report lives in
+    core.estadisticas_ventas.
+    """
+    period = estadisticas_periodos.parse_period(request.GET)
+    return {
+        "periods": estadisticas_periodos.PERIODS,
+        "period": period,
+        "report": estadisticas_ventas.report(period),
+    }
+
+
 #: Estadísticas view key -> callable(request) -> dict. Views without an entry
 #: need no data.
 STATS_PANEL_CONTEXT = {
     "mensajeria": _mensajeria_stats_context,
+    "ventas": _ventas_stats_context,
     "etiquetas": _etiquetas_stats_context,
     "temas-conversacion": _temas_stats_context,
 }

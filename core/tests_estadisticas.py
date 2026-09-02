@@ -50,11 +50,13 @@ class EstadisticasScreenTests(TestCase):
         )
 
     def test_view_query_param_selects_the_panel(self):
+        # "embudos" because it is still on the placeholder; ventas, etiquetas
+        # and temas-conversacion have real panels now (their own test files).
         response = self.client.get(
-            reverse("section", args=["estadisticas"]), {"view": "ventas"}
+            reverse("section", args=["estadisticas"]), {"view": "embudos"}
         )
-        self.assertEqual(response.context["active_view"], "ventas")
-        self.assertContains(response, "Ventas — próximamente")
+        self.assertEqual(response.context["active_view"], "embudos")
+        self.assertContains(response, "Embudos — próximamente")
 
     def test_unknown_view_falls_back_instead_of_404(self):
         response = self.client.get(
@@ -141,7 +143,7 @@ class EstadisticasPanelEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("<html", body)
         self.assertNotIn("side-nav", body)  # nav panel is not re-sent
-        self.assertIn("Ventas", body)
+        self.assertIn("Estadísticas de ventas", body)
 
     def test_every_view_has_a_working_endpoint(self):
         for view in VIEWS:
