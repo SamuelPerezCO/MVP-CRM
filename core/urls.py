@@ -9,6 +9,10 @@ urlpatterns = [
     # The app-wide login gate (core.middleware.LoginRequiredMiddleware).
     path("login/", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
+    # Public legal pages -- no session required (core.middleware), because
+    # Meta will not publish an app whose privacy policy needs a login.
+    path("privacidad/", views.privacy, name="privacy"),
+    path("eliminacion-de-datos/", views.data_deletion, name="data_deletion"),
     # Root is the welcome screen: the shell before any section is chosen. It is
     # deliberately not a `section` route, so no sidebar icon matches "/".
     path("", views.welcome, name="home"),

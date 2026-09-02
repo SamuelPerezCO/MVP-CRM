@@ -1,0 +1,178 @@
+{% load assets %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Política de privacidad · MVP CRM</title>
+  <meta name="description" content="Cómo MVP CRM recolecta, usa y protege los datos personales de las conversaciones de WhatsApp.">
+  <link rel="stylesheet" href="{% vstatic 'css/legal.css' %}">
+</head>
+<body class="legal-body">
+  <header class="legal-header">
+    <div class="legal-header__inner">
+      <a class="legal-header__brand" href="/">
+        {% include "icons/logo.svg" %}
+        <span>MVP CRM</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="legal-main" role="main">
+    <h1>Política de privacidad</h1>
+    <p class="legal-updated">Última actualización: {{ updated }}</p>
+
+    <p>
+      Esta política explica qué datos personales trata <strong>{{ entity }}</strong>
+      («nosotros») a través de MVP CRM, con qué finalidad y qué derechos tienes
+      sobre ellos. Aplica a las conversaciones de WhatsApp que se gestionan
+      mediante la plataforma.
+    </p>
+
+    <h2>1. Responsable del tratamiento</h2>
+    <p>
+      {{ entity }} es responsable del tratamiento de los datos descritos aquí.
+      Para cualquier consulta sobre esta política o sobre tus datos, escríbenos a
+      <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.
+    </p>
+
+    <h2>2. Qué datos recolectamos</h2>
+    <p>
+      Solo tratamos los datos necesarios para atender una conversación. No
+      compramos bases de datos ni recolectamos información de terceros.
+    </p>
+
+    <table class="legal-table">
+      <thead>
+        <tr><th>Dato</th><th>Origen</th><th>Para qué</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Número de teléfono</td>
+          <td>Tu mensaje de WhatsApp</td>
+          <td>Identificar la conversación y responderte</td>
+        </tr>
+        <tr>
+          <td>Nombre de perfil de WhatsApp</td>
+          <td>Tu mensaje de WhatsApp</td>
+          <td>Mostrar quién escribe, en vez de solo un número</td>
+        </tr>
+        <tr>
+          <td>Contenido de los mensajes (texto, imágenes, audio, documentos)</td>
+          <td>Tu mensaje de WhatsApp</td>
+          <td>Atender tu solicitud y conservar el historial de la conversación</td>
+        </tr>
+        <tr>
+          <td>Estados de entrega (enviado, entregado, leído) y fecha y hora</td>
+          <td>WhatsApp</td>
+          <td>Saber si un mensaje llegó y medir tiempos de respuesta</td>
+        </tr>
+        <tr>
+          <td>Notas y etiquetas internas</td>
+          <td>Nuestro equipo</td>
+          <td>Organizar la atención (por ejemplo, marcar una conversación como resuelta)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      <strong>No recolectamos</strong> datos de ubicación en tiempo real,
+      contactos de tu teléfono, ni información sensible. Si nos envías datos
+      sensibles por tu cuenta en un mensaje, los trataremos únicamente para
+      responderte y podrás pedir su eliminación.
+    </p>
+
+    <h2>3. Finalidad y autorización</h2>
+    <p>
+      Tratamos tus datos para responder a tus mensajes, dar seguimiento a tus
+      solicitudes, mantener el historial de la conversación y mejorar la calidad
+      de la atención. Al escribirnos por WhatsApp autorizas este tratamiento
+      para esas finalidades. Puedes revocar esa autorización en cualquier
+      momento (ver la sección 7).
+    </p>
+
+    <h2>4. Con quién se comparten</h2>
+    <p>
+      No vendemos tus datos ni los usamos para publicidad. Los compartimos
+      únicamente con los proveedores necesarios para que el servicio funcione:
+    </p>
+    <ul>
+      <li>
+        <strong>Meta Platforms, Inc.</strong> — opera WhatsApp y la WhatsApp
+        Business Platform, por donde viajan los mensajes. Su tratamiento se rige
+        por las políticas de WhatsApp.
+      </li>
+      <li>
+        <strong>Vercel Inc.</strong> — alojamiento de la aplicación.
+      </li>
+      <li>
+        <strong>Neon Inc.</strong> — base de datos donde se almacenan las
+        conversaciones, con conexión cifrada.
+      </li>
+    </ul>
+    <p>
+      También podremos entregar información cuando una autoridad competente lo
+      requiera legalmente.
+    </p>
+
+    <h2>5. Conservación</h2>
+    <p>
+      Conservamos las conversaciones mientras la relación de atención esté
+      vigente y hasta por dos (2) años después del último mensaje, salvo que
+      solicites su eliminación antes o que una obligación legal exija
+      conservarlas por más tiempo.
+    </p>
+
+    <h2>6. Seguridad</h2>
+    <p>
+      Aplicamos medidas técnicas y organizativas razonables: el tráfico viaja
+      cifrado (HTTPS), la conexión a la base de datos exige TLS, el acceso a la
+      plataforma está restringido con credenciales, y los mensajes entrantes se
+      verifican criptográficamente para confirmar que provienen realmente de
+      WhatsApp. Ningún sistema es completamente infalible, pero trabajamos para
+      reducir el riesgo.
+    </p>
+
+    <h2>7. Tus derechos</h2>
+    <p>
+      De acuerdo con la Ley 1581 de 2012 y sus normas reglamentarias (Colombia),
+      como titular de los datos puedes:
+    </p>
+    <ul>
+      <li>Conocer qué datos tuyos tratamos y cómo.</li>
+      <li>Solicitar que se actualicen o corrijan si están desactualizados o son inexactos.</li>
+      <li>Solicitar su supresión.</li>
+      <li>Revocar la autorización para tratarlos.</li>
+      <li>Presentar quejas ante la Superintendencia de Industria y Comercio.</li>
+    </ul>
+
+    <div class="legal-card legal-card--accent">
+      <p style="margin:0">
+        Para ejercer cualquiera de estos derechos, escríbenos a
+        <a href="mailto:{{ contact_email }}">{{ contact_email }}</a> desde el
+        número o correo asociado a tu conversación. Respondemos dentro de los
+        quince (15) días hábiles siguientes. Para borrar tus datos, consulta la
+        <a href="{% url 'data_deletion' %}">página de eliminación de datos</a>.
+      </p>
+    </div>
+
+    <h2>8. Cambios a esta política</h2>
+    <p>
+      Si modificamos esta política, actualizaremos la fecha del encabezado y
+      publicaremos la nueva versión en esta misma dirección.
+    </p>
+
+    <h2>9. Contacto</h2>
+    <p>
+      {{ entity }} · <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>
+    </p>
+
+    <div class="legal-footer">
+      <p>
+        <a href="{% url 'data_deletion' %}">Eliminación de datos</a> ·
+        <a href="/">Inicio</a>
+      </p>
+    </div>
+  </main>
+</body>
+</html>
