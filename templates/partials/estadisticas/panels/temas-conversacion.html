@@ -1,0 +1,121 @@
+{% comment %}
+  Estadísticas column 3 -- the Temas de conversación page: what customers
+  actually write about, ranked.
+
+  This is what core.views.estadisticas_panel returns when "Temas de
+  conversación" is picked in the secondary nav. A period select over three
+  summary tiles over the ranking table; the report behind it is
+  core.estadisticas_temas (word frequency over inbound messages -- the
+  honest MVP stand-in for the reference's AI topic detection, and the page
+  says so in its info-dot).
+
+  The select re-fetches this same panel through the estadisticas_panel
+  endpoint with ?period=, so changing the period swaps the whole panel --
+  tiles, table and the select itself (which is how it keeps its selection).
+
+  Context: periods, period, report (topics / max_conversations /
+  total_topics / analyzed_messages / conversation_count)
+{% endcomment %}
+
+<div class="stats-page">
+
+  <header class="stats-page__head">
+    <h1 class="stats-page__title">Temas de conversación</h1>
+
+    <p class="stats-page__subtitle">
+      De qué hablan los clientes que te escriben
+      <span class="info-dot" tabindex="0" role="img"
+            data-tip="Ranking de las palabras más usadas en los mensajes recibidos, ignorando saludos y palabras comunes. Es un conteo de texto real, no una clasificación con IA."
+            aria-label="Ranking de las palabras más usadas en los mensajes recibidos, ignorando saludos y palabras comunes. Es un conteo de texto real, no una clasificación con IA.">
+        {% include "icons/info.svg" %}
+      </span>
+    </p>
+  </header>
+
+  <div class="stats-filters stats-page__filters">
+    <label class="stats-select">
+      <span class="stats-select__label">Período</span>
+      <select name="period" class="stats-select__input"
+              hx-get="{% url 'estadisticas_panel' 'temas-conversacion' %}"
+              hx-target="#estadisticas-panel"
+              hx-swap="innerHTML">
+        {% for option in periods %}
+          <option value="{{ option.key }}"{% if option.key == period.key %} selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  {% if report.topics %}
+
+    <div class="kpi-row stats-page__kpis">
+      <div class="kpi-group">
+        <div class="kpi-group__tiles">
+
+          <article class="kpi kpi--purple">
+            <p class="kpi__label">Temas detectados</p>
+            <p class="kpi__value">{{ report.total_topics }}</p>
+            <p class="kpi__note">palabras distintas con menciones</p>
+          </article>
+
+          <article class="kpi kpi--blue">
+            <p class="kpi__label">Mensajes analizados</p>
+            <p class="kpi__value">{{ report.analyzed_messages }}</p>
+            <p class="kpi__note">recibidos en el período</p>
+          </article>
+
+          <article class="kpi kpi--green">
+            <p class="kpi__label">Conversaciones</p>
+            <p class="kpi__value">{{ report.conversation_count }}</p>
+            <p class="kpi__note">con mensajes recibidos en el período</p>
+          </article>
+
+        </div>
+      </div>
+    </div>
+
+    <table class="table rank-table">
+      <thead>
+        <tr>
+          <th scope="col">Tema</th>
+          <th scope="col" class="rank-table__num">Conversaciones</th>
+          <th scope="col" class="rank-table__num">Menciones</th>
+          <th scope="col" class="rank-table__bar-col">Proporción</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for topic in report.topics %}
+          <tr>
+            <td class="table__name">{{ topic.word }}</td>
+
+            <td class="rank-table__num">{{ topic.conversations }}</td>
+            <td class="rank-table__num table__muted">{{ topic.mentions }}</td>
+
+            {% comment %} The numbers before this cell are the accessible
+               values; the bar is decoration on top of them. {% endcomment %}
+            <td class="rank-table__bar-col">
+              <span class="rank-bar" aria-hidden="true">
+                <span class="rank-bar__fill"
+                      style="width: {% widthratio topic.conversations report.max_conversations 100 %}%"></span>
+              </span>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+  {% else %}
+
+    <div class="empty empty--list">
+      <div class="empty__icon">{% include "icons/list.svg" %}</div>
+      <p class="empty__title">Aún no hay temas que mostrar</p>
+      <p class="empty__text">
+        Cuando lleguen mensajes de clientes en el período elegido, aquí verás
+        un ranking de las palabras que más usan. Prueba con un período más
+        amplio si tu historial es antiguo.
+      </p>
+    </div>
+
+  {% endif %}
+</div>

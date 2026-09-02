@@ -30,7 +30,7 @@
 
   {% if tag_stats %}
 
-    <div class="kpi-row tag-stats__kpis">
+    <div class="kpi-row stats-page__kpis">
       <div class="kpi-group">
         <div class="kpi-group__tiles">
 
@@ -69,12 +69,12 @@
       </div>
     </div>
 
-    <table class="table tag-stats__table">
+    <table class="table rank-table">
       <thead>
         <tr>
           <th scope="col">Etiqueta</th>
-          <th scope="col" class="tag-stats__num">Conversaciones</th>
-          <th scope="col" class="tag-stats__bar-col">Proporción</th>
+          <th scope="col" class="rank-table__num">Conversaciones</th>
+          <th scope="col" class="rank-table__bar-col">Proporción</th>
         </tr>
       </thead>
 
@@ -86,14 +86,14 @@
               {% if tag.is_archived %}<span class="table__muted"> · archivada</span>{% endif %}
             </td>
 
-            <td class="tag-stats__num">{{ tag.chats }}</td>
+            <td class="rank-table__num">{{ tag.chats }}</td>
 
             {% comment %} The number in the cell before this one is the
                accessible value; the bar is decoration on top of it. {% endcomment %}
-            <td class="tag-stats__bar-col">
-              <span class="tag-bar" aria-hidden="true">
+            <td class="rank-table__bar-col">
+              <span class="rank-bar" aria-hidden="true">
                 {% if tag.chats %}
-                  <span class="tag-bar__fill"
+                  <span class="rank-bar__fill"
                         style="width: {% widthratio tag.chats max_chats 100 %}%; background: var(--tag-{{ tag.color }}-fg)"></span>
                 {% endif %}
               </span>

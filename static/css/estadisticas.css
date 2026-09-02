@@ -144,29 +144,31 @@
 }
 
 /* ==========================================================================
-   Etiquetas panel — summary tiles (the shared .kpi blocks from
-   stats-detail.css) over a ranking table. Each row's bar is scaled against
-   the busiest tag and painted with that tag's dark ink token
-   (--tag-<color>-fg, tags.css) — the soft -bg pastels would wash out on the
-   grey track. The count cell is the accessible value; the bar is decoration.
+   Ranking panels (Etiquetas, Temas de conversación) — summary tiles (the
+   shared .kpi blocks from stats-detail.css) over a ranking table: one row
+   per item with its count and a bar scaled against the busiest one. The
+   count cell is the accessible value; the bar is decoration.
    ========================================================================== */
 
 /* .stats-page stacks with no gap (unlike .stats-detail), so the tile row
-   spaces itself off the table. */
-.tag-stats__kpis { margin-block-end: 20px; }
+   spaces itself off what follows. */
+.stats-page__kpis { margin-block-end: 20px; }
+
+/* So does a filter row, when the panel has one (Temas). */
+.stats-page__filters { margin-block-end: 18px; }
 
 /* Scoped under the table class to outweigh `.table thead th`'s text-align. */
-.tag-stats__table .tag-stats__num {
+.rank-table .rank-table__num {
   text-align: end;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
-/* Wide enough for the bars to differentiate, never wider than the pills'
+/* Wide enough for the bars to differentiate, never wider than the first
    column needs it to be. */
-.tag-stats__bar-col { width: 45%; }
+.rank-table__bar-col { width: 45%; }
 
-.tag-bar {
+.rank-bar {
   display: block;
   height: 8px;
   min-width: 120px;
@@ -175,11 +177,15 @@
   overflow: hidden;
 }
 
-.tag-bar__fill {
+/* Accent by default (Temas); Etiquetas overrides per row with the tag's own
+   dark ink token (--tag-<color>-fg, tags.css) — the soft -bg pastels would
+   wash out on the grey track. */
+.rank-bar__fill {
   display: block;
   height: 100%;
   border-radius: inherit;
+  background: var(--accent);
 }
 
-/* Archived rows retire their bar along with their pill. */
-.tag-row--archived .tag-bar__fill { opacity: 0.45; }
+/* Archived tag rows retire their bar along with their pill. */
+.tag-row--archived .rank-bar__fill { opacity: 0.45; }
