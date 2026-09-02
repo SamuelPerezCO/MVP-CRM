@@ -1,0 +1,147 @@
+{% comment %}
+  Estadísticas column 3 -- the Ventas page: conversations that ended in a
+  sale, as recorded by the team's own sale tags.
+
+  This is what core.views.estadisticas_panel returns when "Ventas" is picked
+  in the secondary nav. A period select over three summary tiles over the
+  per-channel table; the report behind it is core.estadisticas_ventas (a
+  sale = a conversation tagged with a tag whose name contains «venta»,
+  dated by when it was tagged). No sale tag existing yet is a *setup*
+  state, and the empty card teaches the workflow instead of apologizing.
+
+  The select re-fetches this same panel through the estadisticas_panel
+  endpoint with ?period=, exactly like the Temas panel.
+
+  Context: periods, period, report (sale_tags / sales /
+  conversations_started / conversion_pct / total_sales / channels /
+  max_channel_sales)
+{% endcomment %}
+
+<div class="stats-page">
+
+  <header class="stats-page__head">
+    <h1 class="stats-page__title">Estadísticas de ventas</h1>
+
+    <p class="stats-page__subtitle">
+      Cuántas conversaciones terminan en venta
+      <span class="info-dot" tabindex="0" role="img"
+            data-tip="Una venta es una conversación etiquetada con una etiqueta cuyo nombre contiene «venta», contada en la fecha en que se aplicó la etiqueta."
+            aria-label="Una venta es una conversación etiquetada con una etiqueta cuyo nombre contiene «venta», contada en la fecha en que se aplicó la etiqueta.">
+        {% include "icons/info.svg" %}
+      </span>
+    </p>
+  </header>
+
+  {% if report.sale_tags %}
+
+    <div class="stats-filters stats-page__filters">
+      <label class="stats-select">
+        <span class="stats-select__label">Período</span>
+        <select name="period" class="stats-select__input"
+                hx-get="{% url 'estadisticas_panel' 'ventas' %}"
+                hx-target="#estadisticas-panel"
+                hx-swap="innerHTML">
+          {% for option in periods %}
+            <option value="{{ option.key }}"{% if option.key == period.key %} selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      {# The convention, made visible: exactly these tags count as venta. #}
+      <p class="sale-tags">
+        <span class="sale-tags__label">Cuentan como venta:</span>
+        {% for tag in report.sale_tags %}
+          <span class="tag-pill tag-pill--{{ tag.color }}{% if tag.is_archived %} tag-pill--archived{% endif %}">{{ tag.name }}</span>
+        {% endfor %}
+      </p>
+    </div>
+
+    <div class="kpi-row stats-page__kpis">
+      <div class="kpi-group">
+        <div class="kpi-group__tiles">
+
+          <article class="kpi kpi--green">
+            <p class="kpi__label">Ventas del período</p>
+            <p class="kpi__value">{{ report.sales }}</p>
+            <p class="kpi__note">conversaciones marcadas como venta</p>
+          </article>
+
+          <article class="kpi kpi--blue">
+            <p class="kpi__label">
+              Tasa de conversión
+              <span class="info-dot" tabindex="0" role="img"
+                    data-tip="Ventas del período divididas entre las conversaciones creadas en el mismo período."
+                    aria-label="Ventas del período divididas entre las conversaciones creadas en el mismo período.">
+                {% include "icons/info.svg" %}
+              </span>
+            </p>
+            <p class="kpi__value">{% if report.conversion_pct is None %}—{% else %}{{ report.conversion_pct }}%{% endif %}</p>
+            <p class="kpi__note">de {{ report.conversations_started }} conversaciones nuevas</p>
+          </article>
+
+          <article class="kpi kpi--purple">
+            <p class="kpi__label">Total histórico</p>
+            <p class="kpi__value">{{ report.total_sales }}</p>
+            <p class="kpi__note">ventas desde el inicio</p>
+          </article>
+
+        </div>
+      </div>
+    </div>
+
+    {% if report.channels %}
+      <table class="table rank-table">
+        <thead>
+          <tr>
+            <th scope="col">Canal</th>
+            <th scope="col" class="rank-table__num">Ventas</th>
+            <th scope="col" class="rank-table__bar-col">Proporción</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for row in report.channels %}
+            <tr>
+              <td class="table__name">{{ row.label }}</td>
+
+              <td class="rank-table__num">{{ row.sales }}</td>
+
+              {% comment %} The number before this cell is the accessible
+                 value; the bar is decoration on top of it. {% endcomment %}
+              <td class="rank-table__bar-col">
+                <span class="rank-bar" aria-hidden="true">
+                  <span class="rank-bar__fill"
+                        style="width: {% widthratio row.sales report.max_channel_sales 100 %}%"></span>
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty empty--list">
+        <div class="empty__icon">{% include "icons/receipt.svg" %}</div>
+        <p class="empty__title">Sin ventas en el período</p>
+        <p class="empty__text">
+          Cuando etiquetes una conversación como venta, aparecerá aquí.
+          Prueba con un período más amplio si buscas ventas anteriores.
+        </p>
+      </div>
+    {% endif %}
+
+  {% else %}
+
+    <div class="empty empty--list">
+      <div class="empty__icon">{% include "icons/receipt.svg" %}</div>
+      <p class="empty__title">Empieza a registrar ventas</p>
+      <p class="empty__text">
+        Crea una etiqueta con «venta» en el nombre —por ejemplo
+        <strong>VENTA EFECTIVA</strong>— en
+        <a href="{% url 'section' 'crm' %}?view=etiquetas">CRM › Etiquetas</a>
+        y aplícala desde el Inbox a cada conversación donde cierres una
+        venta. Esta página las contará automáticamente.
+      </p>
+    </div>
+
+  {% endif %}
+</div>

@@ -25,12 +25,22 @@ from __future__ import annotations
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import timedelta
 
 from django.core.cache import cache
-from django.utils import timezone
 
 from messaging.models import Message
+
+# Re-exported on purpose: this module's period select grew a second wearer
+# (core.estadisticas_ventas), so the machinery moved to
+# core.estadisticas_periodos; callers of this module keep working unchanged.
+from .estadisticas_periodos import (  # noqa: F401
+    DEFAULT_PERIOD,
+    PERIOD_BY_KEY,
+    PERIODS,
+    Period,
+    parse_period,
+    start_of,
+)
 
 #: Hard cap on how many messages one report reads. Text analysis pulls rows
 #: into Python, which "stops working long before anyone notices" (volumen's
@@ -48,39 +58,6 @@ TOP_N = 15
 
 #: Tokens shorter than this never count ("ok", "eh", "ya"...).
 MIN_WORD_LENGTH = 3
-
-
-@dataclass(frozen=True)
-class Period:
-    """One option in the period select."""
-
-    key: str
-    """Value in the URL / select option."""
-
-    label: str
-    """Visible Spanish label."""
-
-    days: int | None
-    """Window counting back from now; ``None`` means all history."""
-
-
-#: Order here is the order rendered in the select.
-PERIODS = [
-    Period("7", "Últimos 7 días", 7),
-    Period("30", "Últimos 30 días", 30),
-    Period("90", "Últimos 90 días", 90),
-    Period("todo", "Todo el historial", None),
-]
-
-PERIOD_BY_KEY = {period.key: period for period in PERIODS}
-
-DEFAULT_PERIOD = "30"
-
-
-def parse_period(data) -> Period:
-    """The ``?period=`` value out of a GET QueryDict, falling back to the
-    default rather than erroring -- a stale bookmark still opens."""
-    return PERIOD_BY_KEY.get(data.get("period", ""), PERIOD_BY_KEY[DEFAULT_PERIOD])
 
 
 # --- Tokenization -----------------------------------------------------------
@@ -173,10 +150,9 @@ def report(period: Period) -> dict:
         return cached
 
     messages = Message.objects.filter(direction=Message.INBOUND).exclude(body="")
-    if period.days is not None:
-        messages = messages.filter(
-            timestamp__gte=timezone.now() - timedelta(days=period.days)
-        )
+    start = start_of(period)
+    if start is not None:
+        messages = messages.filter(timestamp__gte=start)
 
     mentions: Counter[str] = Counter()
     conversations: dict[str, set[int]] = defaultdict(set)
