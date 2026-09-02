@@ -50,14 +50,13 @@ class EstadisticasScreenTests(TestCase):
         )
 
     def test_view_query_param_selects_the_panel(self):
-        # "atribuciones" because it is still on the placeholder; ventas,
-        # etiquetas, embudos and temas-conversacion have real panels now
-        # (their own test files).
+        # "agentes-ia" because it is the one view still on the placeholder;
+        # every other view has a real panel now (their own test files).
         response = self.client.get(
-            reverse("section", args=["estadisticas"]), {"view": "atribuciones"}
+            reverse("section", args=["estadisticas"]), {"view": "agentes-ia"}
         )
-        self.assertEqual(response.context["active_view"], "atribuciones")
-        self.assertContains(response, "Atribuciones — próximamente")
+        self.assertEqual(response.context["active_view"], "agentes-ia")
+        self.assertContains(response, "Agentes de IA — próximamente")
 
     def test_unknown_view_falls_back_instead_of_404(self):
         response = self.client.get(

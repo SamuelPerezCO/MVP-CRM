@@ -154,8 +154,21 @@
    spaces itself off what follows. */
 .stats-page__kpis { margin-block-end: 20px; }
 
-/* So does a filter row, when the panel has one (Temas, Ventas). */
+/* So does a filter row, when the panel has one (Temas, Ventas...). */
 .stats-page__filters { margin-block-end: 18px; }
+
+/* A page title can carry the same Alpha pill as its nav row (Atribuciones). */
+.stats-page__title .nav-badge {
+  vertical-align: middle;
+  margin-inline-start: 6px;
+}
+
+/* A KPI tile whose value is a name, not a number (Atribuciones' "Canal
+   principal") -- smaller, so WhatsApp-length labels stay on one line. */
+.kpi__value--text {
+  font-size: 18px;
+  line-height: 1.3;
+}
 
 /* Ventas: the sale-tag convention made visible, next to the period select.
    Pills wrap; the label never does. */
