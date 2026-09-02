@@ -43,6 +43,7 @@ from . import (
     crm,
     embudos,
     estadisticas,
+    estadisticas_embudos,
     estadisticas_periodos,
     estadisticas_temas,
     estadisticas_tiempos,
@@ -439,12 +440,26 @@ def _ventas_stats_context(request) -> dict:
     }
 
 
+def _embudos_stats_context(request) -> dict:
+    """Data for the Embudos panel (the conversation funnel). Same period
+    contract as the Temas and Ventas panels; the report lives in
+    core.estadisticas_embudos.
+    """
+    period = estadisticas_periodos.parse_period(request.GET)
+    return {
+        "periods": estadisticas_periodos.PERIODS,
+        "period": period,
+        "report": estadisticas_embudos.report(period),
+    }
+
+
 #: Estadísticas view key -> callable(request) -> dict. Views without an entry
 #: need no data.
 STATS_PANEL_CONTEXT = {
     "mensajeria": _mensajeria_stats_context,
     "ventas": _ventas_stats_context,
     "etiquetas": _etiquetas_stats_context,
+    "embudos": _embudos_stats_context,
     "temas-conversacion": _temas_stats_context,
 }
 
