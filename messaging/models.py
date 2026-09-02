@@ -14,7 +14,7 @@ from django.db import models
 from django.db.models.functions import Lower
 from django.utils import timezone
 
-from .providers.types import MessageStatus
+from .providers.types import MEDIA_PLACEHOLDERS, MessageStatus
 
 #: How long after a customer's last message WhatsApp allows free-form replies.
 #: Outside it only pre-approved templates may be sent -- a platform rule, so
@@ -251,6 +251,13 @@ class Message(models.Model):
     body = models.TextField(blank=True)
     media_url = models.URLField(blank=True)
 
+    #: Kind of attachment behind ``media_url`` (``image``, ``video``,
+    #: ``audio``, ``document``, ``sticker`` -- see ``InboundEvent.media_type``).
+    #: Decides whether the thread renders the media inline or as a download
+    #: link. Blank for text-only messages and for rows from before the field
+    #: existed (those keep the generic link).
+    media_type = models.CharField(max_length=16, blank=True)
+
     #: Delivery lifecycle; only meaningful outbound (inbound rows are stored
     #: as ``delivered`` -- they reached us, by definition).
     status = models.CharField(
@@ -293,6 +300,22 @@ class Message(models.Model):
     @property
     def is_outbound(self) -> bool:
         return self.direction == self.OUTBOUND
+
+    @property
+    def is_inline_image(self) -> bool:
+        """Whether the thread should show the media itself rather than a
+        download link. Stickers are WebP -- browsers render them natively."""
+        return bool(self.media_url) and self.media_type in ("image", "sticker")
+
+    @property
+    def display_body(self) -> str:
+        """Body for the chat bubble. When the image itself renders inline,
+        the "[imagen]"/"[sticker]" placeholder would just repeat it as text --
+        real captions still show. The raw ``body`` keeps the placeholder so
+        the conversation list preview reads as something."""
+        if self.is_inline_image and self.body == MEDIA_PLACEHOLDERS.get(self.media_type):
+            return ""
+        return self.body
 
     @property
     def status_icon_template(self) -> str:

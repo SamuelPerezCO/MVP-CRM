@@ -13,6 +13,20 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 
+#: Body shown when a media message carries no text of its own -- an image
+#: with no caption should still read as something, not as an empty bubble.
+#: Shared here (not per-provider) because the Inbox also needs to know these
+#: are placeholders: once the image itself renders in the thread, repeating
+#: "[sticker]" under it as text is noise (see ``Message.display_body``).
+MEDIA_PLACEHOLDERS = {
+    "image": "[imagen]",
+    "video": "[video]",
+    "audio": "[audio]",
+    "document": "[documento]",
+    "sticker": "[sticker]",
+}
+
+
 class MessageStatus(str, enum.Enum):
     """Delivery lifecycle of an outbound message.
 
@@ -84,6 +98,13 @@ class InboundEvent:
     body: str = ""
 
     media_url: str = ""
+
+    media_type: str = ""
+    """What kind of attachment ``media_url`` points at, using the provider's
+    coarse vocabulary (a ``MEDIA_PLACEHOLDERS`` key: ``image``, ``video``,
+    ``audio``, ``document``, ``sticker``). Empty for text-only messages. The
+    Inbox uses it to render images/stickers inline instead of as a download
+    link."""
 
     timestamp: datetime | None = None
     """Provider-reported time, timezone-aware. ``None`` -> receipt time."""

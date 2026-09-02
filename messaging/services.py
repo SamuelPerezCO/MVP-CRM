@@ -132,6 +132,7 @@ def _apply_message_event(event: InboundEvent) -> None:
             direction=Message.INBOUND,
             body=event.body,
             media_url=event.media_url,
+            media_type=event.media_type,
             # Inbound rows are "delivered" by definition -- they reached us.
             status=MessageStatus.DELIVERED.value,
             provider_message_id=event.provider_message_id,
@@ -181,6 +182,7 @@ def _apply_outbound_event(event: InboundEvent) -> None:
             direction=Message.OUTBOUND,
             body=event.body,
             media_url=event.media_url,
+            media_type=event.media_type,
             status=MessageStatus.DELIVERED.value,
             provider_message_id=event.provider_message_id,
             timestamp=timestamp,
