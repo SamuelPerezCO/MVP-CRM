@@ -379,10 +379,40 @@ def _mensajeria_stats_context(request) -> dict:
     return {"stat_cards": estadisticas.CARDS}
 
 
+def _etiquetas_stats_context(request) -> dict:
+    """Data for the Etiquetas stats panel: every tag with how many
+    conversations carry it, plus the tagged/untagged split for the tiles.
+
+    Counts are annotated in one query, same stance as :func:`_etiquetas_context`
+    (one through-row per (conversation, tag), so the count *is* "chats with
+    this tag"). Archived tags keep their place in the ranking but sort below
+    the active ones -- they still label old conversations, so their numbers
+    are real history, just visually retired.
+    """
+    tags = list(
+        Tag.objects.annotate(chats=Count("conversation_tags")).order_by(
+            "is_archived", "-chats", "name"
+        )
+    )
+    total = Conversation.objects.count()
+    tagged = Conversation.objects.filter(tags__isnull=False).distinct().count()
+    return {
+        "tag_stats": tags,
+        # The busiest tag's count -- what every row's bar is scaled against.
+        "max_chats": max((tag.chats for tag in tags), default=0),
+        "active_tag_count": sum(1 for tag in tags if not tag.is_archived),
+        "archived_tag_count": sum(1 for tag in tags if tag.is_archived),
+        "total_conversations": total,
+        "tagged_conversations": tagged,
+        "untagged_conversations": total - tagged,
+    }
+
+
 #: Estadísticas view key -> callable(request) -> dict. Views without an entry
 #: need no data.
 STATS_PANEL_CONTEXT = {
     "mensajeria": _mensajeria_stats_context,
+    "etiquetas": _etiquetas_stats_context,
 }
 
 
