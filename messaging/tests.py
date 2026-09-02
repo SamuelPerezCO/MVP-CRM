@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import tempfile
 from datetime import timedelta
 
 import requests
@@ -18,7 +19,7 @@ from django.utils import timezone
 
 from core.models import Client
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, Mock, patch
 
 from . import services
 from .models import Conversation, ConversationTag, Message, Tag
@@ -1021,11 +1022,28 @@ class MetaProviderTests(TestCase):
         events = self.provider.parse_webhook(self.request_for(payload))
         self.assertEqual(events[0].body, "Sí, confirmo")
 
+    @staticmethod
+    def mock_media_responses(mock_get, *, mime_type: str, data: bytes):
+        """Wire ``requests.get`` for the two calls behind one media message:
+        the id lookup (JSON with the CDN url) and the streamed download."""
+        lookup = Mock()
+        lookup.raise_for_status.return_value = None
+        lookup.json.return_value = {
+            "url": "https://cdn.example/media",
+            "mime_type": mime_type,
+            "file_size": len(data),
+        }
+        download = MagicMock()  # Magic: the code uses it as a context manager
+        download.raise_for_status.return_value = None
+        download.iter_content.return_value = [data]
+        mock_get.side_effect = [lookup, download]
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="mvp-crm-test-media-"))
     @patch("messaging.providers.meta.requests.get")
-    def test_parse_webhook_image_resolves_media_url(self, mock_get):
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.raise_for_status.return_value = None
-        mock_get.return_value.json.return_value = {"url": "https://cdn.example/media.jpg"}
+    def test_parse_webhook_image_is_downloaded_into_local_storage(self, mock_get):
+        """Meta's CDN link is token-gated and expires in minutes, so the
+        webhook must store the bytes and hand the app a durable local URL."""
+        self.mock_media_responses(mock_get, mime_type="image/jpeg", data=b"jpegbytes")
 
         payload = meta_payload(messages=[{
             "id": "wamid.IMG", "from": "573000000099", "type": "image",
@@ -1034,7 +1052,48 @@ class MetaProviderTests(TestCase):
         events = self.provider.parse_webhook(self.request_for(payload))
 
         self.assertEqual(events[0].body, "mira esto")
-        self.assertEqual(events[0].media_url, "https://cdn.example/media.jpg")
+        self.assertEqual(events[0].media_type, "image")
+        self.assertEqual(events[0].media_url, "/media/whatsapp/media-123.jpg")
+        from django.core.files.storage import default_storage
+        with default_storage.open("whatsapp/media-123.jpg") as stored:
+            self.assertEqual(stored.read(), b"jpegbytes")
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="mvp-crm-test-media-"))
+    @patch("messaging.providers.meta.requests.get")
+    def test_parse_webhook_sticker_is_stored_as_webp(self, mock_get):
+        self.mock_media_responses(mock_get, mime_type="image/webp", data=b"webpbytes")
+
+        payload = meta_payload(messages=[{
+            "id": "wamid.STK", "from": "573000000099", "type": "sticker",
+            "sticker": {"id": "sticker-9"},
+        }])
+        events = self.provider.parse_webhook(self.request_for(payload))
+
+        self.assertEqual(events[0].body, "[sticker]")
+        self.assertEqual(events[0].media_type, "sticker")
+        self.assertEqual(events[0].media_url, "/media/whatsapp/sticker-9.webp")
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="mvp-crm-test-media-"))
+    @patch("messaging.providers.meta.requests.get")
+    def test_media_download_is_idempotent_across_webhook_retries(self, mock_get):
+        """A retried webhook must reuse the stored file, not download again."""
+        self.mock_media_responses(mock_get, mime_type="image/webp", data=b"webpbytes")
+        payload = meta_payload(messages=[{
+            "id": "wamid.STK", "from": "573000000099", "type": "sticker",
+            "sticker": {"id": "sticker-9"},
+        }])
+        first = self.provider.parse_webhook(self.request_for(payload))
+
+        # The retry: only the id lookup fires, the stored file answers.
+        lookup = Mock()
+        lookup.raise_for_status.return_value = None
+        lookup.json.return_value = {
+            "url": "https://cdn.example/media", "mime_type": "image/webp",
+        }
+        mock_get.side_effect = [lookup]
+        second = self.provider.parse_webhook(self.request_for(payload))
+
+        self.assertEqual(first[0].media_url, second[0].media_url)
 
     @patch("messaging.providers.meta.requests.get")
     def test_media_resolution_failure_does_not_break_the_webhook(self, mock_get):
@@ -1049,6 +1108,7 @@ class MetaProviderTests(TestCase):
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].media_url, "")
+        self.assertEqual(events[0].media_type, "")  # no media to render
         self.assertEqual(events[0].body, "[imagen]")  # placeholder, not an empty bubble
 
     def test_parse_webhook_rejects_unparseable_payload(self):
@@ -1171,3 +1231,65 @@ class MetaProviderTests(TestCase):
     def test_send_without_credentials_raises_a_clear_error(self):
         with self.assertRaises(RuntimeError):
             self.provider.send_text("+573000000099", "hola")
+
+
+class InlineMediaTests(TestCase):
+    """media_type flows event -> Message row and drives inline rendering."""
+
+    def process(self, **overrides) -> Message:
+        event = InboundEvent(
+            event_type="message",
+            provider_message_id="prov-media-1",
+            from_number="+573000000099",
+            **overrides,
+        )
+        services.process_inbound_events([event])
+        return Message.objects.get(provider_message_id="prov-media-1")
+
+    def test_media_type_lands_on_the_message_row(self):
+        message = self.process(
+            body="[sticker]", media_url="/media/whatsapp/s.webp", media_type="sticker"
+        )
+        self.assertEqual(message.media_type, "sticker")
+        self.assertTrue(message.is_inline_image)
+
+    def test_placeholder_body_hides_behind_the_inline_image(self):
+        message = self.process(
+            body="[sticker]", media_url="/media/whatsapp/s.webp", media_type="sticker"
+        )
+        self.assertEqual(message.display_body, "")
+
+    def test_caption_still_shows_under_the_inline_image(self):
+        message = self.process(
+            body="mira esto", media_url="/media/whatsapp/i.jpg", media_type="image"
+        )
+        self.assertEqual(message.display_body, "mira esto")
+
+    def test_documents_keep_the_download_link_and_their_placeholder(self):
+        message = self.process(
+            body="[documento]", media_url="/media/whatsapp/d.pdf", media_type="document"
+        )
+        self.assertFalse(message.is_inline_image)
+        self.assertEqual(message.display_body, "[documento]")
+
+    def test_rows_from_before_the_field_existed_stay_download_links(self):
+        message = self.process(body="[imagen]", media_url="/media/old.jpg")
+        self.assertFalse(message.is_inline_image)
+        self.assertEqual(message.display_body, "[imagen]")
+
+    def test_thread_renders_the_inline_image_tag(self):
+        """End to end through the Inbox view: the bubble carries an <img>."""
+        message = self.process(
+            body="[sticker]", media_url="/media/whatsapp/s.webp", media_type="sticker"
+        )
+        user = get_user_model().objects.create_user("agente", password="x")
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("inbox_thread", args=[message.conversation_id])
+        )
+        self.assertContains(response, '<img src="/media/whatsapp/s.webp"')
+        self.assertNotContains(response, "Archivo adjunto")
+        # The placeholder survives only as the image's alt text, not as a
+        # visible line under the sticker.
+        self.assertContains(response, "[sticker]", count=1)
+        self.assertContains(response, 'alt="[sticker]"')

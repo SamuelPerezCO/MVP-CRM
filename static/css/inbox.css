@@ -599,6 +599,18 @@
 
 .msg__media .icon { width: 14px; height: 14px; }
 
+/* Inline photo/sticker: capped like WhatsApp's own thumbnails; the link
+   opens the full-size original in a new tab. */
+.msg__image { display: block; }
+.msg__image:not(:last-child) { margin-block-end: 4px; }
+
+.msg__image img {
+  display: block;
+  max-width: min(220px, 100%);
+  max-height: 220px;
+  border-radius: 8px;
+}
+
 .msg__meta {
   display: flex;
   align-items: center;

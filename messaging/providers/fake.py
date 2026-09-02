@@ -98,6 +98,7 @@ class FakeProvider(MessagingProvider):
                     to_number=raw.get("to_number", ""),
                     body=raw.get("body", ""),
                     media_url=raw.get("media_url", ""),
+                    media_type=raw.get("media_type", ""),
                     timestamp=timestamp,
                     status=MessageStatus(raw["status"]) if raw.get("status") else None,
                     channel=raw.get("channel", "whatsapp"),

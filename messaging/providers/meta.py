@@ -34,10 +34,14 @@ secret.
 
 Media caveat: an inbound photo/audio/document arrives as an *id*, not a URL.
 Resolving it costs a second authorized Graph call, and what comes back is a
-short-lived, token-gated CDN link -- fine for looking at a message as it
-arrives, useless days later. Downloading media into real object storage is
-the follow-up; until then the resolved link is stored as-is and a failure to
-resolve is logged rather than raised, so a webhook never fails over an image.
+short-lived, token-gated CDN link -- unusable from a browser (the download
+needs the Bearer token) and dead within minutes. So the webhook downloads the
+bytes right then, while the link is fresh, into Django's default storage
+(``MEDIA_ROOT`` locally; swap ``STORAGES`` for object storage without touching
+this module) and stores *our* durable URL on the message. Both Graph calls and
+the download run inline on the webhook request under tight timeouts and a size
+cap, and any failure is logged rather than raised -- a webhook never fails
+over an image, it just lands the message without media.
 """
 
 from __future__ import annotations
@@ -46,14 +50,18 @@ import hashlib
 import hmac
 import json
 import logging
+import mimetypes
+import re
 from datetime import datetime, timezone as dt_timezone
 
 import requests
 from django.conf import settings
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.utils.crypto import constant_time_compare
 
 from .base import MessagingProvider
-from .types import InboundEvent, MessageStatus
+from .types import MEDIA_PLACEHOLDERS, InboundEvent, MessageStatus
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +72,36 @@ _GRAPH_API_VERSION = "v25.0"
 _GRAPH_BASE = "https://graph.facebook.com"
 
 _REQUEST_TIMEOUT = 10
-#: Media resolution happens inline on the webhook request, which Meta expects
-#: answered fast -- a tighter budget than a send the user is waiting on.
+#: Media resolution + download happen inline on the webhook request, which
+#: Meta expects answered fast -- a tighter budget than a send the user is
+#: waiting on. Applied per call (id lookup, then download).
 _MEDIA_TIMEOUT = 5
+
+#: Refuse to pull anything bigger into memory on a webhook thread. Covers
+#: every sticker/image and most audio/video WhatsApp accepts; an oversized
+#: document simply lands without media (logged), the message itself survives.
+_MEDIA_MAX_BYTES = 16 * 1024 * 1024
+
+#: Where downloaded media lives inside default storage.
+_MEDIA_STORAGE_DIR = "whatsapp"
+
+#: The mimes WhatsApp actually sends, mapped to extensions explicitly --
+#: ``mimetypes.guess_extension`` is platform-dependent for some of these
+#: (e.g. ``image/jpeg`` -> ``.jpe`` on some systems). Anything else falls
+#: back to ``guess_extension``.
+_MIME_EXTENSIONS = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "video/mp4": ".mp4",
+    "video/3gpp": ".3gp",
+    "audio/aac": ".aac",
+    "audio/amr": ".amr",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/ogg": ".ogg",
+    "application/pdf": ".pdf",
+}
 
 #: Language for templates when ``params`` doesn't override it (see
 #: :meth:`MetaProvider.send_template`). The CRM writes to Colombian numbers.
@@ -89,18 +124,10 @@ _OBJECT_CHANNELS = {
     "instagram": "instagram-dm",
 }
 
-#: Message types that carry a media id plus an optional caption.
+#: Message types that carry a media id plus an optional caption. Placeholder
+#: bodies for caption-less media live in ``types.MEDIA_PLACEHOLDERS``, shared
+#: with the Inbox.
 _MEDIA_TYPES = ("image", "video", "audio", "document", "sticker")
-
-#: Shown in the Inbox when a message has no text of its own -- an image with
-#: no caption should still read as something, not as an empty bubble.
-_MEDIA_PLACEHOLDERS = {
-    "image": "[imagen]",
-    "video": "[video]",
-    "audio": "[audio]",
-    "document": "[documento]",
-    "sticker": "[sticker]",
-}
 
 
 def _to_e164(number: str) -> str:
@@ -309,13 +336,15 @@ class MetaProvider(MessagingProvider):
         message_type = raw.get("type", "")
         body = ""
         media_url = ""
+        media_type = ""
 
         if message_type == "text":
             body = (raw.get("text") or {}).get("body", "")
         elif message_type in _MEDIA_TYPES:
             media = raw.get(message_type) or {}
-            body = media.get("caption", "") or _MEDIA_PLACEHOLDERS.get(message_type, "")
-            media_url = self._resolve_media_url(media.get("id", ""))
+            body = media.get("caption", "") or MEDIA_PLACEHOLDERS.get(message_type, "")
+            media_url = self._fetch_and_store_media(media.get("id", ""))
+            media_type = message_type if media_url else ""
         elif message_type == "button":
             body = (raw.get("button") or {}).get("text", "")
         elif message_type == "interactive":
@@ -340,6 +369,7 @@ class MetaProvider(MessagingProvider):
             to_number=our_number,
             body=body,
             media_url=media_url,
+            media_type=media_type,
             timestamp=_parse_timestamp(raw.get("timestamp")),
             channel=channel,
             contact_name=names.get(sender, ""),
@@ -371,23 +401,79 @@ class MetaProvider(MessagingProvider):
             channel=channel,
         )
 
-    def _resolve_media_url(self, media_id: str) -> str:
-        """Trade a media id for its (short-lived, token-gated) CDN URL.
+    def _fetch_and_store_media(self, media_id: str) -> str:
+        """Trade a media id for a durable URL of our own.
 
-        Fails soft: a webhook must not 500 -- or hang -- because an image
-        lookup went wrong. See the module docstring on why this URL is not a
-        durable place to keep media.
+        Meta's CDN link is token-gated and expires within minutes -- useless
+        to the browser and to history. So: resolve the id, pull the bytes down
+        while the link is fresh, save them into default storage and return
+        *that* URL. Idempotent per media id: a webhook retry finds the
+        already-saved file instead of downloading again.
+
+        Fails soft: a webhook must not 500 -- or hang -- because a download
+        went wrong. Returning "" lands the message without media.
         """
         if not media_id or not settings.META_ACCESS_TOKEN:
             return ""
+        headers = {"Authorization": f"Bearer {settings.META_ACCESS_TOKEN}"}
         try:
             response = requests.get(
                 f"{_GRAPH_BASE}/{_GRAPH_API_VERSION}/{media_id}",
-                headers={"Authorization": f"Bearer {settings.META_ACCESS_TOKEN}"},
+                headers=headers,
                 timeout=_MEDIA_TIMEOUT,
             )
             response.raise_for_status()
-            return response.json().get("url", "")
-        except (requests.RequestException, ValueError):
-            logger.exception("meta: could not resolve media id %s", media_id)
+            info = response.json()
+            cdn_url = info.get("url", "")
+            if not cdn_url:
+                return ""
+
+            name = self._storage_name(media_id, info.get("mime_type", ""))
+            if default_storage.exists(name):
+                return default_storage.url(name)
+
+            if int(info.get("file_size") or 0) > _MEDIA_MAX_BYTES:
+                logger.warning(
+                    "meta: media %s reports %s bytes, over the cap -- not stored",
+                    media_id,
+                    info.get("file_size"),
+                )
+                return ""
+
+            data = self._download(cdn_url, headers, media_id)
+            if data is None:
+                return ""
+            return default_storage.url(default_storage.save(name, ContentFile(data)))
+        except (requests.RequestException, ValueError, OSError):
+            logger.exception("meta: could not fetch media id %s", media_id)
             return ""
+
+    @staticmethod
+    def _download(url: str, headers: dict, media_id: str) -> bytes | None:
+        """The CDN download itself, streamed so an oversized (or lying about
+        its ``file_size``) file is abandoned at the cap rather than read whole
+        into a webhook thread's memory."""
+        response = requests.get(
+            url, headers=headers, timeout=_MEDIA_TIMEOUT, stream=True
+        )
+        with response:
+            response.raise_for_status()
+            chunks, total = [], 0
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                total += len(chunk)
+                if total > _MEDIA_MAX_BYTES:
+                    logger.warning(
+                        "meta: media %s exceeded the size cap mid-download", media_id
+                    )
+                    return None
+                chunks.append(chunk)
+        return b"".join(chunks)
+
+    @staticmethod
+    def _storage_name(media_id: str, mime_type: str) -> str:
+        """Deterministic storage path for a media id, so retries can find the
+        file, with an extension the browser can trust for Content-Type."""
+        mime = (mime_type or "").split(";")[0].strip().lower()
+        extension = _MIME_EXTENSIONS.get(mime) or mimetypes.guess_extension(mime) or ""
+        safe_id = re.sub(r"[^A-Za-z0-9_-]", "", media_id)
+        return f"{_MEDIA_STORAGE_DIR}/{safe_id}{extension}"

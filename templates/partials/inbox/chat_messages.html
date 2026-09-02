@@ -10,12 +10,17 @@
 {% for message in chat_messages %}
   <div class="msg {% if message.is_outbound %}msg--out{% else %}msg--in{% endif %}">
     <div class="msg__bubble">
-      {% if message.media_url %}
+      {% if message.is_inline_image %}
+        {# Photos and stickers render inline; the link opens the original. #}
+        <a class="msg__image" href="{{ message.media_url }}" target="_blank" rel="noopener">
+          <img src="{{ message.media_url }}" alt="{{ message.body }}" loading="lazy">
+        </a>
+      {% elif message.media_url %}
         <a class="msg__media" href="{{ message.media_url }}" target="_blank" rel="noopener">
           {% include "icons/download.svg" %}<span>Archivo adjunto</span>
         </a>
       {% endif %}
-      {% if message.body %}{{ message.body|linebreaksbr }}{% endif %}
+      {% if message.display_body %}{{ message.display_body|linebreaksbr }}{% endif %}
     </div>
     <div class="msg__meta">
       <time>{{ message.timestamp|chat_stamp }}</time>
