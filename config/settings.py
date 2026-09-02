@@ -220,13 +220,22 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 # during the build and serves the result from its CDN -- no extra config.
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# User uploads (template header media). Served by Django in DEBUG only --
-# see config/urls.py. NOTE: Vercel's serverless functions have no persistent
-# filesystem, so files written here in production disappear after the
-# request -- wire up real object storage (e.g. Vercel Blob, S3) via a
-# django-storages backend before relying on header uploads in production.
+# User uploads (WhatsApp media, template header media). Locally they live in
+# MEDIA_ROOT, served by Django in DEBUG only -- see config/urls.py.
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# In production there is no persistent filesystem (Vercel's functions are
+# read-only + ephemeral), so uploads go to the project's Vercel Blob store
+# instead: create it in the dashboard (Storage > Create Database > Blob) and
+# connect it to the project, which injects BLOB_READ_WRITE_TOKEN into the
+# environment -- its presence alone flips the default storage backend. Tests
+# always keep the filesystem, even if a developer's .env carries the token.
+if os.environ.get('BLOB_READ_WRITE_TOKEN') and not TESTING:
+    STORAGES = {
+        'default': {'BACKEND': 'core.storage.VercelBlobStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
 
 
 # Email
