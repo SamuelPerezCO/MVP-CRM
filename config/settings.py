@@ -249,7 +249,11 @@ TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')
 TWILIO_WHATSAPP_FROM = os.environ.get('TWILIO_WHATSAPP_FROM', '')
 
-# Meta Cloud API (unused until providers/meta.py is implemented).
+# Meta Cloud API (providers/meta.py). META_APP_SECRET signs incoming
+# webhooks and META_VERIFY_TOKEN answers Meta's subscribe handshake --
+# both fail closed when unset, so the webhook rejects traffic rather than
+# trusting it. App Dashboard > App settings > Basic for the secret; the
+# verify token is any string you also type into the webhook form.
 META_ACCESS_TOKEN = os.environ.get('META_ACCESS_TOKEN', '')
 META_PHONE_NUMBER_ID = os.environ.get('META_PHONE_NUMBER_ID', '')
 META_APP_SECRET = os.environ.get('META_APP_SECRET', '')
