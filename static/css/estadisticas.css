@@ -142,3 +142,44 @@
   background: var(--page-gray);
   padding: 16px;
 }
+
+/* ==========================================================================
+   Etiquetas panel — summary tiles (the shared .kpi blocks from
+   stats-detail.css) over a ranking table. Each row's bar is scaled against
+   the busiest tag and painted with that tag's dark ink token
+   (--tag-<color>-fg, tags.css) — the soft -bg pastels would wash out on the
+   grey track. The count cell is the accessible value; the bar is decoration.
+   ========================================================================== */
+
+/* .stats-page stacks with no gap (unlike .stats-detail), so the tile row
+   spaces itself off the table. */
+.tag-stats__kpis { margin-block-end: 20px; }
+
+/* Scoped under the table class to outweigh `.table thead th`'s text-align. */
+.tag-stats__table .tag-stats__num {
+  text-align: end;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Wide enough for the bars to differentiate, never wider than the pills'
+   column needs it to be. */
+.tag-stats__bar-col { width: 45%; }
+
+.tag-bar {
+  display: block;
+  height: 8px;
+  min-width: 120px;
+  border-radius: 999px;
+  background: var(--page-gray);
+  overflow: hidden;
+}
+
+.tag-bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+/* Archived rows retire their bar along with their pill. */
+.tag-row--archived .tag-bar__fill { opacity: 0.45; }
