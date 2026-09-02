@@ -1,0 +1,135 @@
+{% comment %}
+  Estadísticas column 3 -- the Atribuciones page (Alpha): which channel the
+  period's conversations and sales are attributed to.
+
+  This is what core.views.estadisticas_panel returns when "Atribuciones" is
+  picked in the secondary nav. A period select over three tiles over the
+  per-channel attribution table; the report behind it is
+  core.estadisticas_atribuciones. Alpha because attribution stops at the
+  channel until the webhooks capture Meta's click-to-WhatsApp referral data
+  -- the module docstring has the full rationale, and the subtitle's
+  info-dot tells the user the same thing.
+
+  The select re-fetches this same panel through the estadisticas_panel
+  endpoint with ?period=, exactly like Temas, Ventas and Embudos.
+
+  Context: periods, period, report (rows / total_conversations /
+  total_sales / max_conversations / top / best_conversion)
+{% endcomment %}
+
+<div class="stats-page">
+
+  <header class="stats-page__head">
+    <h1 class="stats-page__title">
+      Atribuciones
+      <span class="nav-badge">Alpha</span>
+    </h1>
+
+    <p class="stats-page__subtitle">
+      De dónde vienen tus conversaciones y tus ventas
+      <span class="info-dot" tabindex="0" role="img"
+            data-tip="Atribución por canal: cada conversación creada en el período cuenta para su canal, y una venta es una conversación etiquetada como venta (etiquetas con «venta» en el nombre). La atribución por anuncio llegará cuando se capturen los datos de referencia de Meta."
+            aria-label="Atribución por canal: cada conversación creada en el período cuenta para su canal, y una venta es una conversación etiquetada como venta (etiquetas con «venta» en el nombre). La atribución por anuncio llegará cuando se capturen los datos de referencia de Meta.">
+        {% include "icons/info.svg" %}
+      </span>
+    </p>
+  </header>
+
+  <div class="stats-filters stats-page__filters">
+    <label class="stats-select">
+      <span class="stats-select__label">Período</span>
+      <select name="period" class="stats-select__input"
+              hx-get="{% url 'estadisticas_panel' 'atribuciones' %}"
+              hx-target="#estadisticas-panel"
+              hx-swap="innerHTML">
+        {% for option in periods %}
+          <option value="{{ option.key }}"{% if option.key == period.key %} selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  {% if report.rows %}
+
+    <div class="kpi-row stats-page__kpis">
+      <div class="kpi-group">
+        <div class="kpi-group__tiles">
+
+          <article class="kpi kpi--blue">
+            <p class="kpi__label">Canal principal</p>
+            <p class="kpi__value kpi__value--text">{{ report.top.label }}</p>
+            <p class="kpi__note">
+              {{ report.top.share_pct }}% de {{ report.total_conversations }} conversaciones
+            </p>
+          </article>
+
+          <article class="kpi kpi--green">
+            <p class="kpi__label">Ventas atribuidas</p>
+            <p class="kpi__value">{{ report.total_sales }}</p>
+            <p class="kpi__note">en {{ report.rows|length }} canal{{ report.rows|length|pluralize:"es" }} activos</p>
+          </article>
+
+          <article class="kpi kpi--purple">
+            <p class="kpi__label">Mejor conversión</p>
+            {% if report.best_conversion %}
+              <p class="kpi__value kpi__value--text">{{ report.best_conversion.label }}</p>
+              <p class="kpi__note">
+                {{ report.best_conversion.conversion_pct }}% de sus conversaciones termina en venta
+              </p>
+            {% else %}
+              <p class="kpi__value">—</p>
+              <p class="kpi__note">sin ventas en el período</p>
+            {% endif %}
+          </article>
+
+        </div>
+      </div>
+    </div>
+
+    <table class="table rank-table">
+      <thead>
+        <tr>
+          <th scope="col">Canal</th>
+          <th scope="col" class="rank-table__num">Conversaciones</th>
+          <th scope="col" class="rank-table__num">Ventas</th>
+          <th scope="col" class="rank-table__num">Conversión</th>
+          <th scope="col" class="rank-table__bar-col">Proporción</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for row in report.rows %}
+          <tr>
+            <td class="table__name">{{ row.label }}</td>
+
+            <td class="rank-table__num">{{ row.conversations }}</td>
+            <td class="rank-table__num">{{ row.sales }}</td>
+            <td class="rank-table__num table__muted">{{ row.conversion_pct }}%</td>
+
+            {% comment %} The numbers before this cell are the accessible
+               values; the bar is decoration on top of them. {% endcomment %}
+            <td class="rank-table__bar-col">
+              <span class="rank-bar" aria-hidden="true">
+                <span class="rank-bar__fill"
+                      style="width: {% widthratio row.conversations report.max_conversations 100 %}%"></span>
+              </span>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+  {% else %}
+
+    <div class="empty empty--list">
+      <div class="empty__icon">{% include "icons/bar-chart.svg" %}</div>
+      <p class="empty__title">Sin conversaciones que atribuir</p>
+      <p class="empty__text">
+        La atribución se construye con las conversaciones creadas en el
+        período elegido. Prueba con un período más amplio, o espera a que
+        lleguen mensajes nuevos.
+      </p>
+    </div>
+
+  {% endif %}
+</div>

@@ -43,6 +43,7 @@ from . import (
     crm,
     embudos,
     estadisticas,
+    estadisticas_atribuciones,
     estadisticas_embudos,
     estadisticas_periodos,
     estadisticas_temas,
@@ -453,6 +454,19 @@ def _embudos_stats_context(request) -> dict:
     }
 
 
+def _atribuciones_stats_context(request) -> dict:
+    """Data for the Atribuciones panel (channel attribution). Same period
+    contract as its sibling panels; the report lives in
+    core.estadisticas_atribuciones.
+    """
+    period = estadisticas_periodos.parse_period(request.GET)
+    return {
+        "periods": estadisticas_periodos.PERIODS,
+        "period": period,
+        "report": estadisticas_atribuciones.report(period),
+    }
+
+
 #: Estadísticas view key -> callable(request) -> dict. Views without an entry
 #: need no data.
 STATS_PANEL_CONTEXT = {
@@ -460,6 +474,7 @@ STATS_PANEL_CONTEXT = {
     "ventas": _ventas_stats_context,
     "etiquetas": _etiquetas_stats_context,
     "embudos": _embudos_stats_context,
+    "atribuciones": _atribuciones_stats_context,
     "temas-conversacion": _temas_stats_context,
 }
 
