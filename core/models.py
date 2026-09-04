@@ -54,6 +54,22 @@ class Client(models.Model):
         return letters or "?"
 
     @property
+    def icon_template(self) -> str:
+        """Brand mark for this client's channel, or ``""`` when there is none
+        to draw.
+
+        Empty rather than a guess: the Clientes table used to build the
+        template path out of the column itself, so a channel this app does
+        not know -- and rows do arrive from outside it, see the README's
+        external writer contract -- raised TemplateDoesNotExist and took the
+        whole CRM section down. The label still renders; only the icon is
+        dropped.
+        """
+        if self.channel not in dict(self.CHANNEL_CHOICES):
+            return ""
+        return f"icons/brands/{self.channel}.svg"
+
+    @property
     def has_whatsapp(self) -> bool:
         """Whether to offer the green 'Iniciar conversación' link on this row."""
         return self.channel == "whatsapp"
