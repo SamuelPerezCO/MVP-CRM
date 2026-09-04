@@ -49,7 +49,7 @@ SECTIONS = [
         [
             View("clientes", "Clientes"),
             View("etiquetas", "Etiquetas"),
-            View("lista-clientes", "Lista de clientes"),
+            View("lista-clientes", "Grupos de clientes"),
             View("campos-personalizados", "Campos personalizados"),
             View("exportaciones", "Exportaciones"),
         ],

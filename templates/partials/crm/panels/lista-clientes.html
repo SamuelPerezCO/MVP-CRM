@@ -1,5 +1,5 @@
 {% comment %}
-  Column 3 -- the Lista de clientes page: title, toolbar and the list table.
+  Column 3 -- the Grupos de clientes page: title, toolbar and the group table.
 
   Reached from BOTH sidebar entry points that mount the account nav (CRM and
   Campañas), so nothing here names a mount: the create button targets
@@ -13,9 +13,9 @@
 
   <header class="crm-panel__head">
     <h1 class="crm-panel__title">
-      Lista de clientes
+      Grupos de clientes
       {# Tooltip copy still TBD -- the label is what assistive tech reads. #}
-      <span class="info-dot" role="img" aria-label="Información sobre listas de clientes">
+      <span class="info-dot" role="img" aria-label="Información sobre grupos de clientes">
         {% include "icons/info.svg" %}
       </span>
     </h1>
@@ -36,7 +36,7 @@
          href="{% url 'lista_create' %}"
          hx-get="{% url 'lista_create' %}"
          hx-target="closest main"
-         hx-swap="innerHTML">+ Crear lista</a>
+         hx-swap="innerHTML">+ Crear grupo</a>
     </div>
   </header>
 

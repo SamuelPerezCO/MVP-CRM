@@ -2,7 +2,7 @@
   The client-list table, in its bordered card.
 
   Iterates the real ClientList queryset -- no seed rows: with an empty
-  database the {% empty %} row renders the minimal centered "Sin lista de
+  database the {% empty %} row renders the minimal centered "Sin grupos de
   clientes" text inside the body area, matching the reference (same bare-text
   pattern as the Automatizaciones "Sin flujos" state, not the decorated
   Clientes empty state).
@@ -34,7 +34,7 @@
         </tr>
       {% empty %}
         <tr class="list-card__empty">
-          <td colspan="4">Sin lista de clientes</td>
+          <td colspan="4">Aún no tienes grupos. Un grupo reúne clientes para enviarles una campaña; tus clientes están en Clientes.</td>
         </tr>
       {% endfor %}
     </tbody>

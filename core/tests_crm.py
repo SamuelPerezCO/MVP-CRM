@@ -220,15 +220,15 @@ class CrmPanelEndpointTests(TestCase):
 
 
 class ClientListTests(TestCase):
-    """The Lista de clientes panel: toolbar, table and its minimal empty state."""
+    """The Grupos de clientes panel: toolbar, table and its empty state."""
 
     URL = reverse("section", args=["crm"]) + "?view=lista-clientes"
 
     def test_header_and_toolbar_render(self):
         response = self.client.get(self.URL)
-        self.assertContains(response, "Lista de clientes")
+        self.assertContains(response, "Grupos de clientes")
         self.assertContains(response, "Acciones")
-        self.assertContains(response, "+ Crear lista")
+        self.assertContains(response, "+ Crear grupo")
         # Two info dots: beside the title and in the toolbar.
         panel = response.content.decode().split('id="crm-panel"', 1)[1]
         self.assertEqual(panel.count('class="info-dot"'), 2)
@@ -244,7 +244,7 @@ class ClientListTests(TestCase):
 
     def test_empty_state_is_bare_centered_text(self):
         html = self.client.get(self.URL).content.decode()
-        self.assertIn("Sin lista de clientes", html)
+        self.assertIn("Aún no tienes grupos", html)
         empty = html.split('class="list-card__empty"', 1)[1].split("</tr>", 1)[0]
         self.assertIn('colspan="4"', empty)
         self.assertNotIn("<svg", empty)  # minimal, like the "Sin flujos" state
@@ -262,7 +262,7 @@ class ClientListTests(TestCase):
         self.assertIn(timezone.localtime(vip.created_at).strftime("%d/%m/%Y"), html)
         row = html.split("VIP", 1)[1].split("</tr>", 1)[0]
         self.assertIn("<td>2</td>", row)  # the contact count, from the M2M
-        self.assertNotIn("Sin lista de clientes", html)
+        self.assertNotIn("Aún no tienes grupos", html)
 
     def test_create_button_points_at_a_real_route(self):
         html = self.client.get(self.URL).content.decode()
@@ -274,4 +274,4 @@ class ClientListTests(TestCase):
     def test_create_route_returns_a_placeholder_panel(self):
         response = self.client.get(reverse("lista_create"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Crear lista — próximamente")
+        self.assertContains(response, "Crear grupo — próximamente")

@@ -78,7 +78,7 @@ class CampanasScreenTests(TestCase):
             reverse("section", args=["campanas"]), {"view": "lista-clientes"}
         )
         self.assertEqual(response.context["active_view"], "lista-clientes")
-        self.assertContains(response, "Sin lista de clientes")
+        self.assertContains(response, "Aún no tienes grupos")
 
     def test_unknown_view_falls_back_instead_of_404(self):
         response = self.client.get(
