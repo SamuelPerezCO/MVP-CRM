@@ -399,3 +399,45 @@ class SendTemplateIsBilledTests(TestCase):
                 services.send_template(self.conversation, self.template, {"1": "Ana"})
 
         self.assertEqual(Message.objects.get().billed_amount, Decimal("0"))
+
+
+@override_settings(MESSAGING_TEMPLATE_RATES=RATES, MESSAGING_MONTHLY_BUDGET="0.02")
+class BudgetRefusalReachesTheUiTests(TestCase):
+    """A refusal for cost must surface like any other refusal, on every door
+    that sends a plantilla -- not as a 500."""
+
+    def setUp(self):
+        from django.urls import reverse
+
+        from messaging import services
+
+        self.reverse = reverse
+        self.contact = client(channel="whatsapp")
+        self.template = template(status="aceptada")
+        self.conversation = Conversation.objects.create(contact=self.contact)
+        # Spend the month's budget, so the next send is over it.
+        services.send_template(self.conversation, self.template, {"1": "Ana"})
+
+    def test_the_inbox_dialog_shows_the_reason(self):
+        response = self.client.post(
+            self.reverse("inbox_template_send", args=[self.conversation.pk]),
+            {"template": self.template.pk, f"var_{self.template.pk}_1": "Ana"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("presupuesto mensual", response.content.decode())
+        self.assertEqual(Message.objects.count(), 1)
+
+    def test_nuevo_chat_shows_the_reason(self):
+        response = self.client.post(
+            self.reverse("inbox_new_chat"),
+            {
+                "cliente": self.contact.pk,
+                "plantilla": self.template.pk,
+                f"var_{self.template.pk}_1": "Ana",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertLess(response.status_code, 500)
+        self.assertIn("presupuesto mensual", response.content.decode())
+        self.assertEqual(Message.objects.count(), 1)

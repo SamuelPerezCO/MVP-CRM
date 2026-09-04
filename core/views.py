@@ -1194,7 +1194,13 @@ def inbox_new_chat(request):
     conversation = messaging_services.start_conversation(client, "whatsapp")
     try:
         messaging_services.send_template(conversation, template, values, request.user)
-    except messaging_services.TemplateNotSendable as exc:
+    except (
+        messaging_services.TemplateNotSendable,
+        # A template send is billed, so it can also be refused for costing
+        # too much this month. Same surface as any other refusal: the picker
+        # comes back with the reason, not a 500.
+        messaging_services.BudgetExceeded,
+    ) as exc:
         return _new_chat_response(request, client, str(exc), template)
     except messaging_services.SendFailed:
         # The provider's own text is for the log, not for the agent.
