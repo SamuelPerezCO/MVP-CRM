@@ -85,6 +85,11 @@ from django.conf import settings
 # another).
 from django.utils import timezone
 
+# The zone the whole app calls "today". core.calendario imports nothing from
+# messaging, so this is a plain module-level import, not the deferred one
+# services.py needs for core.plantillas.
+from core.calendario import CALENDAR_TZ
+
 # Meta's published rate card, market->country map and calling-code tables.
 # Data only, generated from Meta's own CSV downloads -- see that module.
 from . import meta_rates
@@ -112,6 +117,15 @@ CATEGORIES = ("marketing", "utility", "authentication")
 # where a number we cannot place lands.
 #: The market that prices a recipient we cannot resolve to a country.
 DEFAULT_MARKET = "Other"
+
+#: The zone the billing month is bucketed in. Deliberately NOT
+#: settings.TIME_ZONE (UTC): every other "today" in this app is the Bogotá
+#: wall clock -- core.calendario enters events in it and
+#: core.estadisticas_volumen buckets its days in it under the same reasoning,
+#: "one app, one today". Billing has to agree, or a send at 20:00 on the last
+#: day of the month falls into the next month's budget while the agent who
+#: made it is still looking at the old one.
+BILLING_TZ = CALENDAR_TZ
 
 
 # ``@dataclass(frozen=True)`` writes __init__/__repr__/__eq__ from the field
@@ -457,13 +471,15 @@ def spent_between(start, end=None) -> Decimal:
 
 
 def month_start(now=None):
-    """Midnight on the 1st of the current month, in the active timezone --
+    """Midnight on the 1st of the current month, in :data:`BILLING_TZ` --
     the boundary WhatsApp bills on, and what the UI means by "este mes"."""
     # ``now`` is a parameter so callers and tests can pin the date; it
-    # defaults to the present. localtime() converts the aware UTC instant to
-    # the active time zone (settings.TIME_ZONE, 'UTC' in this project,
-    # unless timezone.activate() set another), so "the 1st" is the local 1st.
-    now = timezone.localtime(now or timezone.now())
+    # defaults to the present. The conversion is to BILLING_TZ, not to
+    # settings.TIME_ZONE: this project runs on UTC, so localtime() here would
+    # put the 5 hours after 19:00 Bogotá on the month's last day into the
+    # *next* month's spend -- and the ceiling would then be enforced against
+    # a month the agent who sent it does not recognise.
+    now = (now or timezone.now()).astimezone(BILLING_TZ)
     # replace() keeps year, month and tzinfo and zeroes everything else: an
     # aware datetime at local midnight on day 1, comparable with
     # Message.timestamp.
