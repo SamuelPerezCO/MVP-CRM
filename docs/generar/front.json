@@ -93,10 +93,6 @@
         [
          "`c6e200c`",
          "Envío de plantillas a Meta para aprobación y lectura del veredicto."
-        ],
-        [
-         "`a74176a`",
-         "El secreto del sidecar falla en cerrado; tolera filas escritas desde fuera."
         ]
        ],
        "caption": "Commits en main posteriores al snapshot documentado, sin contar merges."

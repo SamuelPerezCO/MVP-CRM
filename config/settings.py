@@ -258,12 +258,12 @@ MAILERS = {
 
 
 # Messaging
-# Which provider backs sending and webhooks: 'fake' | 'twilio' | 'meta' | 'baileys'.
+# Which provider backs sending and webhooks: 'fake' | 'twilio' | 'meta'.
 # Swapping to a real provider is this one variable plus its credentials below
 # (see .env.example). Values come from the environment so no credential ever
 # lands in this file. `manage.py test` always forces 'fake' (see TESTING
 # above), even when a developer's own .env is set to a real provider -- tests
-# must not depend on a live sidecar/Twilio/Meta connection to pass. Outside
+# must not depend on a live Twilio/Meta connection to pass. Outside
 # tests the variable is required -- see the check below.
 
 MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER', '')
@@ -276,9 +276,28 @@ MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER',
 # explicitly in .env (see .env.example).
 if not MESSAGING_PROVIDER:
     raise ImproperlyConfigured(
-        "MESSAGING_PROVIDER is not set. Choose 'twilio', 'meta' or 'baileys' "
-        "for a real WhatsApp line, or 'fake' for local development only "
+        "MESSAGING_PROVIDER is not set. Choose 'twilio' or 'meta' for a real "
+        "WhatsApp line, or 'fake' for local development only "
         "(see .env.example)."
+    )
+
+# The names messaging.providers.registry knows, repeated here as a literal on
+# purpose: importing that module at settings time would pull in the app
+# registry before Django is ready. A test asserts the two stay in step.
+#
+# An unknown value used to boot fine and fail later -- get_provider raised
+# only when something tried to send, so the deployment looked healthy while
+# every outbound message crashed and every webhook 404'd. It fails at startup
+# now, which is the difference between a deploy that refuses and a CRM that
+# quietly stops talking to customers.
+MESSAGING_PROVIDERS = ('fake', 'twilio', 'meta')
+
+if MESSAGING_PROVIDER not in MESSAGING_PROVIDERS:
+    raise ImproperlyConfigured(
+        f"MESSAGING_PROVIDER={MESSAGING_PROVIDER!r} is not a provider this app "
+        f"has. Choose one of {', '.join(MESSAGING_PROVIDERS)}. A deployment "
+        f"carrying the name of a provider that has since been removed lands "
+        f"here: set the variable to one of those three."
     )
 
 # Shared webhook secrets. Neither has a real default: a value committed to
@@ -313,14 +332,3 @@ META_VERIFY_TOKEN = os.environ.get('META_VERIFY_TOKEN', '')
 # Leave either empty and the CRM keeps plantillas locally, unsubmitted.
 META_WABA_ID = os.environ.get('META_WABA_ID', '')
 META_APP_ID = os.environ.get('META_APP_ID', '')
-
-# Baileys (unofficial WhatsApp Web/Desktop connection via a Node sidecar --
-# see whatsapp-sidecar/. QR-code pairing, no Meta Developers app needed; good
-# for demos, not for production -- see whatsapp-sidecar/README.md).
-BAILEYS_SIDECAR_URL = os.environ.get('BAILEYS_SIDECAR_URL', 'http://localhost:4000')
-# Same rule, and it matters more: baileys is a *real* provider, so its webhook
-# slug answers on every deployment, not just where it is the active one.
-BAILEYS_SIDECAR_SECRET = (
-    'testing-sidecar-secret' if TESTING
-    else os.environ.get('BAILEYS_SIDECAR_SECRET', '')
-)

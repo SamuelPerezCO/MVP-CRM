@@ -365,8 +365,8 @@ class SendTemplateTests(TestCase):
         send.assert_called_once_with(
             to="+573000000777",
             template_name="pedido_listo",
-            # _rendered rides along for providers with no template catalogue
-            # (Baileys), which would otherwise send the template's NAME.
+            # _rendered rides along for providers with no template catalogue,
+            # which would otherwise send the template's NAME.
             params={
                 "2": "#4512",
                 "1": "Ana",
