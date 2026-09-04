@@ -21,6 +21,7 @@ from datetime import date, datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from core.models import Client, MessageTemplate
 
@@ -364,3 +365,147 @@ class InWindowBillingSwitchTests(TestCase):
                 quote = pricing.quote(marketing, self.client_row, window_open=True, when=on)
                 self.assertEqual(quote.amount, pricing.rate_for("Colombia", "marketing", on))
                 self.assertFalse(quote.is_free)
+
+
+class ServiceAllowanceTests(TestCase):
+    """From 2026-10-01 Meta charges for service messages -- everything sent
+    inside an open 24-hour window -- but gives each phone number a monthly
+    allowance first. These pin both sides of that meter.
+
+    No override_settings on the rates: the point is the real card, whose July
+    row prices Service as "n/a" and whose October row prices it.
+    """
+
+    JULY = date(2026, 7, 1)
+    OCTOBER = date(2026, 10, 1)
+
+    def setUp(self):
+        self.contact = client()
+        self.utility = template(category="utility", name="pedido_en_camino")
+
+    def quote_in_window(self, on, used=0):
+        return pricing.quote(
+            self.utility, self.contact, window_open=True, when=on, service_used=used
+        )
+
+    def test_before_october_the_allowance_does_not_apply(self):
+        # Service is "n/a" on the July card: in-window sends are simply free,
+        # allowance or not.
+        quote = self.quote_in_window(self.JULY, used=10_000)
+        self.assertTrue(quote.is_free)
+        self.assertIn("no se cobran", quote.free_reason)
+
+    def test_inside_the_allowance_the_send_is_free(self):
+        quote = self.quote_in_window(self.OCTOBER, used=999)
+        self.assertTrue(quote.is_free)
+        self.assertIn("gratis del mes", quote.free_reason)
+        # The list price still travels, so the dialog can show what it saved.
+        self.assertGreater(quote.unit_amount, Decimal("0"))
+
+    def test_past_the_allowance_the_service_rate_is_charged(self):
+        quote = self.quote_in_window(self.OCTOBER, used=1000)
+        self.assertFalse(quote.is_free)
+        self.assertEqual(
+            quote.amount, pricing.rate_for("Colombia", "service", self.OCTOBER)
+        )
+        self.assertIn("agotados", quote.free_reason)
+
+    @override_settings(MESSAGING_SERVICE_FREE_ALLOWANCE="0")
+    def test_an_account_without_the_allowance_pays_from_the_first(self):
+        # The allowance is the weakest-corroborated part of the October
+        # change, so an account that does not have it can switch it off.
+        quote = self.quote_in_window(self.OCTOBER, used=0)
+        self.assertFalse(quote.is_free)
+
+    def test_an_unknown_usage_is_treated_as_spent(self):
+        # Quoting a price nobody is charged is a smaller error than promising
+        # free and then billing for it.
+        quote = pricing.quote(
+            self.utility, self.contact, window_open=True, when=self.OCTOBER
+        )
+        self.assertFalse(quote.is_free)
+
+    @override_settings(MESSAGING_SERVICE_FREE_ALLOWANCE="no-soy-un-numero")
+    def test_a_malformed_allowance_falls_back_to_metas_figure(self):
+        self.assertEqual(pricing.service_allowance(), 1000)
+
+    def test_a_marketing_send_never_touches_the_allowance(self):
+        marketing = template(category="marketing", name="promo_x")
+        quote = pricing.quote(
+            marketing, self.contact, window_open=True, when=self.OCTOBER, service_used=0
+        )
+        self.assertFalse(quote.billed_as_service)
+        self.assertFalse(quote.is_free)
+
+
+class ServiceUsageCountTests(TestCase):
+    """What the meter counts, and what it must not."""
+
+    def setUp(self):
+        self.conversation = Conversation.objects.create(contact=client())
+
+    def message(self, **overrides):
+        fields = {
+            "conversation": self.conversation,
+            "direction": Message.OUTBOUND,
+            "body": "Hola",
+            "billed_amount": Decimal("0"),
+            "billed_currency": "USD",
+            "billed_as_service": True,
+        }
+        fields.update(overrides)
+        return Message.objects.create(**fields)
+
+    def test_it_counts_service_rate_sends(self):
+        self.message()
+        self.message()
+        self.assertEqual(pricing.service_used_this_month(), 2)
+
+    def test_an_ordinary_send_is_not_counted(self):
+        self.message(billed_as_service=False)
+        self.assertEqual(pricing.service_used_this_month(), 0)
+
+    def test_a_failed_send_does_not_eat_the_allowance(self):
+        # Meta bills on delivery: a message that never left costs nothing and
+        # consumes nothing.
+        from .providers.types import MessageStatus
+
+        self.message(status=MessageStatus.FAILED.value)
+        self.assertEqual(pricing.service_used_this_month(), 0)
+
+    def test_last_month_does_not_count(self):
+        # The allowance does not roll over, and neither does its usage.
+        old = self.message()
+        Message.objects.filter(pk=old.pk).update(
+            timestamp=pricing.month_start() - timedelta(days=1)
+        )
+        self.assertEqual(pricing.service_used_this_month(), 0)
+
+
+class SendTemplateStampsTheMarkerTests(TestCase):
+    """The counter is only right if the send path stamps the row."""
+
+    def test_an_in_window_utility_send_is_marked(self):
+        from messaging import services
+
+        contact = client()
+        conversation = Conversation.objects.create(
+            contact=contact, last_inbound_at=timezone.now()
+        )
+        utility = template(category="utility", name="pedido_en_camino")
+
+        message = services.send_template(conversation, utility, {"1": "#4512"})
+
+        self.assertTrue(message.billed_as_service)
+        self.assertEqual(pricing.service_used_this_month(), 1)
+
+    def test_an_out_of_window_send_is_not(self):
+        from messaging import services
+
+        conversation = Conversation.objects.create(contact=client())
+        utility = template(category="utility", name="pedido_en_camino")
+
+        message = services.send_template(conversation, utility, {"1": "#4512"})
+
+        self.assertFalse(message.billed_as_service)
+        self.assertEqual(pricing.service_used_this_month(), 0)

@@ -177,7 +177,13 @@ def send_template(conversation: Conversation, template, values: dict, user=None)
     # A brand-new thread has no inbound message, so its window reads closed
     # and the full rate applies.
     quote = pricing.quote(
-        template, conversation.contact, window_open=conversation.is_within_24h_window
+        template,
+        conversation.contact,
+        window_open=conversation.is_within_24h_window,
+        # How much of this month's free service allowance is already spent.
+        # Passed in rather than looked up inside quote(), which is otherwise
+        # pure arithmetic over settings and two model instances.
+        service_used=pricing.service_used_this_month(),
     )
     # The monthly ceiling is enforced here rather than in the dialog, so a
     # bulk loop and a hand-crafted POST meet the same guard. Nothing locks
@@ -202,6 +208,7 @@ def send_template(conversation: Conversation, template, values: dict, user=None)
         billed_category=quote.category,
         billed_amount=quote.amount,
         billed_currency=quote.currency,
+        billed_as_service=quote.billed_as_service,
     )
 
     provider = get_provider()

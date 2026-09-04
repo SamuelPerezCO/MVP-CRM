@@ -367,6 +367,14 @@ MESSAGING_FAKE_SECRET = (
 MESSAGING_TEMPLATE_RATES = os.environ.get('MESSAGING_TEMPLATE_RATES', '')
 MESSAGING_CURRENCY = os.environ.get('MESSAGING_CURRENCY', 'USD')
 MESSAGING_MONTHLY_BUDGET = os.environ.get('MESSAGING_MONTHLY_BUDGET', '')
+#   MESSAGING_SERVICE_FREE_ALLOWANCE -- free service messages per phone
+#     number per calendar month, before Meta starts charging for them (from
+#     2026-10-01). Meta publishes 1000. Set it to 0 if this account has no
+#     such allowance: it is the least well-corroborated part of that change,
+#     so it is a variable rather than a constant.
+MESSAGING_SERVICE_FREE_ALLOWANCE = os.environ.get(
+    'MESSAGING_SERVICE_FREE_ALLOWANCE', '1000'
+)
 
 # Twilio (unused until providers/twilio.py is implemented).
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
