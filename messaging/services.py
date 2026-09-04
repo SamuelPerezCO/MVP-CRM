@@ -64,6 +64,20 @@ class TemplateSubmissionFailed(Exception):
     the message says what Meta objected to."""
 
 
+class BudgetExceeded(Exception):
+    """The send would push this month past ``MESSAGING_MONTHLY_BUDGET``.
+
+    Template sends cost real money, so the ceiling is enforced here rather
+    than trusted to the UI -- a bulk loop and a hand-crafted POST hit the
+    same guard the dialog does.
+
+    Raised by :func:`send_template` after pricing and before the Message row
+    is written, so a refused send leaves no trace in the thread.
+    The view driving the send catches it and shows ``str(exc)`` (a
+    Spanish sentence naming the ceiling) as the dialog's error line.
+    """
+
+
 # --- Sending ---------------------------------------------------------------
 
 
@@ -156,12 +170,38 @@ def send_template(conversation: Conversation, template, values: dict, user=None)
         raise TemplateNotSendable("WhatsApp rechazó esta plantilla; no se puede enviar.")
 
     body = plantillas.render_with(template, values)
+
+    # Price it before writing anything. The quote depends on the plantilla's
+    # category, the client's country and whether this thread's window is open
+    # -- a utility template inside the window is billed as a service message.
+    # A brand-new thread has no inbound message, so its window reads closed
+    # and the full rate applies.
+    quote = pricing.quote(
+        template, conversation.contact, window_open=conversation.is_within_24h_window
+    )
+    # The monthly ceiling is enforced here rather than in the dialog, so a
+    # bulk loop and a hand-crafted POST meet the same guard. Nothing locks
+    # between this check and the insert, so two sends racing can both pass.
+    if pricing.would_exceed_budget(quote.amount):
+        raise BudgetExceeded(
+            "Este envío supera el presupuesto mensual de plantillas "
+            f"({pricing.budget()} {quote.currency}). Súbelo o espera al "
+            "próximo mes."
+        )
+
+    # The three billed_* columns are copied from the quote here and never
+    # recomputed -- that is what "frozen" means. Meta's own verdict arrives
+    # later on the delivery receipt and corrects them (_apply_pricing).
     message = Message.objects.create(
         conversation=conversation,
         direction=Message.OUTBOUND,
         body=body,
         status=MessageStatus.QUEUED.value,
         sent_by=user if getattr(user, "is_authenticated", False) else None,
+        template=template,
+        billed_category=quote.category,
+        billed_amount=quote.amount,
+        billed_currency=quote.currency,
     )
 
     provider = get_provider()
@@ -176,7 +216,10 @@ def send_template(conversation: Conversation, template, values: dict, user=None)
         )
     except Exception as exc:
         message.status = MessageStatus.FAILED.value
-        message.save(update_fields=["status"])
+        # A send the provider refused was never delivered, so it is never
+        # billed -- zero rather than NULL, which would read as "not priced".
+        message.billed_amount = Decimal("0")
+        message.save(update_fields=["status", "billed_amount"])
         logger.exception(
             "send_template %s failed for conversation %s", template.name, conversation.pk
         )
@@ -272,6 +315,54 @@ def sync_template_verdicts() -> int:
         if len(fields) > 1:
             changed += 1
     return changed
+
+
+def conversation_for_client(client: Client, channel: str = "whatsapp") -> Conversation:
+    """The thread a message to ``client`` belongs in, created if there is none.
+
+    This is what makes writing to a *new* client possible at all: someone
+    added by hand in the CRM (or imported from a list) has never written, so
+    no conversation exists to open in the Inbox. Reuses the same
+    open-or-create rule inbound messages follow, so a template send and the
+    customer's eventual reply land in one thread rather than two.
+
+    Called only once a send is really about
+    to happen (the dialog itself uses :func:`find_open_conversation`, which
+    never creates) and by the tests. ``channel`` defaults to WhatsApp because
+    plantillas are a WhatsApp mechanism. Delegates to
+    :func:`_get_or_create_open_conversation`: an open or pending thread on
+    that channel is returned as is; otherwise a new ``Conversation`` row is
+    inserted with the model defaults (status ``open``, no messages, no
+    ``last_message_at`` yet).
+    """
+    return _get_or_create_open_conversation(client, channel)
+
+
+def sendable_templates():
+    """The plantillas the send dialog offers, best first.
+
+    Same stance as the Inbox's Respuestas rápidas picker: every active
+    plantilla WhatsApp has not rejected, pendientes included. A real account
+    can only send *aceptada* ones, but nothing here approves a plantilla on
+    its own, so filtering pendientes out would leave every freshly created
+    one unusable. The UI badges them instead of hiding them.
+
+    "rechazada" carries more than a rejection: :func:`sync_template_verdicts`
+    stores Meta's PAUSED and DISABLED as rechazada too, because what matters
+    to an agent is the same either way -- WhatsApp will refuse the send. So
+    this one test covers both "Meta said no" and "Meta has suspended it",
+    and a plantilla Meta has never seen keeps the lenient default.
+
+    Returns a lazy QuerySet; the views wrap it in ``list()``. "aceptada"
+    sorts before "pendiente", which is also the order to offer them in.
+    """
+    from core.models import MessageTemplate  # local: core imports this module
+
+    return (
+        MessageTemplate.objects.filter(is_active=True)
+        .exclude(status=TemplateStatus.REJECTED.value)
+        .order_by("status", "name")
+    )
 
 
 # --- Inbound processing -----------------------------------------------------

@@ -308,6 +308,11 @@ if MESSAGING_PROVIDER not in MESSAGING_PROVIDERS:
 # path is still exercised end to end rather than skipped.
 #
 # Fake provider: the secret dev webhooks send in X-Fake-Signature.
+# Optional monthly ceiling on template spend, in MESSAGING_CURRENCY. Empty or
+# unset means no limit -- messaging.pricing.budget() reads it, and
+# services.send_template refuses a send that would cross it.
+MESSAGING_MONTHLY_BUDGET = os.environ.get('MESSAGING_MONTHLY_BUDGET', '')
+
 MESSAGING_FAKE_SECRET = (
     'testing-fake-secret' if TESTING else os.environ.get('MESSAGING_FAKE_SECRET', '')
 )
