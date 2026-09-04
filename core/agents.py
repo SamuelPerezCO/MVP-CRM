@@ -42,6 +42,8 @@ from dataclasses import dataclass
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db.models import Q
+from django.contrib.auth.hashers import check_password, get_hasher, make_password
 
 
 @dataclass(frozen=True)
@@ -49,8 +51,26 @@ class Agent:
     """One configured agent, straight from the environment."""
 
     username: str
-    password: str
+
+    secret: str
+    """This agent's password *hash* -- or, deprecated, a raw password.
+
+    Named for what it holds rather than what it is: :meth:`accepts` is what
+    knows the difference, and nothing else should have to.
+    """
+
     display_name: str
+
+    @property
+    def is_hashed(self) -> bool:
+        """Whether :attr:`secret` is a hash rather than a raw password."""
+        return _is_hash(self.secret)
+
+    def accepts(self, password: str) -> bool:
+        """Whether ``password`` is this agent's."""
+        if self.is_hashed:
+            return check_password(password, self.secret)
+        return _same(password, self.secret)
 
     @property
     def user(self):
@@ -77,12 +97,12 @@ def configured_agents() -> list[Agent]:
         parts = [part.strip() for part in entry.split(":", 2)]
         if len(parts) < 2:
             continue
-        username, password = parts[0], parts[1]
+        username, secret = parts[0], parts[1]
         display_name = parts[2] if len(parts) > 2 and parts[2] else username
-        if not username or not password or username in seen:
+        if not username or not secret or username in seen:
             continue
         seen.add(username)
-        agents.append(Agent(username, password, display_name))
+        agents.append(Agent(username, secret, display_name))
 
     if agents:
         return agents
@@ -98,30 +118,31 @@ def configured_agents() -> list[Agent]:
 def authenticate(username: str, password: str) -> Agent | None:
     """Return the agent these credentials belong to, or ``None``.
 
-    The env list first: every configured agent is compared against, without
-    breaking out early, so the time this takes doesn't leak which usernames
-    exist; the comparison itself is ``compare_digest`` for the same reason.
+    The environment is checked first and wins outright. Every configured
+    username is compared without breaking out early, so the time this takes
+    doesn't leak which ones exist, and exactly *one* password verification
+    runs: the matched agent's, or a throwaway of equal cost when nothing
+    matched (the trick ``ModelBackend`` uses), so a hit and a miss cost the
+    same. The throwaway is skipped when no agent is hashed -- verifying a
+    raw password is free, and paying for a hash there would invert the leak.
+
     Then the database: a user created from the Usuarios page has a usable
-    password and is checked by Django's own hasher. Env mirrors never reach
-    that step -- their password is unusable (see :func:`_mirror`), so a
-    username that is in the env list can only log in with the env password.
+    password, checked by Django's own hasher. An env username never reaches
+    that step, whatever its mirror row holds -- the environment stays the
+    only way into those accounts.
     """
+    agents = configured_agents()
     match: Agent | None = None
-    for agent in configured_agents():
-        ok = hmac.compare_digest(username, agent.username) & hmac.compare_digest(
-            password, agent.password
-        )
-        if ok and match is None:
+    for agent in agents:
+        if _same(username, agent.username) and match is None:
             match = agent
+
     if match is not None:
-        return match
+        return match if match.accepts(password) else None
+    if any(agent.is_hashed for agent in agents):
+        make_password(password)   # equal-cost miss; result discarded
 
     if not username or not password:
-        return None
-    # An env username never falls through to the database, whatever its
-    # mirror row's password field holds (a seed or /admin could set one):
-    # the env is the only way in for those accounts.
-    if username in {agent.username for agent in configured_agents()}:
         return None
     User = get_user_model()
     user = User.objects.filter(username=username, is_active=True).first()
@@ -130,10 +151,71 @@ def authenticate(username: str, password: str) -> Agent | None:
     return Agent(user.username, "", user.get_full_name() or user.username)
 
 
+def _same(a: str, b: str) -> bool:
+    """Constant-time equality over the UTF-8 bytes. ``compare_digest`` on
+    ``str`` raises TypeError for any non-ASCII character -- a login as "José"
+    would 500 -- while bytes of unequal length simply compare False."""
+    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
+def _is_hash(secret: str) -> bool:
+    """Whether ``secret`` is an encoded password hash rather than a raw one.
+
+    A hash is ``<algorithm>$<rest>`` with an algorithm this project actually
+    has a hasher for. Deliberately stricter than ``identify_hasher``, which
+    reads any bare 32-character string as an unsalted MD5 digest -- and a
+    32-character passphrase is a perfectly ordinary thing to find in an env
+    var.
+    """
+    algorithm, separator, rest = secret.partition("$")
+    if not separator or not rest:
+        return False
+    try:
+        get_hasher(algorithm)
+    except ValueError:
+        return False
+    return True
+
+
+#: Floor for a password this app sets, wherever it is set from.
+MIN_PASSWORD_LENGTH = 8
+
+
+class WeakPassword(Exception):
+    """The password does not clear :func:`validate_password`'s floor."""
+
+
+def validate_password(password: str, username: str = "") -> None:
+    """A small, Spanish-worded floor -- the project's AUTH_PASSWORD_VALIDATORS
+    would say the same things in English, in an all-Spanish UI.
+
+    Public because the Usuarios dialog and ``manage.py hashear_clave`` apply
+    the same rule: a password reaching APP_AGENTS as a hash should clear the
+    same bar as one typed into the dialog.
+    """
+    password = password or ""
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise WeakPassword(
+            f"La contraseña debe tener al menos {MIN_PASSWORD_LENGTH} caracteres."
+        )
+    if password.isdigit():
+        raise WeakPassword("La contraseña no puede ser solo números.")
+    if username and password.casefold() == username.casefold():
+        raise WeakPassword("La contraseña no puede ser igual al usuario.")
+
+
 def _is_app_user(user) -> bool:
-    """A row someone can actually log in with: a real, usable password.
-    Env mirrors have an unusable one and rows a seed or /admin made without
-    a password have an empty one -- neither is a teammate."""
+    """A row this app's Usuarios page owns: a real, usable password, and not
+    a Django staff account.
+
+    Env mirrors have an unusable password and rows made without one have an
+    empty one -- neither is a teammate. ``is_staff`` is the load-bearing
+    part: it means "may open /admin/", a door this CRM does not manage.
+    Listing such a row here would let a CRM master reset its password and
+    walk into the Django admin, which is a bigger key than the page grants.
+    """
+    if user.is_staff or user.is_superuser:
+        return False
     return bool(user.password) and user.has_usable_password()
 
 
@@ -279,6 +361,8 @@ def update_user(user, display_name: str, master: bool, password: str = ""):
     app-created user. Env mirrors are refused: their identity is the env's."""
     if is_env_agent(user):
         raise ValueError("Este usuario se configura en el entorno (APP_AGENTS), no aquí.")
+    if not master:
+        _guard_last_master(user)
     user.first_name = (display_name or user.username)[:150]
     fields = ["first_name"]
     if password:
@@ -289,12 +373,63 @@ def update_user(user, display_name: str, master: bool, password: str = ""):
     return user
 
 
+def _master_count(exclude_pk=None) -> int:
+    """How many masters would remain. Env agents count: while APP_AGENTS
+    names anybody, the team can always be administered."""
+    if configured_agents():
+        return 2   # any positive number above the guard's floor
+    User = get_user_model()
+    masters = User.objects.filter(is_active=True).filter(
+        Q(is_superuser=True) | Q(groups__name=MASTER_GROUP)
+    )
+    if exclude_pk is not None:
+        masters = masters.exclude(pk=exclude_pk)
+    return masters.distinct().count()
+
+
+class LastMaster(Exception):
+    """Refused: the change would leave nobody able to manage the team."""
+
+
+def _guard_last_master(user) -> None:
+    """Refuse a demotion/deactivation that removes the final master."""
+    if not is_master(user):
+        return
+    if _master_count(exclude_pk=user.pk) == 0:
+        raise LastMaster(
+            "Es el único usuario maestro: nombra a otro antes de quitarle el rol "
+            "o desactivarlo."
+        )
+
+
 def set_user_active(user, active: bool):
     """Deactivate (or restore) an app-created user. Deactivating is the only
     "delete": their conversations, messages and events keep pointing at
     them, they just can't log in or be assigned anything new."""
     if is_env_agent(user):
         raise ValueError("Este usuario se configura en el entorno (APP_AGENTS), no aquí.")
+    if not active:
+        _guard_last_master(user)
     user.is_active = active
     user.save(update_fields=["is_active"])
+    if not active:
+        end_sessions(user)
     return user
+
+
+def end_sessions(user) -> int:
+    """Drop every live session belonging to ``user``; returns how many.
+
+    Deactivating a row only stops the *next* login unless the sessions it
+    already has are cleared -- otherwise someone just locked out keeps
+    browsing until their cookie expires.
+    """
+    from django.contrib.sessions.models import Session
+    from django.utils import timezone
+
+    ended = 0
+    for session in Session.objects.filter(expire_date__gte=timezone.now()):
+        if str(session.get_decoded().get("_auth_user_id", "")) == str(user.pk):
+            session.delete()
+            ended += 1
+    return ended

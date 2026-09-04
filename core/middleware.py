@@ -29,8 +29,20 @@ class LoginRequiredMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if settings.TESTING or request.session.get(SESSION_KEY) or self._is_exempt(request.path):
+        if settings.TESTING or self._is_exempt(request.path):
             return self.get_response(request)
+
+        # Two things have to hold. The session must carry the flag login_view
+        # sets, and django.contrib.auth must still resolve it to a real user:
+        # AuthenticationMiddleware hands back AnonymousUser for an account
+        # deleted or deactivated since the session was created. So a master
+        # deactivating someone locks them out on their very next request,
+        # flag or no flag -- and the dead session is flushed so their next
+        # login starts clean.
+        if request.session.get(SESSION_KEY):
+            if request.user.is_authenticated:
+                return self.get_response(request)
+            request.session.flush()
         login_url = reverse('login')
         if request.path != '/':
             login_url = f'{login_url}?next={request.path}'
