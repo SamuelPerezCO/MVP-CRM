@@ -14,8 +14,14 @@ from core.middleware import SESSION_KEY
 CREDS = {"username": "tester", "password": "secret-pw"}
 
 
+# APP_AGENTS="" matters as much as the pair below it: core.agents prefers the
+# agent list whenever it is non-empty, so a developer with APP_AGENTS in their
+# .env would otherwise never reach the legacy credentials these tests pin.
 @override_settings(
-    TESTING=False, APP_LOGIN_USERNAME="tester", APP_LOGIN_PASSWORD="secret-pw"
+    TESTING=False,
+    APP_AGENTS="",
+    APP_LOGIN_USERNAME="tester",
+    APP_LOGIN_PASSWORD="secret-pw",
 )
 class LoginGateTests(TestCase):
     def test_unauthenticated_request_redirects_to_login(self):
