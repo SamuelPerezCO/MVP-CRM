@@ -36,6 +36,7 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Count, Q
 
+from messaging import pricing
 from messaging import services as messaging_services
 from messaging.models import Conversation, Tag
 from messaging.providers.base import MessagingProvider as MessagingProviderBase
@@ -981,7 +982,18 @@ def _template_variables(template, values=None) -> list[dict]:
 
 
 def _template_send_body_context(conversation, selected=None, values=None, error=None) -> dict:
+    """The Enviar plantilla dialog's contents for one conversation.
+
+    Every entry carries its own price: WhatsApp bills each template send by
+    the plantilla's category and the recipient's market, so the agent sees
+    what the send costs *before* pressing Enviar rather than on the invoice.
+    The quote is an estimate -- Meta charges on delivery, at the category it
+    assigned -- and ``messaging.services._apply_pricing`` corrects it when the
+    receipt arrives. ``budget`` is the month's running total (and the ceiling,
+    when one is configured), shown once beneath the list.
+    """
     templates = list(_sendable_templates())
+    window_open = conversation.is_within_24h_window
     return {
         "active_conversation": conversation,
         "entries": [
@@ -990,11 +1002,15 @@ def _template_send_body_context(conversation, selected=None, values=None, error=
                 "variables": _template_variables(
                     template, values if selected == template else None
                 ),
+                "quote": pricing.quote(
+                    template, conversation.contact, window_open=window_open
+                ),
             }
             for template in templates
         ],
         "selected_id": selected.pk if selected else (templates[0].pk if templates else None),
         "send_form_error": error,
+        "budget": pricing.budget_state(),
     }
 
 
@@ -1046,7 +1062,10 @@ def inbox_template_send(request, conversation_id: int):
     send_error = None
     try:
         messaging_services.send_template(conversation, template, values, request.user)
-    except messaging_services.TemplateNotSendable as exc:
+    except (
+        messaging_services.TemplateNotSendable,
+        messaging_services.BudgetExceeded,
+    ) as exc:
         return _template_send_rejected(request, conversation, template, values, str(exc))
     except messaging_services.SendFailed:
         # Same surface as a failed free-form send: the thread shows it.

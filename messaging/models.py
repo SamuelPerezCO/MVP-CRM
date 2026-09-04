@@ -313,6 +313,66 @@ class Message(models.Model):
         related_name="sent_messages",
     )
 
+    #: The plantilla this message was sent from, when it was a template send
+    #: (``services.send_template``). NULL for free-form messages and for
+    #: everything that arrived over the webhook. SET_NULL rather than CASCADE:
+    #: deleting a plantilla must never delete the messages sent with it, and
+    #: the billing history below would go with them.
+    template = models.ForeignKey(
+        "core.MessageTemplate",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sent_messages",
+        verbose_name="plantilla",
+    )
+
+    # --- What this message cost -------------------------------------------
+    #
+    # WhatsApp bills every template message, by the plantilla's category and
+    # the recipient's market (see messaging.pricing). These three are the
+    # CRM's own estimate, frozen at send time and never recomputed: the price
+    # list changes, and a rate change must not rewrite what last month cost.
+    #
+    # NULL means "not billed" -- every inbound message and every free-form
+    # reply inside the 24h window. Zero means billed at nothing (a failed
+    # send, or a rule that made it free), which is a different fact and stays
+    # distinguishable.
+
+    billed_category = models.CharField("categoría facturada", max_length=20, blank=True)
+    #: Amount charged, in ``billed_currency``. Six decimals because
+    #: per-message rates are quoted in fractions of a cent, and Decimal
+    #: (never float) because 0.0008 has no exact binary form.
+    billed_amount = models.DecimalField(
+        "importe", max_digits=12, decimal_places=6, null=True, blank=True
+    )
+    billed_currency = models.CharField("moneda", max_length=3, blank=True)
+
+    # --- What Meta says it cost -------------------------------------------
+    #
+    # The platform's own verdict, filled in when its delivery receipt arrives
+    # (``services._apply_status_event``). Meta charges on *delivery*, not on
+    # send, and at the category *it* assigned the plantilla -- it
+    # re-categorises templates on its own -- so this is what corrects the
+    # estimate above. Blank until a provider reports billing, which today
+    # means every provider but Meta.
+
+    #: ``regular`` (billable), ``free_customer_service`` or
+    #: ``free_entry_point`` -- Meta's preferred billable test.
+    meta_pricing_type = models.CharField(
+        "tipo de precio (Meta)", max_length=32, blank=True
+    )
+    #: The rate Meta actually applied, stored verbatim (hyphen and all).
+    meta_pricing_category = models.CharField(
+        "categoría facturada (Meta)", max_length=32, blank=True
+    )
+    #: ``PMP`` (per-message, default since 2025-07-01) or ``CBP`` (legacy).
+    meta_pricing_model = models.CharField(
+        "modelo de precio (Meta)", max_length=8, blank=True
+    )
+    #: Meta's own billable flag; NULL until reported.
+    meta_billable = models.BooleanField("facturable (Meta)", null=True, blank=True)
+
     class Meta:
         verbose_name = "mensaje"
         verbose_name_plural = "mensajes"
@@ -321,10 +381,41 @@ class Message(models.Model):
         indexes = [
             # The thread query: one conversation's messages in order.
             models.Index(fields=["conversation", "timestamp"]),
+            # The spend query (messaging.pricing.spent_between): billed rows
+            # in a date range. Partial, because billed messages are the small
+            # minority of a busy inbox.
+            models.Index(
+                fields=["timestamp"],
+                condition=models.Q(billed_amount__isnull=False),
+                name="message_billed_timestamp_idx",
+            ),
         ]
 
     def __str__(self) -> str:
         return f"[{self.direction}] {self.body[:40]}"
+
+    @property
+    def cost_is_confirmed(self) -> bool:
+        """Whether ``billed_amount`` is Meta's verdict or still the CRM's
+        pre-send estimate. False for every send through a provider that
+        reports no billing (all of them but Meta today)."""
+        return bool(self.meta_pricing_type or self.meta_pricing_category)
+
+    @property
+    def billed_category_display(self) -> str:
+        """The Spanish label for what this send was billed as.
+
+        Not ``get_billed_category_display()``: the field carries no choices
+        on purpose (it records whatever category the plantilla had at send
+        time, and a category Meta adds later must still store), so the labels
+        come from the plantilla model -- imported inside the property to keep
+        this module free of a top-level ``core.models`` import.
+        """
+        from core.models import MessageTemplate
+
+        return dict(MessageTemplate.CATEGORY_CHOICES).get(
+            self.billed_category, self.billed_category
+        )
 
     @property
     def is_outbound(self) -> bool:

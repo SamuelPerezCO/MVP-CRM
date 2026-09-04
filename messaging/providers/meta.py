@@ -181,6 +181,39 @@ def _parse_timestamp(raw) -> datetime | None:
         return None
 
 
+def _parse_pricing(raw) -> dict | None:
+    """Meta's ``pricing`` object off a status, normalized for the CRM.
+
+    Meta's own verdict on what a message cost it -- which rate bucket
+    applied, never an amount (there is no money anywhere in this object).
+    ``services._apply_pricing`` uses it to correct the estimate the CRM froze
+    at send time.
+
+    Present only on the ``sent`` status and on one of ``delivered``/``read``,
+    so most receipts return ``None``. Every field is read defensively: Meta's
+    payloads are not consistent about which are included, and ``billable`` in
+    particular is on its way out ("use pricing.type and pricing.category
+    together" -- Meta's own reference).
+
+    ``category`` is kept verbatim, hyphen and all
+    (``authentication-international``): the analytics endpoint spells the same
+    bucket with an underscore, and normalising here would hide that mismatch
+    from whoever reconciles the two.
+    """
+    if not isinstance(raw, dict):
+        return None
+    pricing = {
+        "billable": raw.get("billable"),
+        "model": raw.get("pricing_model") or "",
+        "category": raw.get("category") or "",
+        "type": raw.get("type") or "",
+    }
+    # An object with nothing usable in it is the same as no object at all.
+    if not any(value not in (None, "") for value in pricing.values()):
+        return None
+    return pricing
+
+
 class MetaProvider(MessagingProvider):
     name = "meta"
 
@@ -676,8 +709,90 @@ class MetaProvider(MessagingProvider):
             to_number=_to_e164(raw.get("recipient_id", "")),
             timestamp=_parse_timestamp(raw.get("timestamp")),
             status=status,
+            pricing=_parse_pricing(raw.get("pricing")),
             channel=channel,
         )
+
+    # --- Billing analytics -------------------------------------------------
+
+    def fetch_account(self) -> dict:
+        """The WABA's own billing-relevant fields.
+
+        ``currency`` matters because :meth:`fetch_pricing_analytics` reports a
+        bare ``cost`` with no currency attached. ``is_shared_with_partners``
+        and ``ownership_type`` matter because Meta *withholds* cost entirely
+        from an account billed through a solution partner's credit line, so a
+        total of zero there means "not visible", not "nothing spent".
+        """
+        if not settings.META_ACCESS_TOKEN or not settings.META_WABA_ID:
+            raise RuntimeError(
+                "Meta analytics are not configured: set META_ACCESS_TOKEN and "
+                "META_WABA_ID (see .env.example)"
+            )
+        response = requests.get(
+            f"{_GRAPH_BASE}/{_GRAPH_API_VERSION}/{settings.META_WABA_ID}",
+            params={
+                "fields": "id,name,currency,timezone_id,ownership_type,"
+                          "is_shared_with_partners"
+            },
+            headers=self._bearer_headers(),
+            timeout=_REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def fetch_pricing_analytics(
+        self, start, end, granularity: str = "DAILY",
+        dimensions=("PRICING_CATEGORY", "PRICING_TYPE"),
+    ) -> list[dict]:
+        """What Meta says the account was charged, bucket by bucket.
+
+        ``GET /{WABA_ID}?fields=pricing_analytics.start(..).end(..)...`` -- a
+        *field expression*, not a normal edge: the parameters go inside the
+        field name rather than in the query string, which is why this builds a
+        string instead of passing a params dict.
+
+        Each data point carries ``volume`` (messages delivered) and ``cost``,
+        plus whichever dimensions were asked for. Two things to know about
+        ``cost``: Meta calls it *approximate* (the invoice is the record of
+        truth), and it is absent entirely for an account on a solution
+        partner's credit line. A missing cost is unknown, never zero.
+        """
+        if not settings.META_ACCESS_TOKEN or not settings.META_WABA_ID:
+            raise RuntimeError(
+                "Meta analytics are not configured: set META_ACCESS_TOKEN and "
+                "META_WABA_ID (see .env.example)"
+            )
+
+        field = (
+            f"pricing_analytics.start({int(start.timestamp())})"
+            f".end({int(end.timestamp())})"
+            f".granularity({granularity})"
+            f".metric_types(COST,VOLUME)"
+        )
+        if dimensions:
+            field += f".dimensions({','.join(dimensions)})"
+
+        url = f"{_GRAPH_BASE}/{_GRAPH_API_VERSION}/{settings.META_WABA_ID}"
+        params = {"fields": field}
+
+        points: list[dict] = []
+        while url:
+            response = requests.get(
+                url, params=params, headers=self._bearer_headers(),
+                timeout=_REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            analytics = (response.json() or {}).get("pricing_analytics") or {}
+            # The envelope nests a level deeper than most edges: `data` is a
+            # list of result groups, each with its own `data_points`.
+            for group in analytics.get("data") or []:
+                points.extend(group.get("data_points") or [])
+            # paging.next is a fully-formed URL carrying its own cursor, so
+            # the original params must not be sent alongside it.
+            url = ((analytics.get("paging") or {}).get("next")) or ""
+            params = None
+        return points
 
     def _fetch_and_store_media(self, media_id: str) -> str:
         """Trade a media id for a durable URL of our own.

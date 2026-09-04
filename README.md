@@ -286,6 +286,62 @@ La URL del webhook nombra al proveedor (`/webhooks/messaging/<proveedor>/`) para
 - El endpoint del proveedor `fake` **solo responde donde `MESSAGING_PROVIDER=fake`**. En un despliegue real devuelve 404: sin ese candado sería una forma anónima de escribir clientes inventados en la base de datos de producción, indistinguibles después de los reales.
 - Cada proveedor real *sí* sigue siendo alcanzable siempre, así que su secreto es lo único que lo protege. Ninguno tiene valor por defecto: `META_APP_SECRET` y `MESSAGING_FAKE_SECRET` rechazan todo mientras estén vacíos. Un secreto escrito en el repositorio no protege nada.
 
+## El precio de cada plantilla
+
+Escribir a un cliente fuera de la ventana de 24 horas se hace con una
+plantilla, y WhatsApp **cobra cada envío**. El CRM muestra el precio antes de
+enviar, guarda lo que costó cada mensaje y lo contrasta con lo que Meta dice
+que cobró.
+
+El precio sale de la tarifa **publicada por Meta**, no de una lista inventada:
+[messaging/meta_rates.py](messaging/meta_rates.py) trae las tablas que Meta
+descarga desde su documentación de precios — la vigente (1 jul 2026, 38
+mercados) y la ya anunciada (1 oct 2026, 47). `card_for()` elige por fecha, así
+que el CRM cambia de tarifa solo el día que Meta la aplica.
+
+Meta cobra **por mensaje entregado**, según la **categoría** de la plantilla y
+el **mercado** del destinatario (un país con tarifa propia, o un grupo
+regional). El mercado se resuelve por el código telefónico, con dos trampas ya
+resueltas en [messaging/pricing.py](messaging/pricing.py): gana el prefijo más
+largo (+507 Panamá no es +51 Perú), y **+1 no es un solo mercado** — República
+Dominicana, Jamaica y Puerto Rico pagan «Rest of Latin America» (0,0740) contra
+Norteamérica (0,0250).
+
+Una plantilla *utility* dentro de la ventana se factura como **servicio**, y eso
+cambia el **1 de octubre de 2026**: en la tarifa vigente la columna Service es
+«n/a» (no se cobra) y en la de octubre Meta le pone precio en los 47 mercados.
+Se lee de la tarjeta, no de una fecha escrita a mano.
+
+```
+MESSAGING_TEMPLATE_RATES=...   # opcional: superpone tus tarifas sobre las de Meta
+MESSAGING_CURRENCY=USD
+MESSAGING_MONTHLY_BUDGET=0     # 0 = sin tope; un envío que lo cruce se rechaza
+```
+
+### La verdad final: lo que Meta dice que cobró
+
+Cada acuse de entrega trae un objeto `pricing` que dice en qué bucket de
+tarifa cayó el mensaje (nunca el importe). El CRM lo guarda y **corrige** la
+estimación: a cero si Meta lo marca gratis (así se recupera la ventana de 72 h
+que abre un anuncio Click-to-WhatsApp, invisible para el CRM), o re-tarifado si
+lo cobró en otra categoría. `Message.cost_is_confirmed` distingue un importe
+confirmado de una estimación.
+
+```bash
+python manage.py meta_spend                # el mes en curso
+python manage.py meta_spend --month 2026-08
+```
+
+Contrasta el libro del CRM con `pricing_analytics` de Meta, por categoría. Dos
+salvedades que el propio comando imprime: Meta describe sus cifras como
+**aproximadas** (manda la factura), y a una cuenta facturada vía BSP le
+**oculta el costo** — entonces reporta el volumen y lo dice, en vez de cero.
+
+Lo que **no** modela, siempre por exceso y nunca por defecto: los descuentos
+por volumen y la ventana de free entry point. Y de los números +1, Meta solo
+publica tres desvíos, así que el resto del Caribe NANP se cotiza como
+Norteamérica y queda por debajo; cerrarlo pide libphonenumber.
+
 ## Tests
 
 ```powershell

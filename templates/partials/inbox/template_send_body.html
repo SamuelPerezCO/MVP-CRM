@@ -9,8 +9,14 @@
   header kinds -- so switching plantillas costs no request. Inputs are named
   var_<pk>_<n> because they all live in one form.
 
-  Context: entries -- [{template, variables: [{number, value}]}],
-  selected_id, send_form_error
+  Every entry also carries its own quote: a template send is billed by the
+  plantilla's category and the recipient's market, so the price sits in the
+  fieldset the agent is looking at, and the month's running total sits once
+  at the bottom. Both come from messaging.pricing via
+  core.views._template_send_body_context.
+
+  Context: entries -- [{template, variables: [{number, value}], quote}],
+  selected_id, send_form_error, budget
 {% endcomment %}
 
 {% if entries %}
@@ -53,8 +59,26 @@
 
       <p class="tpl-send__label">Vista previa</p>
       <p class="tpl-send__preview" data-template-preview>{{ entry.template.body }}</p>
+
+      {# What this send costs. quote.amount is what is charged; unit_amount is
+         the list rate, which differ only when a rule makes the send free. #}
+      <p class="tpl-send__cost">
+        {% if entry.quote.is_free %}
+          Sin costo · {{ entry.quote.free_reason }}
+        {% else %}
+          Costo: {{ entry.quote.currency }} {{ entry.quote.amount|floatformat:4 }}
+          · {{ entry.template.get_category_display }}
+          · {{ entry.quote.market }}
+        {% endif %}
+      </p>
     </fieldset>
   {% endfor %}
+
+  <p class="tpl-send__spend">
+    Plantillas enviadas este mes: {{ budget.currency }}
+    {{ budget.spent|floatformat:4 }}{% if budget.budget %} de {{ budget.budget|floatformat:2 }}{% endif %}.
+    El precio es una estimación: WhatsApp cobra al entregar.
+  </p>
 
 {% else %}
   <p class="tpl-send__empty">

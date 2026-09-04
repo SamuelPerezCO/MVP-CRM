@@ -21,12 +21,14 @@ Two entry points matter:
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from core.models import Client
 
+from . import pricing
 from .models import Conversation, ConversationTag, Message, Tag
 from .providers.registry import get_provider
 from .providers.types import InboundEvent, MessageStatus, TemplateStatus, status_rank
@@ -46,6 +48,16 @@ class SendWindowClosed(Exception):
 class SendFailed(Exception):
     """The provider rejected or errored on a send. The Message row is kept
     with ``status=failed`` so the thread shows what happened."""
+
+
+class BudgetExceeded(Exception):
+    """The send would push this month past ``MESSAGING_MONTHLY_BUDGET``.
+
+    Template sends cost real money, so the ceiling is enforced here rather
+    than trusted to the UI -- a bulk loop and a hand-crafted POST hit the
+    same guard the dialog does. Raised after pricing and before the Message
+    row is written, so a refused send leaves no trace in the thread.
+    """
 
 
 class TemplateNotSendable(Exception):
@@ -154,12 +166,32 @@ def send_template(conversation: Conversation, template, values: dict, user=None)
         raise TemplateNotSendable("WhatsApp rechazó esta plantilla; no se puede enviar.")
 
     body = plantillas.render_with(template, values)
+
+    # What this will cost, before anything is written. The quote is an
+    # estimate -- Meta charges on delivery, at the category it assigned the
+    # plantilla -- and the delivery receipt corrects it later
+    # (:func:`_apply_pricing`). The monthly ceiling is enforced here, not in
+    # the UI, so a bulk loop hits the same guard the dialog does.
+    quote = pricing.quote(
+        template, conversation.contact, window_open=conversation.is_within_24h_window
+    )
+    if pricing.would_exceed_budget(quote.amount):
+        raise BudgetExceeded(
+            "Este envío supera el presupuesto mensual de plantillas "
+            f"({pricing.budget()} {quote.currency}). Súbelo o espera al "
+            "próximo mes."
+        )
+
     message = Message.objects.create(
         conversation=conversation,
         direction=Message.OUTBOUND,
         body=body,
         status=MessageStatus.QUEUED.value,
         sent_by=user if getattr(user, "is_authenticated", False) else None,
+        template=template,
+        billed_category=quote.category,
+        billed_amount=quote.amount,
+        billed_currency=quote.currency,
     )
 
     provider = get_provider()
@@ -174,7 +206,9 @@ def send_template(conversation: Conversation, template, values: dict, user=None)
         )
     except Exception as exc:
         message.status = MessageStatus.FAILED.value
-        message.save(update_fields=["status"])
+        # Nothing is charged for a message the provider never accepted.
+        message.billed_amount = Decimal("0")
+        message.save(update_fields=["status", "billed_amount"])
         logger.exception(
             "send_template %s failed for conversation %s", template.name, conversation.pk
         )
@@ -381,7 +415,8 @@ def _apply_outbound_event(event: InboundEvent) -> None:
 
 
 def _apply_status_event(event: InboundEvent) -> None:
-    """A delivery receipt for a message we sent: move its status forward."""
+    """A delivery receipt for a message we sent: move its status forward, and
+    record what the platform says it charged."""
     if event.status is None:
         raise ValueError("status event without a status")
 
@@ -394,12 +429,106 @@ def _apply_status_event(event: InboundEvent) -> None:
         logger.info("status for unknown message %s", event.provider_message_id)
         return
 
+    changed = []
+
+    # Billing first, and deliberately outside the forward-only rule below:
+    # Meta puts its pricing object on the ``sent`` receipt and on one of
+    # delivered/read, and those arrive in any order. A late ``sent`` still
+    # carries a verdict worth recording even though it cannot move the status.
+    if event.pricing:
+        changed += _apply_pricing(message, event.pricing)
+
     # Forward-only: providers deliver receipts out of order (and retry old
     # ones), and "read" must never regress to "delivered".
-    if status_rank(event.status.value) <= status_rank(message.status):
-        return
-    message.status = event.status.value
-    message.save(update_fields=["status"])
+    if status_rank(event.status.value) > status_rank(message.status):
+        message.status = event.status.value
+        changed.append("status")
+
+    if changed:
+        message.save(update_fields=changed)
+
+
+def _apply_pricing(message: Message, pricing_info: dict) -> list[str]:
+    """Record the platform's billing verdict and correct the CRM's estimate.
+    Returns the fields it changed.
+
+    The estimate frozen at send time is the best guess available beforehand;
+    this is what actually happened, and it differs three ways:
+
+    * **Free after all** -- ``type`` is ``free_customer_service`` or
+      ``free_entry_point`` (or ``billable`` is false). The send rode an open
+      window the CRM could not see, most often the 72-hour free entry point
+      that follows a Click-to-WhatsApp ad. The amount drops to zero.
+    * **A different category** -- Meta re-categorises templates on its own
+      and bills at *its* category, so the amount is recomputed from that, at
+      the rate card in force when the message was sent rather than today's.
+    * **Nothing to change** -- the common case.
+
+    Never touches a failed message: nothing is charged for a send that did
+    not arrive, and ``send_template`` has already zeroed it.
+    """
+    fields = []
+
+    def record(name, value):
+        if getattr(message, name) != value:
+            setattr(message, name, value)
+            fields.append(name)
+
+    record("meta_pricing_type", pricing_info.get("type") or "")
+    record("meta_pricing_category", pricing_info.get("category") or "")
+    record("meta_pricing_model", pricing_info.get("model") or "")
+    billable = pricing_info.get("billable")
+    record("meta_billable", billable if isinstance(billable, bool) else None)
+
+    # Only messages the CRM actually billed are worth reconciling: an inbound
+    # row, or a free-form reply, carries NULL and stays NULL.
+    if message.billed_amount is None or message.status == MessageStatus.FAILED.value:
+        return fields
+
+    pricing_type = (pricing_info.get("type") or "").strip()
+    # ``type`` is absent from some payloads, so fall back to ``billable``;
+    # with neither, assume Meta charged and let the estimate stand.
+    if pricing_type:
+        is_free = pricing_type != "regular"
+    elif isinstance(billable, bool):
+        is_free = not billable
+    else:
+        is_free = False
+
+    if is_free:
+        if message.billed_amount != Decimal("0"):
+            message.billed_amount = Decimal("0")
+            fields.append("billed_amount")
+        return fields
+
+    # Billable, at Meta's category. Re-price only when that differs from what
+    # the CRM assumed, and only for a category the rate card knows --
+    # marketing_lite and referral_conversion are billed by mechanisms this
+    # CRM does not implement, so their amounts are left alone.
+    category = (pricing_info.get("category") or "").strip()
+    if not category or category == message.billed_category:
+        return fields
+    if category not in pricing.CATEGORIES:
+        logger.info(
+            "meta billed message %s as %r, which this CRM cannot price",
+            message.provider_message_id, category,
+        )
+        return fields
+
+    market = pricing.market_for(message.conversation.contact)
+    amount = pricing.rate_for(market, category, timezone.localdate(message.timestamp))
+    if amount != message.billed_amount:
+        logger.info(
+            "meta re-categorised message %s from %s to %s: %s -> %s",
+            message.provider_message_id, message.billed_category or "(none)",
+            category, message.billed_amount, amount,
+        )
+        message.billed_amount = amount
+        fields.append("billed_amount")
+    if message.billed_category != category:
+        message.billed_category = category
+        fields.append("billed_category")
+    return fields
 
 
 def canonical_phone(phone: str) -> str:
