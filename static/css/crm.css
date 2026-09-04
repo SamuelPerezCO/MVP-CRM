@@ -247,3 +247,151 @@
   font-size: 14px;
   color: var(--text);
 }
+
+/* ==========================================================================
+   Clientes CRUD — the shared modal every ver/crear/editar/eliminar screen
+   renders into (see templates/partials/crm/panels/clientes.html), plus the
+   destructive buttons only this flow needs.
+
+   The form itself is built from the shared .ffield system (plantillas.css);
+   everything here is layout and the red variants.
+   ========================================================================== */
+
+.modal--client { width: min(560px, calc(100vw - 32px)); }
+
+/* The modal's own X sits top-right, so leave the title clear of it. */
+.modal--client .modal__title { text-align: start; font-size: 18px; }
+.modal--client .modal__body { padding: 28px; }
+
+/* Two fields per line, collapsing to one on a narrow modal. */
+.client-form__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .client-form__row { grid-template-columns: 1fr; }
+}
+
+.client-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-block-start: 24px;
+}
+
+/* Pushes Cancelar/Guardar to the end while Eliminar stays on the left. */
+.client-form__spacer { flex: 1; }
+
+.client-form__actions form { display: contents; }
+
+/* --- Destructive buttons --------------------------------------------------- */
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--badge);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.btn-danger:hover { background: #d92b36; }
+.btn-danger:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+.btn-danger-ghost {
+  padding: 9px 12px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--error-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.btn-danger-ghost:hover { background: #fdf1f1; }
+.btn-danger-ghost:focus-visible { outline: 2px solid var(--error-text); outline-offset: 1px; }
+
+/* Stays muted in the row until pointed at -- a delete shouldn't shout from
+   every line of the table. */
+.icon-btn--danger:hover { color: var(--error-text); background: #fdf1f1; }
+
+/* --- Ver cliente ----------------------------------------------------------- */
+
+.client-detail { margin: 18px 0 0; }
+
+.client-detail__row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  border-block-end: 1px solid var(--sidebar-border);
+  font-size: 13px;
+}
+
+.client-detail__row:last-child { border-block-end: none; }
+
+.client-detail dt {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  padding-block-start: 2px;
+}
+
+.client-detail dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.client-detail__thread {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 999px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 12.5px;
+  transition: background-color var(--speed) ease;
+}
+
+.client-detail__thread:hover { background: var(--hover-bg); }
+.client-detail__thread .icon { width: 14px; height: 14px; }
+
+/* --- Eliminar cliente ------------------------------------------------------ */
+
+.client-delete__text {
+  margin: 14px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.client-delete__who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--hover-bg);
+  font-size: 13px;
+  line-height: 1.45;
+}

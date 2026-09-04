@@ -4,8 +4,8 @@ MVP de un CRM omnicanal para comercios, inspirado en plataformas tipo Treble/Lea
 
 ## Funcionalidades
 
-- **Inbox** — conversaciones reales filtradas por canal y asignación, con lista, chat en vivo (polling htmx), compositor con la regla de 24 horas de WhatsApp y panel de detalles del cliente.
-- **CRM** — tabla de clientes (nombre, teléfono con bandera de país, mail, canal) y listas de clientes.
+- **Inbox** — conversaciones reales filtradas por canal y asignación, con lista, chat en vivo (polling htmx), compositor con la regla de 24 horas de WhatsApp, respuestas rápidas que se envían de un clic y panel de detalles del cliente.
+- **CRM** — clientes con alta, edición, ficha y baja desde la tabla (nombre, teléfono con bandera de país, mail, canal), buscador y listas de clientes.
 - **Embudos** — panel de embudos de venta con creación de nuevos embudos.
 - **Automatizaciones** — flujos de chatbots y banner de Academy.
 - **Mi comercio** — catálogo de productos con creación e importación.

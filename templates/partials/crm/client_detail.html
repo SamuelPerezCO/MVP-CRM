@@ -1,0 +1,98 @@
+{% comment %}
+  The read-only "Ver cliente" card -- the body of the shared client modal,
+  fetched by the eye button on a row.
+
+  Shows what the table row has no column for: when the client arrived, the
+  threads they have in the Inbox and the lists they belong to. "Editar" swaps
+  this same modal body for the form, so Ver -> Editar is one click and no
+  second dialog.
+
+  Context: client, conversations, q, page
+{% endcomment %}
+{% load crm_extras %}
+
+<h2 class="modal__title modal__title--start" id="client-modal-title">
+  {{ client.full_name }}
+</h2>
+
+<dl class="client-detail">
+  <div class="client-detail__row">
+    <dt>Teléfono</dt>
+    <dd>
+      {% flag_template client.country as flag_svg %}
+      <span class="phone">
+        {% if flag_svg %}
+          <span class="phone__flag">{% include flag_svg %}</span>
+        {% elif client.flag %}
+          <span class="phone__flag" aria-hidden="true">{{ client.flag }}</span>
+        {% endif %}
+        <span>{{ client.phone }}</span>
+      </span>
+      {% if client.has_whatsapp %}
+        <a class="wa-link" href="{{ client.whatsapp_url }}" target="_blank" rel="noopener">
+          {% include "icons/brands/whatsapp.svg" %}
+          <span>Iniciar conversación</span>
+        </a>
+      {% endif %}
+    </dd>
+  </div>
+
+  <div class="client-detail__row">
+    <dt>Mail</dt>
+    <dd>{{ client.email|default:"—" }}</dd>
+  </div>
+
+  <div class="client-detail__row">
+    <dt>Canal</dt>
+    <dd>
+      {% if client.channel %}
+        <span class="channel">
+          {% include "icons/brands/"|add:client.channel|add:".svg" %}
+          <span>{{ client.get_channel_display }}</span>
+        </span>
+      {% else %}—{% endif %}
+    </dd>
+  </div>
+
+  <div class="client-detail__row">
+    <dt>Cliente desde</dt>
+    <dd>{{ client.created_at|date:"d/m/Y" }}</dd>
+  </div>
+
+  <div class="client-detail__row">
+    <dt>Conversaciones</dt>
+    <dd>
+      {% for conversation in conversations %}
+        <a class="client-detail__thread"
+           href="{% url 'section' 'inbox' %}?chat={{ conversation.pk }}">
+          {% include conversation.icon_template %}
+          <span>{{ conversation.get_channel_display }} · {{ conversation.get_status_display }}</span>
+        </a>
+      {% empty %}
+        <span class="table__muted">Todavía ninguna.</span>
+      {% endfor %}
+    </dd>
+  </div>
+
+  <div class="client-detail__row">
+    <dt>Listas</dt>
+    <dd>
+      {% for list in client.client_lists.all %}
+        <span class="tag-pill tag-pill--gray">{{ list.name }}</span>
+      {% empty %}
+        <span class="table__muted">En ninguna lista.</span>
+      {% endfor %}
+    </dd>
+  </div>
+</dl>
+
+<div class="client-form__actions">
+  <span class="client-form__spacer"></span>
+  <button type="button" class="btn-ghost" data-dialog-close>Cerrar</button>
+  <button type="button" class="btn-primary"
+          hx-get="{% url 'cliente_update' client.pk %}?q={{ q|urlencode }}&page={{ page|urlencode }}"
+          hx-target="#client-modal-body"
+          hx-swap="innerHTML">
+    Editar
+  </button>
+</div>

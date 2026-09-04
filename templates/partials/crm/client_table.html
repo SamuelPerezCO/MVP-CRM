@@ -1,12 +1,23 @@
 {% comment %}
-  The client table plus its pager -- the swappable region inside #client-table.
+  The client table plus its pager -- the swappable region inside #client-table,
+  re-rendered by the search box, the pager and every create/edit/delete.
 
-  Iterates the real Client queryset (paginated in core.views._clientes_context).
-  No seed rows: with an empty database this renders the empty state below.
+  Iterates the real Client queryset (paginated and filtered in
+  core.views._clientes_context). No seed rows: with an empty database this
+  renders the empty state below.
 
-  Context: clients (a Paginator page), page_obj
+  #client-page lives here rather than in the toolbar on purpose: this region
+  is what re-renders when the page changes, so the hidden value every CRUD
+  button hx-includes is always the page actually on screen.
+
+  hx-headers supplies the CSRF token to the forms inside the modal those
+  buttons fill, and the row buttons themselves are plain GETs.
+
+  Context: clients (a Paginator page), page_obj, client_query
 {% endcomment %}
 {% load crm_extras %}
+
+<input type="hidden" id="client-page" name="page" value="{{ page_obj.number }}">
 
 {% if clients %}
   <table class="table">
@@ -58,14 +69,28 @@
           </td>
 
           <td class="table__actions-col">
-            <div class="row-actions">
+            {# All three fill the same modal -- see panels/clientes.html. #}
+            <div class="row-actions"
+                 hx-target="#client-modal-body"
+                 hx-swap="innerHTML"
+                 hx-include="#client-search, #client-page">
               <button type="button" class="icon-btn icon-btn--bare"
+                      data-dialog-open="client-modal"
+                      hx-get="{% url 'cliente_detail' client.pk %}"
                       aria-label="Ver {{ client.full_name }}">
                 {% include "icons/eye.svg" %}
               </button>
               <button type="button" class="icon-btn icon-btn--bare"
+                      data-dialog-open="client-modal"
+                      hx-get="{% url 'cliente_update' client.pk %}"
                       aria-label="Editar {{ client.full_name }}">
                 {% include "icons/pencil.svg" %}
+              </button>
+              <button type="button" class="icon-btn icon-btn--bare icon-btn--danger"
+                      data-dialog-open="client-modal"
+                      hx-get="{% url 'cliente_delete' client.pk %}"
+                      aria-label="Eliminar {{ client.full_name }}">
+                {% include "icons/trash.svg" %}
               </button>
             </div>
           </td>
@@ -81,6 +106,7 @@
         <a class="pager__link"
            href="?view=clientes&page={{ page_obj.previous_page_number }}"
            hx-get="{% url 'clientes_table' %}?page={{ page_obj.previous_page_number }}"
+           hx-include="#client-search"
            hx-target="#client-table"
            hx-swap="innerHTML"
            hx-push-url="?view=clientes&page={{ page_obj.previous_page_number }}">
@@ -96,6 +122,7 @@
         <a class="pager__link"
            href="?view=clientes&page={{ page_obj.next_page_number }}"
            hx-get="{% url 'clientes_table' %}?page={{ page_obj.next_page_number }}"
+           hx-include="#client-search"
            hx-target="#client-table"
            hx-swap="innerHTML"
            hx-push-url="?view=clientes&page={{ page_obj.next_page_number }}">
@@ -105,6 +132,13 @@
     </nav>
   {% endif %}
 
+{% elif client_query %}
+  {# Searched and found nothing -- distinct from having no clients at all. #}
+  <div class="empty empty--panel">
+    <div class="empty__icon">{% include "icons/search.svg" %}</div>
+    <p class="empty__title">Sin resultados para «{{ client_query }}»</p>
+    <p class="empty__text">Prueba con otro nombre, teléfono o correo.</p>
+  </div>
 {% else %}
   {% include "partials/crm/client_table_empty.html" %}
 {% endif %}

@@ -1,0 +1,22 @@
+{% comment %}
+  What a successful create/edit/delete answers with. It lands in the modal
+  body, and does three things from there:
+
+  * [data-dialog-dismiss] tells shell.js to close the dialog it arrived in --
+    the work is done, there is nothing left to show inside it.
+  * the out-of-band #client-table swap refreshes the rows underneath, so the
+    new/edited/removed client is visible the moment the modal disappears.
+  * the out-of-band #client-notice swap announces what happened. It lives in
+    the panel, not in here: a live region inside a dialog that is closing in
+    the same tick never gets read out.
+
+  Context: everything _clientes_context builds, plus client_notice
+{% endcomment %}
+
+<div data-dialog-dismiss hidden></div>
+
+<div id="client-table" hx-swap-oob="innerHTML">
+  {% include "partials/crm/client_table.html" %}
+</div>
+
+<p id="client-notice" class="sr-only" role="status" hx-swap-oob="innerHTML">{{ client_notice }}</p>
