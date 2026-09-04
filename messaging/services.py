@@ -9,9 +9,13 @@ Two entry points matter:
   is Django only), so it runs synchronously.
 * :func:`send_message` -- the only way the app sends a free-form text (or
   a quick reply's image). It is where the 24-hour window rule lives.
-* :func:`send_template` -- the one send allowed outside that window: a
-  pre-approved plantilla, which is how a conversation is started from our
-  side (see :func:`start_conversation`).
+* :func:`send_template` -- the only way out of a closed window: a
+  pre-approved plantilla with its {{n}} filled in, sent through the
+  provider's template call. It is also how a conversation is started from
+  our side (see :func:`start_conversation`).
+* :func:`submit_template` / :func:`sync_template_verdicts` -- the plantilla
+  catalogue's round trip to the provider: submit for approval, read the
+  verdicts back. No-ops on providers without a catalogue.
 """
 
 from __future__ import annotations
@@ -42,6 +46,14 @@ class SendWindowClosed(Exception):
 class SendFailed(Exception):
     """The provider rejected or errored on a send. The Message row is kept
     with ``status=failed`` so the thread shows what happened."""
+
+
+class TemplateNotSendable(Exception):
+    """Raised when a plantilla cannot go out as a template message: it is
+    switched off, or Meta rejected it. A *pendiente* one is allowed through --
+    the MVP has no approval pipeline of its own, and the provider is the
+    authority on whether an unapproved name sends (the fake provider always
+    will, Meta will answer with an error that surfaces as SendFailed)."""
 
 
 class TemplateSubmissionFailed(Exception):
@@ -114,22 +126,34 @@ def send_message(
     return message
 
 
-def send_template(conversation: Conversation, template, user=None) -> Message:
-    """Send a WhatsApp plantilla in ``conversation`` and record it.
+def send_template(conversation: Conversation, template, values: dict, user=None) -> Message:
+    """Send plantilla ``template`` in ``conversation`` with its {{n}} filled
+    from ``values`` (``{"1": "Ana", "2": "#4512"}``), and record it.
 
-    The one send that works *outside* the 24h window -- it is how a
-    conversation starts (a client who has never written in) or restarts (one
-    who went quiet). The rendered body (samples substituted for {{n}}, see
-    core.plantillas.render_body) is what the thread shows; the provider gets
-    the template's name and its parameters, which is what Meta actually
-    delivers. Providers without a template mechanism render the same text.
+    This is the one send that ignores the 24-hour window -- that is the
+    entire reason template messages exist, and it is how a conversation is
+    started from our side (a client who has never written in) or restarted
+    (one who went quiet). The Message row stores the *rendered* text
+    (core.plantillas.render_with), so the thread reads as what the customer
+    received rather than as ``order_confirmation``.
 
-    No window check on purpose; that is the point of a template. Raises
-    :class:`SendFailed` when the provider errors (row kept as ``failed``).
+    ``values`` comes from the agent filling the send dialog, never from the
+    plantilla's editor samples: those are examples for Meta's reviewer, and
+    sending them would greet every customer as "Camila".
+
+    Same crash-safety shape as :func:`send_message`: the row is created
+    ``queued`` before the provider call and marked ``failed`` if it errors.
+    Raises :class:`TemplateNotSendable` for an inactive or rejected plantilla
+    and :class:`SendFailed` when the provider errors.
     """
-    from core import plantillas  # local: core imports messaging, not the reverse
+    from core import plantillas  # local: core imports this module
 
-    body = plantillas.render_body(template)
+    if not template.is_active:
+        raise TemplateNotSendable("La plantilla está desactivada.")
+    if template.status == TemplateStatus.REJECTED.value:
+        raise TemplateNotSendable("WhatsApp rechazó esta plantilla; no se puede enviar.")
+
+    body = plantillas.render_with(template, values)
     message = Message.objects.create(
         conversation=conversation,
         direction=Message.OUTBOUND,
@@ -138,14 +162,12 @@ def send_template(conversation: Conversation, template, user=None) -> Message:
         sent_by=user if getattr(user, "is_authenticated", False) else None,
     )
 
-    samples = template.body_sample_values or []
-    params = {str(index + 1): value for index, value in enumerate(samples) if value}
+    provider = get_provider()
+    params = {str(key): str(value) for key, value in values.items()}
     params["_language"] = template.language
-    # For providers with no template mechanism (Baileys), so they send the
+    # For providers with no template catalogue (Baileys), so they send the
     # message rather than the template's name -- see MessagingProvider.
     params["_rendered"] = body
-
-    provider = get_provider()
     try:
         provider_id = provider.send_template(
             to=conversation.contact.phone, template_name=template.name, params=params
@@ -153,7 +175,9 @@ def send_template(conversation: Conversation, template, user=None) -> Message:
     except Exception as exc:
         message.status = MessageStatus.FAILED.value
         message.save(update_fields=["status"])
-        logger.exception("send_template failed for conversation %s", conversation.pk)
+        logger.exception(
+            "send_template %s failed for conversation %s", template.name, conversation.pk
+        )
         raise SendFailed(str(exc)) from exc
 
     message.provider_message_id = provider_id
@@ -171,7 +195,7 @@ def start_conversation(contact: Client, channel: str = "whatsapp") -> Conversati
     return _get_or_create_open_conversation(contact, channel)
 
 
-# --- Template catalogue -----------------------------------------------------
+# --- Template catalogue ------------------------------------------------------
 
 
 def submit_template(template) -> bool:

@@ -22,7 +22,11 @@
   {# Vendored so the app has no CDN dependency at runtime. #}
   <script src="{% vstatic 'js/vendor/htmx.min.js' %}" defer></script>
 </head>
-<body>
+{# One CSRF header for every hx-post/hx-delete on the page: htmx inherits   #}
+{# hx-headers down the tree, and <body> is never swapped, so fragments need #}
+{# not carry a token of their own (a fragment is then the same bytes         #}
+{# whether fetched on its own or embedded in the page).                      #}
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
   <div class="app">
     {% include "partials/sidebar.html" %}
 

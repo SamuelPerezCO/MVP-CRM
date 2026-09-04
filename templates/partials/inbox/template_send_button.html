@@ -1,0 +1,18 @@
+{% comment %}
+  The "Enviar plantilla" button -- the same control inside the open composer
+  and in the closed-window notice, so the path to a real template send never
+  depends on which state the thread is in.
+
+  hx-get fetches the dialog into #tpl-send-slot; shell.js opens whatever
+  [data-open-on-swap] dialog lands there. Fetched on every click, so the
+  plantilla list is never stale.
+
+  Context: active_conversation
+{% endcomment %}
+<button type="button" class="composer__quick composer__quick--template"
+        hx-get="{% url 'inbox_template_send' active_conversation.pk %}"
+        hx-target="#tpl-send-slot"
+        hx-swap="innerHTML">
+  {% include "icons/message-dots.svg" %}
+  <span>Enviar plantilla</span>
+</button>

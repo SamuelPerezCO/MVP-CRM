@@ -59,7 +59,33 @@
   </div>
 
   <p class="ffield__label ffield__label--static newchat__label">Plantilla</p>
-  {% include "partials/inbox/template_list.html" %}
+  {% include "partials/inbox/template_list.html" with reload_url=new_chat_url %}
+
+  {% comment %}
+    One input per {{n}} of the chosen plantilla, prefilled with the editor's
+    sample so the agent edits rather than types from nothing -- but they are
+    what actually gets sent, which is the whole point: the samples are
+    examples for Meta's reviewer, not a greeting for this customer.
+
+    Picking a different plantilla re-fetches this body (the radios carry
+    hx-get), so the inputs always match the selection.
+  {% endcomment %}
+  {% if template_variables %}
+    <div class="newchat__vars">
+      <p class="ffield__label ffield__label--static">Datos de la plantilla</p>
+      {% for variable in template_variables %}
+        <div class="ffield">
+          <input class="ffield__input" type="text" placeholder=" " autocomplete="off"
+                 name="var_{{ selected_template.pk }}_{{ variable.number }}"
+                 id="newchat-var-{{ variable.number }}"
+                 value="{{ variable.value }}" required>
+          <label class="ffield__label" for="newchat-var-{{ variable.number }}">
+            Variable {{ variable.number }} — {% templatetag openvariable %}{{ variable.number }}{% templatetag closevariable %}
+          </label>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
 
   <div class="client-form__actions">
     <span class="client-form__spacer"></span>

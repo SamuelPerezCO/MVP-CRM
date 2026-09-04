@@ -15,9 +15,23 @@
     {% for entry in template_options %}
       <li>
         <label class="tpl-pick__item">
+          {% comment %}
+            In the Nuevo chat modal (reload_url set) changing the plantilla
+            re-fetches the body so its variable inputs follow. Elsewhere the
+            radio is just a radio.
+          {% endcomment %}
           <input class="tpl-pick__radio" type="radio" name="plantilla"
                  value="{{ entry.template.pk }}" required
-                 {% if forloop.first %}checked{% endif %}>
+                 {% if reload_url %}
+                   hx-get="{{ reload_url }}"
+                   hx-trigger="change"
+                   hx-target="#newchat-modal-body"
+                   hx-swap="innerHTML"
+                   hx-include="closest form"
+                 {% endif %}
+                 {% if selected_template %}
+                   {% if selected_template.pk == entry.template.pk %}checked{% endif %}
+                 {% elif forloop.first %}checked{% endif %}>
           <span class="tpl-pick__body">
             <span class="tpl-pick__name">
               {{ entry.template.name }}

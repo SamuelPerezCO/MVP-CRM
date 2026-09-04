@@ -397,6 +397,22 @@ def _valid_cta_url(url: str) -> bool:
     return True
 
 
+def render_with(template, values: dict) -> str:
+    """A template's body with each {{n}} replaced by ``values[str(n)]``.
+
+    What the Inbox stores on the Message row when a plantilla is *sent*: the
+    text the customer will actually read, so the thread and the conversation
+    list preview show words instead of a template name. A variable without a
+    value keeps its ``{{n}}`` -- the send endpoint validates before it ever
+    gets here, so that is a programming error made visible, not hidden.
+    """
+
+    def substitute(match):
+        return str(values.get(match.group(1), match.group(0)))
+
+    return VARIABLE_RE.sub(substitute, template.body)
+
+
 def template_spec(template) -> TemplateSpec:
     """A MessageTemplate as the provider-neutral spec ``create_template``
     takes -- the one place the model crosses into ``messaging.providers``."""
