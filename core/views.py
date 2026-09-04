@@ -919,7 +919,7 @@ def inbox_send(request, conversation_id: int):
         reply = QuickReply.objects.filter(pk=reply_id, is_active=True).first()
         if reply is not None:
             body = reply.body
-            image_url = respuestas.image_url(reply)
+            image_url = respuestas.image_url(reply, request)
 
     send_error = None
     if body or image_url:

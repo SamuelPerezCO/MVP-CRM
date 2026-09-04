@@ -8,6 +8,8 @@ shuffles state between the form and these functions.
 
 from __future__ import annotations
 
+from django.conf import settings
+
 from .models import QuickReply
 
 TITLE_MAX = 80
@@ -98,11 +100,31 @@ def apply(state: dict, upload=None, reply=None, user=None) -> QuickReply:
     return reply
 
 
-def image_url(reply: QuickReply) -> str:
-    """The URL a provider is handed for the reply's image, or "".
+def image_url(reply: QuickReply, request=None) -> str:
+    """The absolute URL a provider is handed for the reply's image, or "".
 
-    Storage answers a relative URL for local MEDIA files; Vercel Blob answers
-    an absolute CDN URL. Only the latter is reachable by Meta, which is fine:
-    the fake provider is what runs against local files.
+    Meta fetches this link from its own servers and rejects anything that
+    isn't absolute -- "(#100) Param image.link is not a valid URI" -- so a
+    relative path here means the photo never reaches the customer, and the
+    only sign is a 400 in the logs after the agent has already clicked send.
+
+    What storage answers varies: Vercel Blob gives an absolute CDN URL and
+    needs nothing done to it, while the local filesystem and
+    ``core.storage.DatabaseStorage`` both give a path rooted at "/". Those get
+    an origin attached -- from the live request when there is one, since its
+    Host is what the agent actually reached (and is checked against
+    ALLOWED_HOSTS, so it can't be spoofed into pointing somewhere else), and
+    otherwise from ``settings.PUBLIC_BASE_URL``.
     """
-    return reply.image.url if reply.image else ""
+    if not reply.image:
+        return ""
+    url = reply.image.url
+    if url.startswith(("http://", "https://")):
+        return url
+    if request is not None:
+        return request.build_absolute_uri(url)
+    base = getattr(settings, "PUBLIC_BASE_URL", "")
+    # Without an origin the link is unusable to Meta. Returning it anyway
+    # would send a message whose image silently never renders; returning ""
+    # sends the caption alone, which at least arrives.
+    return f"{base}{url}" if base else ""

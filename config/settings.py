@@ -82,6 +82,19 @@ if os.environ.get('VERCEL'):
         'mvp-crm-git-main-unaneaprogramadora.vercel.app',
     ]
 
+# Absolute https origin for URLs that leave this app and are fetched by
+# somebody else's servers -- specifically the image link handed to WhatsApp,
+# which Meta rejects outright unless it is absolute ("Param image.link is not
+# a valid URI"). Only needed when files are served by this app rather than a
+# CDN; see core.storage.DatabaseStorage. A live request beats this (its Host
+# is the origin the agent actually reached, and is validated against
+# ALLOWED_HOSTS), so this is the fallback for code with no request in hand.
+PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', '').rstrip('/')
+if not PUBLIC_BASE_URL and VERCEL_PROJECT_PRODUCTION_URL:
+    PUBLIC_BASE_URL = f'https://{VERCEL_PROJECT_PRODUCTION_URL}'
+if not PUBLIC_BASE_URL and ALLOWED_HOSTS:
+    PUBLIC_BASE_URL = f'https://{ALLOWED_HOSTS[0]}'
+
 CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS]
 
 # Vercel terminates TLS in front of the app and forwards over HTTP; without

@@ -6,7 +6,7 @@ from datetime import timedelta
 from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -295,7 +295,11 @@ class QuickSendTests(TestCase):
         self.assertTrue(kwargs["image_url"].endswith(row.image.name.split("/")[-1]))
         message = Message.objects.get()
         self.assertEqual(message.media_type, "image")
-        self.assertEqual(message.media_url, row.image.url)
+        # Absolute, not the relative path storage answers with. Meta fetches
+        # this link from its own servers and rejects a bare path outright --
+        # "(#100) Param image.link is not a valid URI" -- which reaches the
+        # agent as a send that simply failed, well after they clicked.
+        self.assertEqual(message.media_url, "http://testserver" + row.image.url)
         self.assertTrue(message.is_inline_image)   # the thread renders it
         row.image.delete(save=False)
 
@@ -360,3 +364,52 @@ class SendImageServiceTests(TestCase):
         self.assertEqual(provider.sent, [("+57", "hola")])
         provider.send_image("+57", "https://x/y.png")   # no caption -> the URL
         self.assertEqual(provider.sent[-1], ("+57", "https://x/y.png"))
+
+
+class ImageUrlIsAbsoluteTests(TestCase):
+    """core.respuestas.image_url must hand providers an absolute URL.
+
+    Meta fetches the link from its own servers, so a relative path is a 400
+    ("Param image.link is not a valid URI") -- and the agent only finds out
+    after clicking send. Blob storage returned absolute CDN URLs, so nothing
+    caught this until uploads moved into the database.
+    """
+
+    def test_a_relative_storage_url_gets_the_requests_own_origin(self):
+        row = reply(title="Promo", body="hola", image=png())
+        request = RequestFactory().get("/", HTTP_HOST="testserver")
+        self.assertEqual(
+            respuestas.image_url(row, request), "http://testserver" + row.image.url
+        )
+        row.image.delete(save=False)
+
+    @override_settings(PUBLIC_BASE_URL="https://crm.example.com")
+    def test_without_a_request_it_falls_back_to_the_configured_origin(self):
+        # The path taken by anything sending outside a request cycle.
+        row = reply(title="Promo", body="hola", image=png())
+        self.assertEqual(
+            respuestas.image_url(row), "https://crm.example.com" + row.image.url
+        )
+        row.image.delete(save=False)
+
+    @override_settings(PUBLIC_BASE_URL="")
+    def test_with_no_origin_at_all_it_sends_the_caption_rather_than_a_bad_link(self):
+        # A relative link would be rejected by Meta and lose the whole message;
+        # "" drops the photo but still delivers the text.
+        row = reply(title="Promo", body="hola", image=png())
+        self.assertEqual(respuestas.image_url(row), "")
+        row.image.delete(save=False)
+
+    def test_an_absolute_url_from_blob_storage_is_left_alone(self):
+        row = reply(title="Promo", body="hola", image=png())
+        with mock.patch.object(
+            type(row.image), "url", new_callable=mock.PropertyMock
+        ) as url:
+            url.return_value = "https://blob.vercel-storage.com/x.png"
+            self.assertEqual(
+                respuestas.image_url(row), "https://blob.vercel-storage.com/x.png"
+            )
+        row.image.delete(save=False)
+
+    def test_a_reply_without_an_image_has_no_url(self):
+        self.assertEqual(respuestas.image_url(reply(title="Solo texto")), "")
