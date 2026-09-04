@@ -1,0 +1,45 @@
+{% comment %}
+  The Enviar plantilla modal for one conversation -- what
+  core.views.inbox_template_send answers a GET with. The "Enviar plantilla"
+  button in the composer fetches it into #tpl-send-slot, and shell.js opens
+  any swapped-in [data-open-on-swap] dialog, so it is always fresh: the list
+  of plantillas is read at the moment of opening, never cached in the thread.
+
+  The form posts to the same URL and aims at the thread, exactly like the
+  composer does: a sent plantilla is just another outbound message there.
+  data-close-on-success is the existing shell.js rule that closes the dialog
+  once that swap succeeds. A rejected submit (a variable left blank) comes
+  back 422 with HX-Retarget at #tpl-send-body, so the form -- and what was
+  typed -- survives.
+
+  Context: active_conversation, entries, selected_id, send_form_error
+{% endcomment %}
+
+<dialog class="tpl-send" id="tpl-send-dialog" data-open-on-swap>
+  <form method="post"
+        action="{% url 'inbox_template_send' active_conversation.pk %}"
+        hx-post="{% url 'inbox_template_send' active_conversation.pk %}"
+        hx-target="#chat-messages"
+        hx-swap="innerHTML"
+        data-close-on-success
+        data-template-send-form>
+    {% csrf_token %}
+
+    <h2 class="tpl-send__title">Enviar plantilla</h2>
+    <p class="tpl-send__sub">
+      A {{ active_conversation.contact.full_name }}. Se envía como mensaje de
+      plantilla de WhatsApp, también con la ventana de 24 horas cerrada.
+    </p>
+
+    <div class="tpl-send__body" id="tpl-send-body">
+      {% include "partials/inbox/template_send_body.html" %}
+    </div>
+
+    <div class="tpl-send__actions">
+      <button type="button" class="btn-ghost" data-dialog-close>Cancelar</button>
+      {% if entries %}
+        <button type="submit" class="btn-primary">Enviar plantilla</button>
+      {% endif %}
+    </div>
+  </form>
+</dialog>

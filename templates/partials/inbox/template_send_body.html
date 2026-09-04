@@ -1,0 +1,68 @@
+{% comment %}
+  The inside of the Enviar plantilla dialog: the plantilla picker, one
+  variables fieldset per plantilla, and the live preview. Rendered inside
+  template_send_dialog.html and, on its own, as the body of a rejected submit
+  (core.views._template_send_rejected swaps it into #tpl-send-body).
+
+  Every plantilla's fieldset is rendered up front and shell.js shows the one
+  matching the <select> -- the same show/hide the plantilla editor does for
+  header kinds -- so switching plantillas costs no request. Inputs are named
+  var_<pk>_<n> because they all live in one form.
+
+  Context: entries -- [{template, variables: [{number, value}]}],
+  selected_id, send_form_error
+{% endcomment %}
+
+{% if entries %}
+  <label class="tpl-send__label" for="tpl-send-pick">Plantilla</label>
+  <select class="tpl-send__select" id="tpl-send-pick" name="template" data-template-pick>
+    {% for entry in entries %}
+      <option value="{{ entry.template.pk }}"{% if entry.template.pk == selected_id %} selected{% endif %}>
+        {{ entry.template.name }}{% if entry.template.status == "pendiente" %} · pendiente de aprobación{% endif %}
+      </option>
+    {% endfor %}
+  </select>
+
+  {% for entry in entries %}
+    <fieldset class="tpl-send__fields"
+              data-template-fields="{{ entry.template.pk }}"
+              data-template-body="{{ entry.template.body }}"
+              {% if entry.template.pk != selected_id %}hidden disabled{% endif %}>
+      <legend class="sr-only">Variables de {{ entry.template.name }}</legend>
+
+      {% if entry.template.status == "pendiente" %}
+        <p class="tpl-send__warn">
+          WhatsApp aún no aprobó esta plantilla. Fuera de la ventana de 24
+          horas el envío puede rechazarse.
+        </p>
+      {% endif %}
+
+      {% for variable in entry.variables %}
+        <label class="tpl-send__label" for="tpl-var-{{ entry.template.pk }}-{{ variable.number }}">
+          Variable {% templatetag openvariable %}{{ variable.number }}{% templatetag closevariable %}
+        </label>
+        <input class="field__input tpl-send__input" type="text" required
+               id="tpl-var-{{ entry.template.pk }}-{{ variable.number }}"
+               name="var_{{ entry.template.pk }}_{{ variable.number }}"
+               value="{{ variable.value }}"
+               data-template-var="{{ variable.number }}"
+               autocomplete="off">
+      {% empty %}
+        <p class="tpl-send__hint">Esta plantilla no tiene variables.</p>
+      {% endfor %}
+
+      <p class="tpl-send__label">Vista previa</p>
+      <p class="tpl-send__preview" data-template-preview>{{ entry.template.body }}</p>
+    </fieldset>
+  {% endfor %}
+
+{% else %}
+  <p class="tpl-send__empty">
+    No hay plantillas activas para enviar. Créalas en
+    <a href="{% url 'section' 'mensajeria' %}?view=plantillas-whatsapp">Plantillas de WhatsApp</a>.
+  </p>
+{% endif %}
+
+{% if send_form_error %}
+  <p class="tpl-send__error" role="alert">{{ send_form_error }}</p>
+{% endif %}

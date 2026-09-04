@@ -7,13 +7,15 @@ there is no webhook for the verdict.
 Sending a plantilla is a separate path with its own tests; this file is only
 about the catalogue Meta keeps and how the CRM stays in step with it."""
 
+from datetime import timedelta
 from unittest.mock import Mock, patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
-from core.models import MessageTemplate
+from core.models import Client, MessageTemplate
 from messaging import services
+from messaging.models import Conversation, Message
 from messaging.providers.base import MessagingProvider
 from messaging.providers.fake import FakeProvider
 from messaging.providers.meta import MetaProvider
@@ -24,6 +26,19 @@ def plantilla(name="pedido_listo", body="Hola {{1}}, tu pedido {{2}} está listo
               samples=("Ana", "#4512"), status="aceptada", **kwargs):
     return MessageTemplate.objects.create(
         name=name, body=body, body_sample_values=list(samples), status=status, **kwargs
+    )
+
+
+def conversation(hours_since_inbound=48):
+    """A WhatsApp chat whose 24h window closed a day ago -- the case template
+    sends exist for. ``hours_since_inbound=1`` keeps it open."""
+    from django.utils import timezone
+
+    contact = Client.objects.create(first_name="Ana", last_name="Test", phone="+573000000777")
+    return Conversation.objects.create(
+        contact=contact,
+        channel="whatsapp",
+        last_inbound_at=timezone.now() - timedelta(hours=hours_since_inbound),
     )
 
 
@@ -325,3 +340,73 @@ class MetaTemplateCatalogueTests(TestCase):
         for field in ["name", "language", "status", "rejected_reason", "id"]:
             self.assertIn(field, params["fields"])
         self.assertIn("/10203040/message_templates", mock_get.call_args.args[0])
+
+
+class SendTemplateTests(TestCase):
+    """services.send_template against the fake provider (the default)."""
+
+    def test_sends_outside_the_24h_window(self):
+        # The whole point: send_message would raise SendWindowClosed here.
+        chat = conversation(hours_since_inbound=48)
+        message = services.send_template(chat, plantilla(), {"1": "Ana", "2": "#4512"})
+        self.assertEqual(message.direction, Message.OUTBOUND)
+        self.assertTrue(message.provider_message_id.startswith("fake-"))
+
+    def test_stores_the_rendered_text_not_the_template_name(self):
+        chat = conversation()
+        message = services.send_template(chat, plantilla(), {"1": "Ana", "2": "#4512"})
+        self.assertEqual(message.body, "Hola Ana, tu pedido #4512 está listo.")
+
+    def test_passes_name_values_and_language_to_the_provider(self):
+        chat = conversation()
+        entry = plantilla(language="es_MX")
+        with patch.object(FakeProvider, "send_template", return_value="fake-x") as send:
+            services.send_template(chat, entry, {"2": "#4512", "1": "Ana"})
+        send.assert_called_once_with(
+            to="+573000000777",
+            template_name="pedido_listo",
+            # _rendered rides along for providers with no template catalogue
+            # (Baileys), which would otherwise send the template's NAME.
+            params={
+                "2": "#4512",
+                "1": "Ana",
+                "_language": "es_MX",
+                "_rendered": "Hola Ana, tu pedido #4512 está listo.",
+            },
+        )
+
+    def test_bumps_the_conversation_and_records_the_sender(self):
+        from django.contrib.auth import get_user_model
+
+        chat = conversation()
+        user = get_user_model().objects.create_user("ana", password="x" * 12)
+        message = services.send_template(chat, plantilla(), {"1": "Ana", "2": "#1"}, user)
+        chat.refresh_from_db()
+        self.assertEqual(chat.last_message_at, message.timestamp)
+        self.assertEqual(message.sent_by, user)
+
+    def test_a_rejected_plantilla_is_refused_before_any_row_exists(self):
+        chat = conversation()
+        with self.assertRaises(services.TemplateNotSendable):
+            services.send_template(chat, plantilla(status="rechazada"), {"1": "a", "2": "b"})
+        self.assertEqual(Message.objects.count(), 0)
+
+    def test_an_inactive_plantilla_is_refused(self):
+        chat = conversation()
+        with self.assertRaises(services.TemplateNotSendable):
+            services.send_template(chat, plantilla(is_active=False), {"1": "a", "2": "b"})
+
+    def test_a_pendiente_plantilla_goes_through(self):
+        # No approval pipeline of our own -- the provider decides.
+        chat = conversation()
+        message = services.send_template(chat, plantilla(status="pendiente"), {"1": "a", "2": "b"})
+        self.assertIsNotNone(message.pk)
+
+    def test_a_provider_error_keeps_the_row_as_failed(self):
+        chat = conversation()
+        with patch.object(FakeProvider, "send_template", side_effect=RuntimeError("boom")):
+            with self.assertRaises(services.SendFailed):
+                services.send_template(chat, plantilla(), {"1": "a", "2": "b"})
+        message = Message.objects.get()
+        self.assertEqual(message.status, "failed")
+        self.assertIsNone(message.provider_message_id)

@@ -34,19 +34,18 @@ class SendTemplateServiceTests(TestCase):
         self.assertFalse(conversation.is_within_24h_window)   # never wrote in
         tpl = template()
         with mock.patch.object(FakeProvider, "send_template", return_value="tpl-1") as send:
-            message = messaging_services.send_template(conversation, tpl)
+            message = messaging_services.send_template(conversation, tpl, {"1": "Pedro"})
         send.assert_called_once_with(
             to="+573000000777",
             template_name="saludo_inicial",
-            # _rendered rides along for providers with no template mechanism
-            # (Baileys); Meta drops it. See MessagingProvider.send_template.
+            # The AGENT's value, not the editor's sample -- the whole point.
             params={
-                "1": "Camila",
+                "1": "Pedro",
                 "_language": "es",
-                "_rendered": "Hola Camila, ¿en qué te ayudo?",
+                "_rendered": "Hola Pedro, ¿en qué te ayudo?",
             },
         )
-        self.assertEqual(message.body, "Hola Camila, ¿en qué te ayudo?")
+        self.assertEqual(message.body, "Hola Pedro, ¿en qué te ayudo?")
         self.assertEqual(message.provider_message_id, "tpl-1")
         self.assertTrue(message.is_outbound)
         conversation.refresh_from_db()
@@ -58,7 +57,7 @@ class SendTemplateServiceTests(TestCase):
         conversation = Conversation.objects.create(contact=client(), channel="whatsapp")
         with mock.patch.object(FakeProvider, "send_template", side_effect=RuntimeError("no")):
             with self.assertRaises(messaging_services.SendFailed):
-                messaging_services.send_template(conversation, template())
+                messaging_services.send_template(conversation, template(), {"1": "Pedro"})
         self.assertEqual(Message.objects.get().status, "failed")
 
     def test_start_conversation_reuses_the_open_thread(self):
@@ -109,7 +108,9 @@ class NewChatModalTests(TestCase):
     def test_post_sends_the_plantilla_and_opens_the_new_thread(self):
         camila = client()
         tpl = template()
-        response = self.client.post(self.URL, {"cliente": camila.pk, "plantilla": tpl.pk})
+        response = self.client.post(
+            self.URL, {"cliente": camila.pk, "plantilla": tpl.pk, f"var_{tpl.pk}_1": "Camila"}
+        )
         html = response.content.decode()
         conversation = Conversation.objects.get()
         self.assertEqual(conversation.contact, camila)
@@ -129,7 +130,10 @@ class NewChatModalTests(TestCase):
     def test_post_into_an_existing_open_thread_reuses_it(self):
         camila = client()
         existing = Conversation.objects.create(contact=camila, channel="whatsapp")
-        self.client.post(self.URL, {"cliente": camila.pk, "plantilla": template().pk})
+        tpl = template()
+        self.client.post(
+            self.URL, {"cliente": camila.pk, "plantilla": tpl.pk, f"var_{tpl.pk}_1": "Camila"}
+        )
         self.assertEqual(Conversation.objects.count(), 1)
         self.assertEqual(existing.messages.count(), 1)
 
@@ -162,7 +166,10 @@ class NewChatModalTests(TestCase):
         camila = client()
         tpl = template()
         with mock.patch.object(FakeProvider, "send_template", side_effect=RuntimeError("no")):
-            html = self.client.post(self.URL, {"cliente": camila.pk, "plantilla": tpl.pk}).content.decode()
+            html = self.client.post(
+                self.URL,
+                {"cliente": camila.pk, "plantilla": tpl.pk, f"var_{tpl.pk}_1": "Camila"},
+            ).content.decode()
         self.assertIn("No se pudo enviar la plantilla", html)
         self.assertNotIn("data-dialog-dismiss", html)
 
@@ -183,40 +190,68 @@ class NewChatModalTests(TestCase):
 
 
 class ClosedComposerTests(TestCase):
+    """A closed 24h window offers the Enviar plantilla dialog -- the one that
+    fills the plantilla's {{n}} for this customer. (The dialog's own
+    behaviour is covered in messaging/core tests for inbox_template_send.)"""
+
     def setUp(self):
         self.conversation = Conversation.objects.create(
             contact=client(), channel="whatsapp",
             last_inbound_at=timezone.now() - timedelta(hours=30),
         )
-        self.url = reverse("inbox_send_template", args=[self.conversation.pk])
 
-    def test_a_closed_window_shows_the_picker_instead_of_the_composer(self):
-        tpl = template()
-        html = self.client.get(reverse("inbox_chat", args=[self.conversation.pk])).content.decode()
+    def test_a_closed_window_offers_the_plantilla_dialog_not_free_text(self):
+        template()
+        html = self.client.get(
+            reverse("inbox_chat", args=[self.conversation.pk])
+        ).content.decode()
         self.assertIn("ventana de 24 horas", html)
-        self.assertIn(f'hx-post="{self.url}"', html)
-        self.assertIn(f'value="{tpl.pk}"', html)
+        self.assertIn(
+            reverse("inbox_template_send", args=[self.conversation.pk]), html
+        )
         self.assertIn("Enviar plantilla", html)
         self.assertNotIn('name="body"', html)   # no free text offered
 
-    def test_an_open_window_does_not_render_the_picker(self):
+    def test_an_open_window_offers_both_the_composer_and_the_dialog(self):
         self.conversation.last_inbound_at = timezone.now()
         self.conversation.save()
         template()
-        html = self.client.get(reverse("inbox_chat", args=[self.conversation.pk])).content.decode()
+        html = self.client.get(
+            reverse("inbox_chat", args=[self.conversation.pk])
+        ).content.decode()
         self.assertIn('name="body"', html)
-        self.assertNotIn("Enviar plantilla", html)
+        # The plantilla path never depends on which state the thread is in.
+        self.assertIn("Enviar plantilla", html)
 
-    def test_posting_a_plantilla_lands_it_in_the_thread(self):
-        tpl = template()
-        response = self.client.post(self.url, {"plantilla": tpl.pk})
-        self.assertContains(response, "Hola Camila, ¿en qué te ayudo?")
-        self.assertEqual(self.conversation.messages.count(), 1)
 
-    def test_no_plantilla_is_an_inline_error(self):
-        response = self.client.post(self.url, {})
-        self.assertContains(response, "Elige una plantilla")
+class TemplateVariablesTests(TestCase):
+    """The plantilla's {{n}} are filled by the agent, per customer. Sending
+    the editor's sample values would greet every customer as "Camila"."""
+
+    URL = reverse("inbox_new_chat")
+
+    def test_the_modal_offers_an_input_per_variable_prefilled_with_the_sample(self):
+        tpl = template(body="Hola {{1}}, tu pedido {{2}}.", samples=("Camila", "#4512"))
+        html = self.client.get(self.URL, {"plantilla": tpl.pk}).content.decode()
+        self.assertIn(f'name="var_{tpl.pk}_1"', html)
+        self.assertIn(f'name="var_{tpl.pk}_2"', html)
+        self.assertIn('value="Camila"', html)   # the sample, as a starting point
+
+    def test_a_blank_variable_is_refused_rather_than_sent(self):
+        camila = client()
+        tpl = template(body="Hola {{1}}.", samples=("Camila",))
+        html = self.client.post(
+            self.URL, {"cliente": camila.pk, "plantilla": tpl.pk, f"var_{tpl.pk}_1": "  "}
+        ).content.decode()
+        self.assertIn("Completa todas las variables", html)
         self.assertEqual(Message.objects.count(), 0)
 
-    def test_get_is_not_allowed(self):
-        self.assertEqual(self.client.get(self.url).status_code, 405)
+    def test_what_the_agent_typed_is_what_the_customer_receives(self):
+        pedro = client("Pedro", "+573000000999")
+        tpl = template(body="Hola {{1}}, tu pedido {{2}}.", samples=("Camila", "#4512"))
+        self.client.post(
+            self.URL,
+            {"cliente": pedro.pk, "plantilla": tpl.pk,
+             f"var_{tpl.pk}_1": "Pedro", f"var_{tpl.pk}_2": "#9001"},
+        )
+        self.assertEqual(Message.objects.get().body, "Hola Pedro, tu pedido #9001.")

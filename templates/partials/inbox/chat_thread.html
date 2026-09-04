@@ -79,16 +79,19 @@
           <p class="quickreplies__empty">Cargando…</p>
         </div>
       </details>
+      {% include "partials/inbox/template_send_button.html" %}
       <input class="field__input composer__input" type="text" name="body"
              placeholder="Escribe un mensaje" autocomplete="off" required
              aria-label="Escribe un mensaje">
       <button type="submit" class="btn-primary">Enviar</button>
     </form>
   {% else %}
-    {% comment %}
+{% comment %}
       WhatsApp's 24h rule, surfaced as the one thing that IS allowed: a
-      plantilla, picked and sent right here (core.views.inbox_send_template).
-      The customer's reply is what reopens the window and brings the normal
+      plantilla. The button opens the send dialog, where the agent fills the
+      plantilla's {{n}} for THIS customer -- the editor's sample values are
+      examples for Meta's reviewer, not something to greet anyone with. The
+      customer's reply is what reopens the window and brings the normal
       composer back on the next poll/click.
     {% endcomment %}
     <div class="composer composer--closed">
@@ -100,18 +103,10 @@
           el chat libre.
         </p>
       </div>
-      <form class="composer__template"
-            hx-post="{% url 'inbox_send_template' active_conversation.pk %}"
-            hx-target="#chat-messages"
-            hx-swap="innerHTML">
-        {% csrf_token %}
-        {% include "partials/inbox/template_list.html" %}
-        {% if template_options %}
-          <div class="composer__template-actions">
-            <button type="submit" class="btn-primary">Enviar plantilla</button>
-          </div>
-        {% endif %}
-      </form>
+      {% include "partials/inbox/template_send_button.html" %}
     </div>
   {% endif %}
+
+  {# The Enviar plantilla dialog lands here, fetched fresh on every open. #}
+  <div id="tpl-send-slot"></div>
 </div>
