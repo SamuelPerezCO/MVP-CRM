@@ -308,14 +308,31 @@ if MESSAGING_PROVIDER not in MESSAGING_PROVIDERS:
 # path is still exercised end to end rather than skipped.
 #
 # Fake provider: the secret dev webhooks send in X-Fake-Signature.
-# Optional monthly ceiling on template spend, in MESSAGING_CURRENCY. Empty or
-# unset means no limit -- messaging.pricing.budget() reads it, and
-# services.send_template refuses a send that would cross it.
-MESSAGING_MONTHLY_BUDGET = os.environ.get('MESSAGING_MONTHLY_BUDGET', '')
-
 MESSAGING_FAKE_SECRET = (
     'testing-fake-secret' if TESTING else os.environ.get('MESSAGING_FAKE_SECRET', '')
 )
+
+# Template pricing (messaging/pricing.py). Sending a plantilla is billed per
+# message by category and recipient market, so the CRM quotes the price before
+# sending and records what each send cost.
+#
+# The rate card itself ships with the code (messaging/meta_rates.py holds
+# Meta's published one), so none of these is required. They exist because a
+# rate card is ultimately per *account*:
+#
+#   MESSAGING_TEMPLATE_RATES -- an overlay on Meta's card, as JSON keyed by
+#     Meta's market names: {"Colombia": {"marketing": "0.0125"}, ...}. Merged
+#     row by row, so what it does not name keeps Meta's number. Set it when
+#     the account is billed at other rates (a BSP contract, a promotional
+#     rate) or in another currency.
+#   MESSAGING_CURRENCY -- what those numbers are denominated in. Meta's
+#     shipped card is USD.
+#   MESSAGING_MONTHLY_BUDGET -- optional ceiling per calendar month, in
+#     MESSAGING_CURRENCY. Empty or unset means no limit;
+#     services.send_template refuses a send that would cross it.
+MESSAGING_TEMPLATE_RATES = os.environ.get('MESSAGING_TEMPLATE_RATES', '')
+MESSAGING_CURRENCY = os.environ.get('MESSAGING_CURRENCY', 'USD')
+MESSAGING_MONTHLY_BUDGET = os.environ.get('MESSAGING_MONTHLY_BUDGET', '')
 
 # Twilio (unused until providers/twilio.py is implemented).
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
