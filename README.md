@@ -25,25 +25,39 @@ Las secciones sin pantalla propia todavía (Performance HUB, Integraciones, etc.
 python -m venv venv
 venv\Scripts\activate        # en Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
+copy .env.example .env       # en Linux/macOS: cp .env.example .env
 python manage.py migrate
 python manage.py runserver
 ```
 
+El paso del `.env` no es opcional: `MESSAGING_PROVIDER` es obligatorio y la
+app no arranca sin él (ver [Mensajería](#mensajería-cambiar-de-proveedor)).
+Para desarrollo local el `.env.example` ya trae `MESSAGING_PROVIDER=fake`.
+
 Abre http://127.0.0.1:8000/ — la pantalla de bienvenida enlaza a Inbox, CRM y Embudos.
 
-Para ver el Inbox con datos:
+El Inbox no trae datos de ejemplo: se llena únicamente con clientes reales,
+a medida que escriben por el proveedor configurado o los deja la automatización
+que escribe en la misma base de datos. Ya no existe un generador de datos de
+demostración; si una base heredó fixtures del antiguo `seed_conversations`
+(contactos `+5730000000xx`, eventos "Evento de demostración.", el login
+`asesor`), límpialos sin tocar a los clientes reales con:
 
 ```powershell
-python manage.py seed_conversations       # contactos y conversaciones de demo (--fresh para regenerar)
-python manage.py simulate_inbound "+573000000001" "Hola, ¿sigue disponible?"
+python manage.py reset_conversations --demo-only        # simulación: muestra qué borraría
+python manage.py reset_conversations --demo-only --yes  # borra solo eso
 ```
 
-`seed_conversations` crea un usuario `asesor` / `asesor123` y le asigna conversaciones de demo. `simulate_inbound` empuja un mensaje entrante por el **mismo** código del webhook (firma, parseo, idempotencia); con el Inbox abierto lo verás llegar solo en el siguiente poll.
+`reset_conversations` a secas (con `--yes`) vacía el Inbox entero -- todas
+las conversaciones, mensajes y contactos -- y es un simulacro hasta que se
+pasa `--yes`, porque corre contra la base de producción y no hay deshacer.
 
-Los dos **solo corren contra la base local (SQLite)**. Como `.env` define `DATABASE_URL`, sin esa barrera un `python manage.py seed_conversations` escribiría clientes inventados en la base de producción ([messaging/management/local_only.py](messaging/management/local_only.py)). Si tu `.env` apunta a Neon, pásales la base local:
+Los tres comandos corren contra la base que diga `DATABASE_URL`, así que
+todos nombran la base antes de tocarla y ninguno borra nada sin `--yes`. Para
+apuntar a la base local en una máquina cuyo `.env` mira a Neon:
 
 ```bash
-DATABASE_URL= python manage.py seed_conversations
+DATABASE_URL= python manage.py reset_conversations
 ```
 
 ## Salir a producción: dejar el CRM vacío
@@ -56,6 +70,14 @@ python manage.py go_live --yes    # lo borra de verdad
 ```
 
 Igual que `reset_conversations`: es simulación por defecto, nombra la base a la que apunta antes de tocarla y borra dentro de una sola transacción. `--keep-catalog` conserva productos, plantillas y respuestas rápidas (útil si las plantillas de WhatsApp ya están aprobadas por Meta). No borra los archivos ya subidos a Vercel Blob, solo las filas que apuntaban a ellos.
+
+Cuál de los tres usar:
+
+| Comando | Qué borra |
+|---|---|
+| `reset_conversations --demo-only` | solo los fixtures del antiguo generador (`+5730000000xx`, "Evento de demostración.", el login `asesor`) — el único seguro si ya hay clientes reales |
+| `reset_conversations` | conversaciones, mensajes y contactos; deja etiquetas, plantillas, calendario y equipo |
+| `go_live` | todo lo anterior más etiquetas, calendario, listas, catálogo y cuentas de prueba; deja solo al equipo |
 
 Crea tu cuenta en **CRM > Equipo > Usuarios** *antes* de correrlo con `--yes`: si ninguna cuenta sobrevive, la simulación te avisa.
 
@@ -100,8 +122,9 @@ mensajes sigue apuntando a ellos. Los agentes del entorno se muestran en la
 misma tabla pero solo se editan en `APP_AGENTS` ([core/agents.py](core/agents.py)).
 
 El rol maestro vive en el grupo `Maestros` de Django, no en `is_staff`: ese
-flag significa "puede entrar a /admin/", que es otra pregunta — el usuario de
-demo que crea `seed_conversations` lo tiene y no por eso administra el equipo.
+flag significa "puede entrar a /admin/", que es otra pregunta — el login
+`asesor` que dejó el antiguo generador lo tiene y no por eso administra el
+equipo.
 
 Si `APP_AGENTS` no está definida se usa el par antiguo
 `APP_LOGIN_USERNAME`/`APP_LOGIN_PASSWORD` como lista de un solo agente, así que
@@ -112,11 +135,17 @@ un entorno anterior a esto sigue funcionando sin tocar nada.
 Toda la integración con WhatsApp vive en [messaging/](messaging/) detrás de una abstracción de proveedor ([messaging/providers/base.py](messaging/providers/base.py)). El proveedor activo lo decide **una sola variable**:
 
 ```
-MESSAGING_PROVIDER=fake    # hoy
 MESSAGING_PROVIDER=twilio  # cuando haya credenciales de Twilio
 MESSAGING_PROVIDER=meta    # cuando Meta desbloquee la cuenta
 MESSAGING_PROVIDER=baileys # WhatsApp real ya, sin esperar a Meta (ver abajo)
+MESSAGING_PROVIDER=fake    # solo desarrollo local: simula envíos y recibos
 ```
+
+La variable es **obligatoria**: sin ella la app no arranca. Antes `fake` era
+el valor por defecto, y un despliegue al que se le olvidara la variable
+corría feliz sobre el simulador -- palomitas moviéndose en pantalla, nada
+llegando a un teléfono. Producción es clientes reales; no debe poder caer en
+el simulador por accidente.
 
 El webhook del proveedor `fake` (`/webhooks/messaging/fake/`) crea contactos y conversaciones y su única llave es `MESSAGING_FAKE_SECRET`, cuyo valor por defecto está publicado en este repositorio. Por eso solo responde donde los datos falsos tienen sentido: con `DEBUG=True` o bajo `manage.py test`. En un despliegue real devuelve 404, así que nadie puede meter clientes inventados en el Inbox ([messaging/providers/registry.py](messaging/providers/registry.py)). Los webhooks de Meta, Twilio y el sidecar no cambian.
 
@@ -147,16 +176,22 @@ npm start
 
 Escanea el código QR que aparece en la terminal desde **WhatsApp > Ajustes >
 Dispositivos vinculados > Vincular un dispositivo**, con el número que quieres
-usar para el CRM. La sesión queda guardada en `whatsapp-sidecar/auth/`, así
-que no hay que volver a escanear en cada reinicio.
+usar para el CRM. La sesión queda guardada en el directorio `auth/` del sidecar,
+así que no hay que volver a escanear en cada reinicio.
 
 Luego, en el `.env` de Django:
 
 ```
 MESSAGING_PROVIDER=baileys
 BAILEYS_SIDECAR_URL=http://localhost:4000
-BAILEYS_SIDECAR_SECRET=dev-sidecar-secret   # debe coincidir con el .env del sidecar
+BAILEYS_SIDECAR_SECRET=   # genera un valor largo y aleatorio; debe coincidir con el .env del sidecar
 ```
+
+`BAILEYS_SIDECAR_SECRET` no tiene valor por defecto y mientras esté vacío el
+webhook rechaza todo. Genera uno propio (`openssl rand -hex 32`) en vez de
+copiar un ejemplo: el slug `/webhooks/messaging/baileys/` responde en todos
+los despliegues, así que ese secreto es lo único que impide que cualquiera
+escriba mensajes en la base de datos.
 
 Arranca Django normalmente (`python manage.py runserver`) -- los mensajes que
 lleguen al número vinculado aparecen en el Inbox, y las respuestas enviadas
@@ -179,6 +214,7 @@ En el dashboard del proyecto (Settings → Environment Variables) define, como m
 
 - `SECRET_KEY` — cualquier string largo y aleatorio (sin esto usa un valor de desarrollo inseguro).
 - `DEBUG=False`
+- `MESSAGING_PROVIDER` — **obligatorio**, y en producción nunca `fake`: `twilio`, `meta` o `baileys`, con las credenciales del proveedor elegido. Sin esta variable el despliegue falla al arrancar, a propósito.
 - `DATABASE_URL` — Postgres (por ejemplo Vercel Postgres o Neon, desde la pestaña Storage). SQLite no sirve en producción porque las funciones serverless no tienen disco persistente.
 - `ALLOWED_HOSTS` — opcional; el dominio del deploy y el alias de producción se confían automáticamente vía `VERCEL_URL` y `VERCEL_PROJECT_PRODUCTION_URL`, agrega aquí solo dominios propios (custom domains).
 
@@ -186,7 +222,14 @@ Con `DATABASE_URL` configurado, corre las migraciones contra la base de producci
 
 Los archivos estáticos (`static/`) se recolectan y sirven automáticamente desde el CDN de Vercel — no requiere WhiteNoise ni configuración adicional. Los uploads de usuario (`media/`, ej. cabeceras de plantillas) sí requieren almacenamiento externo (Vercel Blob, S3, etc.) porque el filesystem de las funciones no persiste entre requests; sin eso, esa funcionalidad puntual no sobrevive en producción.
 
-`whatsapp-sidecar/` (el conector Baileys) es un proceso Node de larga duración con una conexión WebSocket persistente a WhatsApp — no corre en funciones serverless. Para producción con `MESSAGING_PROVIDER=baileys`, despliégalo aparte en un host con procesos persistentes (Railway, Fly.io, un VPS, etc.); para Vercel, `fake`, `twilio` o `meta` son los proveedores que funcionan tal cual.
+El conector Baileys ([repo aparte](https://github.com/SamuelPerezCO/whatsapp-sidecar), ya no vive en este árbol) es un proceso Node de larga duración con una conexión WebSocket persistente a WhatsApp — no corre en funciones serverless. Para producción con `MESSAGING_PROVIDER=baileys`, despliégalo en un host con procesos persistentes (Railway, Fly.io, un VPS, etc.). En Vercel los que funcionan tal cual son `twilio` y `meta`; `fake` no es una opción de producción — simula los envíos y no manda nada a ningún teléfono.
+
+### Seguridad del webhook
+
+La URL del webhook nombra al proveedor (`/webhooks/messaging/<proveedor>/`) para que, durante una migración, un callback de Twilio se siga interpretando como Twilio aunque el proveedor activo ya sea Meta. Dos consecuencias que conviene tener presentes:
+
+- El endpoint del proveedor `fake` **solo responde donde `MESSAGING_PROVIDER=fake`**. En un despliegue real devuelve 404: sin ese candado sería una forma anónima de escribir clientes inventados en la base de datos de producción, indistinguibles después de los reales.
+- Cada proveedor real *sí* sigue siendo alcanzable siempre, así que su secreto es lo único que lo protege. Ninguno tiene valor por defecto: `META_APP_SECRET`, `BAILEYS_SIDECAR_SECRET` y `MESSAGING_FAKE_SECRET` rechazan todo mientras estén vacíos. Un secreto escrito en el repositorio no protege nada.
 
 ## Tests
 

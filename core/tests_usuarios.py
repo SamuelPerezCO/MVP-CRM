@@ -23,7 +23,7 @@ def app_user(username="lucia", password="clave-larga", master=False, name="Lucí
 class AgentsWithDbUsersTests(TestCase):
     def test_django_staff_is_not_a_crm_master(self):
         """is_staff means "may open /admin/", not "may manage this team" --
-        seed_conversations marks its demo advisor staff, and that must not
+        the old generator marked its demo advisor staff, and that must not
         hand them the Usuarios page."""
         demo = User.objects.create_user("asesor", password="asesor123")
         demo.is_staff = True

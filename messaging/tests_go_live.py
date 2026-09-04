@@ -1,14 +1,10 @@
-"""Tests for going live: the clean-slate purge and the guards around the
-tools that invent data.
+"""Tests for ``go_live``: the clean slate that keeps the team.
 
-Three things have to hold before real customers arrive:
-
-* ``go_live`` empties the CRM but never the team -- losing the accounts would
-  lock everyone out of the app they just cleaned.
-* ``seed_conversations`` / ``simulate_inbound`` cannot write fixtures into the
-  production database, however the environment is pointed.
-* The fake provider's webhook, whose shared secret is published in
-  ``.env.example``, does not answer on a real deployment.
+The one thing that must hold is that it empties the CRM but never the
+accounts -- losing those would lock everyone out of the app they just
+cleaned. The narrower ``reset_conversations --demo-only`` is covered by
+messaging/tests_reset.py, and the webhook that must not answer on a real
+deployment by messaging/tests_webhook_hardening.py.
 """
 
 from __future__ import annotations
@@ -17,12 +13,8 @@ from io import StringIO
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
-from django.urls import reverse
 from django.utils import timezone
-
-from unittest.mock import patch
 
 from core import agents
 from core.models import (
@@ -122,7 +114,7 @@ class GoLiveTests(TestCase):
         self.assertEqual(usernames, ["samuel"])
 
     def test_the_seeded_advisor_goes_even_with_a_password(self):
-        """seed_conversations gives `asesor` a real password so /admin works,
+        """The old generator gave `asesor` a real password so /admin worked,
         which would otherwise read as "a person created this account" and keep
         the fixture through the purge meant to remove it."""
         self.fixture.set_password("asesor123")
@@ -176,93 +168,3 @@ class GoLiveTests(TestCase):
         self.teammate.set_unusable_password()
         self.teammate.save(update_fields=["password"])
         self.assertIn("Ninguna cuenta del equipo sobrevive", run())
-
-
-class DevCommandGuardTests(TestCase):
-    """seed_conversations and simulate_inbound refuse a non-local database."""
-
-    REMOTE = {
-        "ENGINE": "django.db.backends.postgresql",
-        "HOST": "ep-nameless-lake.aws.neon.tech",
-        "NAME": "neondb",
-    }
-
-    def test_seed_refuses_a_postgres_database(self):
-        with patch("django.db.connection.settings_dict", self.REMOTE):
-            with self.assertRaises(CommandError) as caught:
-                call_command("seed_conversations", stdout=StringIO())
-        self.assertIn("solo puede correr contra la base local", str(caught.exception))
-
-    def test_simulate_inbound_refuses_a_postgres_database(self):
-        with patch("django.db.connection.settings_dict", self.REMOTE):
-            with self.assertRaises(CommandError):
-                call_command(
-                    "simulate_inbound", "+573000000001", "Hola", stdout=StringIO()
-                )
-
-    def test_the_error_names_the_database_it_stopped(self):
-        with patch("django.db.connection.settings_dict", self.REMOTE):
-            with self.assertRaises(CommandError) as caught:
-                call_command("simulate_inbound", "+57300", "Hola", stdout=StringIO())
-        self.assertIn("neon.tech", str(caught.exception))
-
-    @patch.dict("os.environ", {"ALLOW_DEV_COMMANDS_ON_REMOTE_DB": "1"})
-    def test_the_documented_override_lets_it_through(self):
-        """Deliberate, not accidental: an env var, never a --force flag."""
-        with patch("django.db.connection.settings_dict", self.REMOTE):
-            call_command("simulate_inbound", "+573000000001", "Hola", stdout=StringIO())
-        self.assertTrue(Message.objects.exists())
-
-    def test_sqlite_is_allowed(self):
-        call_command("simulate_inbound", "+573000000002", "Hola", stdout=StringIO())
-        self.assertTrue(Message.objects.exists())
-
-
-class FakeWebhookExposureTests(TestCase):
-    """The simulator's door is shut on a real deployment.
-
-    ``MESSAGING_FAKE_SECRET`` defaults to ``dev-secret``, a value published in
-    .env.example and the README -- so while this webhook answers, anyone who
-    has read the repo can post invented customers into the Inbox.
-    """
-
-    def url(self, provider: str) -> str:
-        return reverse("messaging_webhook", args=[provider])
-
-    def post(self, provider: str, **headers):
-        return self.client.post(
-            self.url(provider), data="{}", content_type="application/json", **headers
-        )
-
-    @override_settings(TESTING=False, DEBUG=False)
-    def test_disabled_on_a_production_like_deployment(self):
-        self.assertEqual(self.post("fake").status_code, 404)
-
-    @override_settings(TESTING=False, DEBUG=False)
-    def test_a_valid_signature_does_not_reopen_it(self):
-        """Not a signature check -- the endpoint is simply not there."""
-        response = self.post(
-            "fake", headers={"X-Fake-Signature": "dev-secret"}
-        )
-        self.assertEqual(response.status_code, 404)
-
-    @override_settings(TESTING=False, DEBUG=True)
-    def test_local_development_keeps_it(self):
-        # 401, not 404: the door is open, the unsigned request is what fails.
-        self.assertEqual(self.post("fake").status_code, 401)
-
-    @override_settings(TESTING=False, DEBUG=False, MESSAGING_ALLOW_FAKE_WEBHOOK=True)
-    def test_staging_can_opt_back_in(self):
-        self.assertEqual(self.post("fake").status_code, 401)
-
-    @override_settings(TESTING=False, DEBUG=False)
-    def test_real_providers_are_untouched(self):
-        # Twilio is left out: its provider is still a stub that raises rather
-        # than verifying, so it has no signature behaviour to assert yet.
-        for provider in ("meta", "baileys"):
-            with self.subTest(provider=provider):
-                self.assertEqual(self.post(provider).status_code, 401)
-
-    def test_the_test_runner_keeps_it(self):
-        """Every other messaging test posts to this URL."""
-        self.assertEqual(self.post("fake").status_code, 401)

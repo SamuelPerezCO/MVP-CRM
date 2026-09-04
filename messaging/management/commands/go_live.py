@@ -1,11 +1,17 @@
 """Empty the CRM for launch: delete everything except the team.
 
-``reset_conversations`` clears the Inbox. This clears the *app*: the demo
-contacts and their conversations, but also the seeded tags, the demo calendar
-events, the client lists, the "asesor" fixture account and every other row
-left over from building the thing. What survives is the team -- the accounts
-that can log in and be assigned work -- so the first real customer message
-arrives into a CRM that contains nothing but itself.
+``reset_conversations`` clears the Inbox, and its ``--demo-only`` removes
+just what the old generator stamped. This clears the *app*: contacts and
+their conversations, but also the tags, the calendar events, the client
+lists, the catalog, the ``asesor`` fixture account and every other row left
+over from building the thing, whatever created them. What survives is the
+team -- the accounts that can log in and be assigned work -- so the first
+real customer message arrives into a CRM that contains nothing but itself.
+
+Use ``reset_conversations --demo-only`` instead when the database already
+holds real customers: it deletes by the fixtures' markers and leaves
+everything else alone. This command makes no such distinction -- it empties
+the app.
 
 Run it once, when the WhatsApp number goes live::
 
@@ -57,7 +63,7 @@ from core.models import (
     Product,
     QuickReply,
 )
-from messaging.management.commands.seed_conversations import DEMO_USERNAME
+from messaging.management.commands.reset_conversations import DEMO_USERNAME
 from messaging.models import Conversation, ConversationTag, Message, Tag
 
 
@@ -200,14 +206,14 @@ def _split_team(users) -> tuple[list, list]:
     only to be pointed at by ``assigned_to``: an env mirror whose entry is
     gone, or a name a seed invented.
 
-    The seed's demo advisor is named explicitly rather than inferred.
+    The demo advisor is named explicitly rather than inferred.
     :func:`core.agents.is_app_user` reads "has a real password" as "a person
-    created this account", which is true of the Usuarios page but not of
-    ``seed_conversations``: it gives ``asesor`` a password too (so /admin
-    works out of the box), and without this that fixture would survive the
-    very purge meant to remove it. A real teammate who happens to be called
-    ``asesor`` is listed under "cuentas de prueba" in the dry run, which is
-    the moment to notice and rename them.
+    created this account", which is true of the Usuarios page but not of the
+    old generator: it gave ``asesor`` a password too (so /admin worked out of
+    the box), and without this that fixture would survive the very purge meant
+    to remove it. A real teammate who happens to be called ``asesor`` is
+    listed under "cuentas de prueba" in the dry run, which is the moment to
+    notice and rename them.
     """
     keep, drop = [], []
     for user in users:
