@@ -147,6 +147,39 @@ def _parse_timestamp(raw) -> datetime | None:
         return None
 
 
+def _parse_pricing(raw) -> dict | None:
+    """Meta's ``pricing`` object off a status, normalized for the CRM.
+
+    What it is: Meta's own verdict on what a message cost it -- which rate
+    bucket applied, never an amount (there is no money anywhere in this
+    object). ``services._apply_status_event`` uses it to correct the estimate
+    the CRM froze at send time.
+
+    Present only on the ``sent`` status and on one of ``delivered``/``read``,
+    so most receipts return ``None`` here. Every field is read defensively:
+    Meta's payloads are not consistent about which are included, and
+    ``billable`` in particular is on its way out ("use pricing.type and
+    pricing.category together" -- Meta's own reference).
+
+    ``category`` is deliberately kept verbatim, including the hyphen in
+    ``authentication-international``: this is what Meta billed at, and the
+    same value spelled with an underscore appears on the analytics endpoint.
+    Normalizing here would hide that mismatch from whoever reconciles later.
+    """
+    if not isinstance(raw, dict):
+        return None
+    pricing = {
+        "billable": raw.get("billable"),
+        "model": raw.get("pricing_model") or "",
+        "category": raw.get("category") or "",
+        "type": raw.get("type") or "",
+    }
+    # An object with nothing usable in it is the same as no object at all.
+    if not any(value not in (None, "") for value in pricing.values()):
+        return None
+    return pricing
+
+
 class MetaProvider(MessagingProvider):
     name = "meta"
 
@@ -417,6 +450,7 @@ class MetaProvider(MessagingProvider):
             timestamp=_parse_timestamp(raw.get("timestamp")),
             status=status,
             channel=channel,
+            pricing=_parse_pricing(raw.get("pricing")),
         )
 
     def _fetch_and_store_media(self, media_id: str) -> str:

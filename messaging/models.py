@@ -362,6 +362,41 @@ class Message(models.Model):
     #: configured currency changes later. Empty when not billed.
     billed_currency = models.CharField("moneda", max_length=3, blank=True)
 
+    # --- What Meta says it cost ------------------------------------------
+    #
+    # The three columns above are the CRM's own estimate, frozen when the
+    # message was created. These are the platform's verdict, filled in when
+    # its delivery receipt arrives (``services._apply_status_event``), and
+    # they are the reason the estimate can be corrected rather than trusted:
+    # Meta charges on delivery, not on send, and at the category *it* has
+    # assigned the plantilla -- it re-categorises templates on its own.
+    #
+    # Blank on every message until a provider reports billing, which today
+    # means every provider but Meta, and every message sent before this
+    # existed. Meta's own object carries no amount, only which rate bucket
+    # applied, so the money stays the CRM's arithmetic over that bucket.
+
+    #: ``regular`` (billable), ``free_customer_service`` or
+    #: ``free_entry_point``. Meta's preferred billable test, now that
+    #: ``billable`` is on its way out.
+    meta_pricing_type = models.CharField(
+        "tipo de precio (Meta)", max_length=32, blank=True
+    )
+    #: The rate Meta actually applied: marketing, utility, authentication,
+    #: authentication-international, service, marketing_lite,
+    #: referral_conversion. Stored verbatim, hyphen and all.
+    meta_pricing_category = models.CharField(
+        "categoría facturada (Meta)", max_length=32, blank=True
+    )
+    #: ``PMP`` (per-message, the default since 2025-07-01) or ``CBP``.
+    meta_pricing_model = models.CharField(
+        "modelo de precio (Meta)", max_length=8, blank=True
+    )
+    #: Meta's own billable flag. NULL until reported; being deprecated by
+    #: Meta in favour of ``meta_pricing_type``, kept because it is still the
+    #: most direct statement of "did this cost anything".
+    meta_billable = models.BooleanField("facturable (Meta)", null=True, blank=True)
+
     class Meta:
         verbose_name = "mensaje"
         verbose_name_plural = "mensajes"
@@ -399,6 +434,17 @@ class Message(models.Model):
     @property
     def is_outbound(self) -> bool:
         return self.direction == self.OUTBOUND
+
+    @property
+    def cost_is_confirmed(self) -> bool:
+        """Whether ``billed_amount`` reflects Meta's verdict or is still the
+        CRM's pre-send estimate.
+
+        False for every message until its delivery receipt carries a pricing
+        object -- including every send through the fake and Baileys
+        providers, which report no billing at all.
+        """
+        return bool(self.meta_pricing_type or self.meta_pricing_category)
 
     @property
     def billed_category_display(self) -> str:

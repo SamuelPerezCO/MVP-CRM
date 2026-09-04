@@ -427,7 +427,8 @@ def _apply_outbound_event(event: InboundEvent) -> None:
 
 
 def _apply_status_event(event: InboundEvent) -> None:
-    """A delivery receipt for a message we sent: move its status forward."""
+    """A delivery receipt for a message we sent: move its status forward, and
+    record what the platform says it charged."""
     if event.status is None:
         raise ValueError("status event without a status")
 
@@ -440,12 +441,117 @@ def _apply_status_event(event: InboundEvent) -> None:
         logger.info("status for unknown message %s", event.provider_message_id)
         return
 
+    changed = []
+
+    # Billing first, and deliberately outside the forward-only rule below.
+    # Meta puts its pricing object on the ``sent`` receipt and on one of
+    # delivered/read, and those can arrive in any order; a late ``sent``
+    # still carries a verdict worth recording even though it cannot move the
+    # status forward.
+    if event.pricing:
+        changed += _apply_pricing(message, event.pricing)
+
     # Forward-only: providers deliver receipts out of order (and retry old
     # ones), and "read" must never regress to "delivered".
-    if status_rank(event.status.value) <= status_rank(message.status):
-        return
-    message.status = event.status.value
-    message.save(update_fields=["status"])
+    if status_rank(event.status.value) > status_rank(message.status):
+        message.status = event.status.value
+        changed.append("status")
+
+    if changed:
+        message.save(update_fields=changed)
+
+
+def _apply_pricing(message: Message, pricing_info: dict) -> list[str]:
+    """Record the platform's billing verdict on ``message`` and correct the
+    amount the CRM estimated. Returns the fields it changed.
+
+    The estimate frozen at send time is the best the CRM can do beforehand;
+    this is what actually happened, and it can differ three ways:
+
+    * **Free after all.** ``type`` is ``free_customer_service`` or
+      ``free_entry_point`` (or ``billable`` is false) -- the send rode an
+      open window the CRM did not know about, most often the 72-hour free
+      entry point that follows a Click-to-WhatsApp ad. The amount drops to
+      zero.
+    * **A different category.** Meta re-categorises templates on its own
+      (a utility template judged to be marketing, say) and bills at *its*
+      category. The amount is recomputed from that, at the rate card in
+      force when the message was sent -- not today's card, so a message
+      priced under an old card stays priced under it.
+    * **Nothing to change.** The common case: Meta confirms the category and
+      that it was billable, and the amount already says so.
+
+    Never touches a failed message: nothing is charged for a send that did
+    not arrive, and ``send_template`` has already zeroed it.
+    """
+    fields = []
+
+    def record(name, value):
+        if getattr(message, name) != value:
+            setattr(message, name, value)
+            fields.append(name)
+
+    record("meta_pricing_type", pricing_info.get("type") or "")
+    record("meta_pricing_category", pricing_info.get("category") or "")
+    record("meta_pricing_model", pricing_info.get("model") or "")
+    billable = pricing_info.get("billable")
+    record("meta_billable", billable if isinstance(billable, bool) else None)
+
+    # Only messages the CRM actually billed are worth reconciling: an
+    # inbound row, or a free-form reply, carries NULL and stays NULL.
+    if message.billed_amount is None or message.status == MessageStatus.FAILED.value:
+        return fields
+
+    pricing_type = (pricing_info.get("type") or "").strip()
+    # ``type`` is absent from some payloads, so fall back to ``billable``;
+    # with neither, assume Meta charged (the estimate stands).
+    if pricing_type:
+        is_free = pricing_type != "regular"
+    elif isinstance(billable, bool):
+        is_free = not billable
+    else:
+        is_free = False
+
+    if is_free:
+        if message.billed_amount != Decimal("0"):
+            message.billed_amount = Decimal("0")
+            fields.append("billed_amount")
+        return fields
+
+    # Billable, at Meta's category. Re-price only when that differs from
+    # what the CRM assumed, and only for a category the rate card knows --
+    # marketing_lite and referral_conversion are billed by mechanisms this
+    # CRM does not implement, so their amounts are left as they are.
+    category = (pricing_info.get("category") or "").strip()
+    if not category or category == message.billed_category:
+        return fields
+    if category not in pricing.CATEGORIES:
+        logger.info(
+            "meta billed message %s as %r, which this CRM cannot price",
+            message.provider_message_id,
+            category,
+        )
+        return fields
+
+    market = pricing.market_for(message.conversation.contact)
+    # timezone.localdate() of the send, so an old message keeps the card it
+    # was actually billed under.
+    amount = pricing.rate_for(market, category, timezone.localdate(message.timestamp))
+    if amount != message.billed_amount:
+        logger.info(
+            "meta re-categorised message %s from %s to %s: %s -> %s",
+            message.provider_message_id,
+            message.billed_category or "(none)",
+            category,
+            message.billed_amount,
+            amount,
+        )
+        message.billed_amount = amount
+        fields.append("billed_amount")
+    if message.billed_category != category:
+        message.billed_category = category
+        fields.append("billed_category")
+    return fields
 
 
 def _upsert_contact(phone: str, contact_name: str, channel: str) -> Client:

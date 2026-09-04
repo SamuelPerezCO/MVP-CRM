@@ -257,6 +257,17 @@ def market_for_phone(phone: str) -> str:
       share calling code 1 with the US and Canada but bill at "Rest of Latin
       America" -- 0.0740 against 0.0250 for marketing. A +1 number is
       resolved by its three-digit NANP area code first.
+
+    Known limitation, stated rather than hidden: those three are the only +1
+    carve-outs Meta's country-calling-codes table publishes, so every other
+    +1 number resolves to North America here. The North American Numbering
+    Plan also covers Caribbean and Pacific territories Meta does not list
+    (Bahamas, Barbados, Trinidad, Guam...), and Meta's rule for a country it
+    does not list is the "Other" row -- dearer than North America. Those
+    numbers are therefore under-quoted. Closing the gap needs a NANP
+    area-code table Meta does not publish; a full phone-number library
+    (libphonenumber) is the honest way to do it if this CRM ever writes to
+    the Caribbean.
     """
     digits = "".join(character for character in phone or "" if character.isdigit())
     if not digits:

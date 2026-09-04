@@ -195,8 +195,33 @@ de free entry point (72 horas en las que *todo* es gratis, tras responder a
 un anuncio Click-to-WhatsApp).
 
 Toda cotización es una **estimación** hasta la entrega: Meta cobra al
-entregar y con la categoría que *ella* le asignó a la plantilla. La verdad
-final viene en el objeto `pricing` del webhook de entrega.
+entregar y con la categoría que *ella* le asignó a la plantilla.
+
+### La verdad final: lo que Meta dice que cobró
+
+Con `MESSAGING_PROVIDER=meta`, cada acuse de entrega trae un objeto `pricing`
+que dice en qué **bucket de tarifa** cayó el mensaje (nunca el importe: ahí no
+viaja dinero). El CRM lo guarda en el mensaje (`meta_pricing_type`,
+`meta_pricing_category`, `meta_pricing_model`, `meta_billable`) y **corrige la
+estimación** en [messaging/services.py](messaging/services.py):
+
+- Si Meta lo marca gratis (`free_customer_service` o `free_entry_point`), el
+  importe baja a cero — así se recupera lo que el CRM no podía saber, como la
+  ventana de 72 horas que abre un anuncio Click-to-WhatsApp.
+- Si Meta lo cobró en **otra categoría** (recategoriza plantillas por su
+  cuenta), se vuelve a tarifar con la categoría de Meta y con la tarjeta que
+  estaba vigente el día del envío, no la de hoy.
+- Una categoría que este CRM no sabe tarifar (`marketing_lite`,
+  `referral_conversion`) se registra pero no se re-tarifa.
+
+`Message.cost_is_confirmed` distingue un importe confirmado por Meta de uno
+que sigue siendo la estimación del CRM (todo lo enviado por `fake` o
+`baileys`, que no reportan facturación).
+
+Limitación conocida y anotada en el código: de los números +1, Meta solo
+publica el desvío de República Dominicana, Jamaica y Puerto Rico, así que el
+resto de territorios NANP del Caribe se cotizan como Norteamérica y quedan por
+debajo. Cerrarlo pide una librería de teléfonos (libphonenumber).
 
 ```
 MESSAGING_TEMPLATE_RATES=...   # opcional: superpone tus tarifas sobre las de Meta

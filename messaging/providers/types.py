@@ -119,3 +119,28 @@ class InboundEvent:
     contact_name: str = field(default="")
     """Display name if the provider shares it (Meta's ``profile.name``). Used
     only when the phone number is new to the CRM."""
+
+    pricing: dict | None = None
+    """For ``status`` events from a provider that reports billing: what the
+    platform says this message cost it.
+
+    Meta puts a ``pricing`` object on the ``sent`` status and on one of
+    ``delivered``/``read``. It carries no money -- only which *rate bucket*
+    applies -- so the CRM keeps its own amount and uses this to correct it
+    (``services._apply_status_event``). Normalized keys, all optional because
+    Meta's payloads are not consistent about them:
+
+    * ``billable``  -- bool. Being deprecated in favour of ``type``.
+    * ``model``     -- ``"PMP"`` (per-message, the default since 2025-07-01)
+      or ``"CBP"`` (the legacy conversation model).
+    * ``category``  -- the rate Meta actually applied: ``marketing``,
+      ``utility``, ``authentication``, ``authentication-international``,
+      ``service``, ``marketing_lite``, ``referral_conversion``. This is
+      Meta's verdict, which can differ from the category stored on the
+      plantilla -- Meta re-categorises templates.
+    * ``type``      -- ``regular`` (billable), ``free_customer_service`` or
+      ``free_entry_point``.
+
+    ``None`` when the provider says nothing about billing, which is every
+    provider but Meta today.
+    """
