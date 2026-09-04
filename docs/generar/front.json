@@ -1,0 +1,135 @@
+{
+ "title": "MVP-CRM",
+ "subtitle": "Documentación técnica",
+ "author": "Equipo MVP-CRM",
+ "subject": "Documentación técnica del CRM omnicanal MVP-CRM (Django + htmx)",
+ "version": "main @ 6089391 · 4 de septiembre de 2026",
+ "cover_lines": [
+  "Versión documentada: rama `main`, commit `6089391` (4 de septiembre de 2026). Consulta el Anexo A para los cambios posteriores.",
+  "Repositorio: github.com/SamuelPerezCO/MVP-CRM",
+  "Stack: Django 6.1 · htmx · Python 3.12 · SQLite en desarrollo, PostgreSQL (Neon) en producción · Vercel."
+ ],
+ "about": [
+  {
+   "heading": "",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "MVP-CRM es un CRM omnicanal para comercios: una bandeja de entrada unificada para los canales de mensajería (WhatsApp, Messenger, Instagram, Facebook, TikTok), gestión de clientes, calendario, plantillas de WhatsApp, embudos de venta, catálogo de productos y estadísticas, todo dentro de un shell de una sola página con barra lateral de iconos. Este documento describe el sistema tal como está en la rama `main`, commit `6089391`, y está pensado para quien se incorpora al proyecto o necesita entender cómo funciona una pieza antes de tocarla."
+    },
+    {
+     "kind": "paragraph",
+     "text": "La fuente de verdad es el código. Cada capítulo cita los archivos que documenta y, cuando el código explica el porqué de una decisión en un comentario o docstring, el capítulo lo recoge: esas explicaciones son la parte más valiosa de esta documentación."
+    }
+   ]
+  },
+  {
+   "heading": "Cómo se generó y cómo leerlo",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "Cada capítulo lo redactó un lector dedicado a ese subsistema a partir del código fuente; después un verificador independiente intentó refutar cada afirmación (rutas, nombres de URL, campos, variables de entorno, valores por defecto) contrastándola con el código, y se corrigieron las discrepancias que encontró. El Anexo B resume ese proceso capítulo por capítulo. Aun así, ante cualquier duda manda el archivo citado."
+    },
+    {
+     "kind": "bullets",
+     "items": [
+      "Capítulos 1 y 2: la arquitectura del shell y la puerta de entrada (autenticación y agentes). Léelos primero.",
+      "Capítulos 3 a 9: una sección de la aplicación por capítulo, de la más central (Inbox y mensajería) a las más pequeñas.",
+      "Capítulo 10: referencia del modelo de datos y de las migraciones.",
+      "Capítulo 11: configuración, variables de entorno, despliegue en Vercel y operación.",
+      "Capítulo 12: cómo correr las pruebas y las convenciones que el código sigue.",
+      "Anexos: trabajo en curso no integrado en esta versión y el método de verificación."
+     ]
+    },
+    {
+     "kind": "note",
+     "text": "Los identificadores de código aparecen en tipografía monoespaciada tal como están en el repositorio (rutas, funciones, variables); la interfaz de usuario está en español y el código en inglés."
+    }
+   ]
+  }
+ ],
+ "appendices": [
+  {
+   "title": "Estado del repositorio y cambios posteriores a esta versión",
+   "sections": [
+    {
+     "heading": "",
+     "blocks": [
+      {
+       "kind": "paragraph",
+       "text": "Este documento describe la rama `main` en el commit `6089391`. Ese es el código que los autores y los verificadores leyeron, y es el que describen los capítulos 1 a 16. `main` avanza rápido: cuando este PDF se incorporó al repositorio ya había ocho commits nuevos por encima de ese punto. Esta tabla los recoge para que sepas exactamente qué queda fuera y no confundas una ausencia con una omisión."
+      },
+      {
+       "kind": "table",
+       "headers": [
+        "Commit",
+        "Qué añade a main"
+       ],
+       "rows": [
+        [
+         "`1be6bc6`",
+         "El cliente vinculado se muestra en cada evento del calendario."
+        ],
+        [
+         "`f53a6dc`",
+         "Exportación de la base de clientes a Excel desde Gestión de clientes."
+        ],
+        [
+         "`37d334e`",
+         "Envío real de mensajes: primer contacto, plantillas y respuestas rápidas con imágenes."
+        ],
+        [
+         "`ca404a0`",
+         "Un usuario maestro que crea y administra al resto del equipo."
+        ],
+        [
+         "`10ce778`",
+         "Puesta en producción: se vacía el CRM y se impide que datos de prueba lleguen a producción."
+        ],
+        [
+         "`b4c68e9`",
+         "Unifica en una sola las dos limpiezas de \"solo datos reales\"."
+        ],
+        [
+         "`c6e200c`",
+         "Envío de plantillas a Meta para aprobación y lectura del veredicto."
+        ],
+        [
+         "`a74176a`",
+         "El secreto del sidecar falla en cerrado; tolera filas escritas desde fuera."
+        ]
+       ],
+       "caption": "Commits en main posteriores al snapshot documentado, sin contar merges."
+      },
+      {
+       "kind": "paragraph",
+       "text": "Esa lista es la que era cierta al publicar el documento, y envejece. Para ver el desfase real en cualquier momento, pide a git los commits que separan el snapshot de la punta actual:"
+      },
+      {
+       "kind": "code",
+       "text": "git log --oneline --no-merges 6089391..origin/main"
+      },
+      {
+       "kind": "note",
+       "text": "Los capítulos más afectados por ese trabajo posterior son 3 (Inbox), 4 (Mensajería), 5 (CRM), 6 (Mi calendario) y 7 (plantillas de WhatsApp): siguen siendo correctos para `6089391`, pero ya no describen `main` por completo. Regenerar el documento sobre un commit más reciente exige volver a lanzar la lectura y la verificación; recomponerlo con el contenido actual es un solo comando (ver `docs/README.md`)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Método de generación y verificación",
+   "sections": [
+    {
+     "heading": "",
+     "blocks": [
+      {
+       "kind": "paragraph",
+       "text": "__VERIFICATION__"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
