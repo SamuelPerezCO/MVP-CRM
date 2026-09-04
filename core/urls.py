@@ -209,6 +209,12 @@ urlpatterns = [
         views.respuesta_toggle,
         name="respuesta_toggle",
     ),
+    # "Sincronizar con WhatsApp": pull approval verdicts, answer with the table.
+    path(
+        "mensajeria/plantillas/sincronizar/",
+        views.plantillas_sync,
+        name="plantillas_sync",
+    ),
     # The chooser modal's first card: pick a ready-made template (placeholder).
     path(
         "mensajeria/plantillas/galeria/",

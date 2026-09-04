@@ -61,7 +61,14 @@ from django.core.files.storage import default_storage
 from django.utils.crypto import constant_time_compare
 
 from .base import MessagingProvider
-from .types import MEDIA_PLACEHOLDERS, InboundEvent, MessageStatus
+from .types import (
+    MEDIA_PLACEHOLDERS,
+    InboundEvent,
+    MessageStatus,
+    TemplateSpec,
+    TemplateStatus,
+    TemplateVerdict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +122,33 @@ _STATUS_MAP = {
     "read": MessageStatus.READ,
     "failed": MessageStatus.FAILED,
 }
+
+#: Meta's template-approval vocabulary -> ours. PAUSED and DISABLED are
+#: approved templates Meta has pulled for quality reasons; what matters to an
+#: agent is that a send will bounce, so they read as rechazada with the Meta
+#: state named in the reason. Anything not listed is skipped rather than
+#: guessed (see ``template_verdicts``).
+_TEMPLATE_STATUS_MAP = {
+    "APPROVED": TemplateStatus.APPROVED,
+    "PENDING": TemplateStatus.PENDING,
+    "IN_APPEAL": TemplateStatus.PENDING,
+    "REJECTED": TemplateStatus.REJECTED,
+    "PAUSED": TemplateStatus.REJECTED,
+    "DISABLED": TemplateStatus.REJECTED,
+}
+
+#: MessageTemplate.buttons "type" -> Meta's button type and the key the
+#: button's target travels under.
+_BUTTON_TYPES = {
+    "quick_reply": ("QUICK_REPLY", None, None),
+    "url": ("URL", "url", "url"),
+    "phone": ("PHONE_NUMBER", "phone", "phone_number"),
+}
+
+#: Pages of the catalogue listing to follow before giving up. 100 templates a
+#: page; a WABA with more than 1000 templates is not this CRM's problem yet.
+_TEMPLATE_LIST_PAGE_SIZE = 100
+_TEMPLATE_LIST_MAX_PAGES = 10
 
 #: The same webhook carries Messenger and Instagram traffic once those
 #: products are added to the app; the top-level ``object`` says which.
@@ -265,6 +299,230 @@ class MetaProvider(MessagingProvider):
             return data["messages"][0]["id"]
         except (KeyError, IndexError, TypeError) as exc:
             raise ValueError(f"meta send response without a message id: {data!r}") from exc
+
+    # --- Template catalogue --------------------------------------------------
+    #
+    # Templates are objects on the WhatsApp Business Account, so these calls
+    # address META_WABA_ID, not the phone number. Both directions are here:
+    # ``create_template`` submits a plantilla for review and
+    # ``template_verdicts`` reads the review results back.
+
+    def create_template(self, spec: TemplateSpec) -> str | None:
+        """POST ``/{waba_id}/message_templates`` and return Meta's template id.
+
+        The components array mirrors the editor's sections one-for-one:
+        header, body, footer, buttons. Two Meta requirements shape it. A body
+        with ``{{n}}`` variables must ship one example per variable (the
+        editor already forces those samples), and a media header must ship
+        a *handle* to sample bytes, obtained through the Resumable Upload
+        API first -- a public URL is not accepted (see ``_header_handle``).
+        """
+        self._require_catalogue()
+
+        payload = {
+            "name": spec.name,
+            "language": spec.language,
+            "category": spec.category.upper(),
+            "components": self._build_template_components(spec),
+        }
+        url = f"{_GRAPH_BASE}/{_GRAPH_API_VERSION}/{settings.META_WABA_ID}/message_templates"
+        response = requests.post(
+            url, json=payload, headers=self._bearer_headers(), timeout=_REQUEST_TIMEOUT
+        )
+        if response.status_code >= 400:
+            # Graph's body says *why* (name taken, a {{2}} without an example,
+            # a URL button pointing at a blocked domain) -- keep it. Never the
+            # token.
+            logger.error(
+                "meta create_template failed: HTTP %s name=%s body=%s",
+                response.status_code,
+                spec.name,
+                response.text[:500],
+            )
+        response.raise_for_status()
+
+        data = response.json()
+        template_id = data.get("id")
+        if not template_id:
+            raise ValueError(f"meta create_template response without an id: {data!r}")
+        return str(template_id)
+
+    def _build_template_components(self, spec: TemplateSpec) -> list[dict]:
+        components: list[dict] = []
+
+        if spec.header_type == "text":
+            components.append({"type": "HEADER", "format": "TEXT", "text": spec.header_text})
+        elif spec.header_type in ("image", "video", "document"):
+            components.append(
+                {
+                    "type": "HEADER",
+                    "format": spec.header_type.upper(),
+                    "example": {"header_handle": [self._header_handle(spec)]},
+                }
+            )
+
+        body: dict = {"type": "BODY", "text": spec.body}
+        if spec.body_sample_values:
+            # One row of examples -- Meta accepts several, one is required.
+            body["example"] = {"body_text": [list(spec.body_sample_values)]}
+        components.append(body)
+
+        if spec.footer:
+            components.append({"type": "FOOTER", "text": spec.footer})
+
+        buttons = []
+        for button in spec.buttons:
+            kind = _BUTTON_TYPES.get(button.get("type", ""))
+            if kind is None:
+                continue
+            meta_type, our_key, meta_key = kind
+            entry = {"type": meta_type, "text": button.get("text", "")}
+            if our_key:
+                entry[meta_key] = button.get(our_key, "")
+            buttons.append(entry)
+        if buttons:
+            components.append({"type": "BUTTONS", "buttons": buttons})
+
+        return components
+
+    def _header_handle(self, spec: TemplateSpec) -> str:
+        """Push the header's sample file through the Resumable Upload API and
+        return the handle Meta wants in ``example.header_handle``.
+
+        Two calls: open an upload session on the *app* (``/{app_id}/uploads``
+        with the file's length and type), then POST the bytes to that session.
+        The whole file goes in one request -- these are template samples,
+        capped at 16 MB by the editor, not a video pipeline.
+        """
+        if not settings.META_APP_ID:
+            raise RuntimeError(
+                "Meta template with a media header needs META_APP_ID for the "
+                "Resumable Upload API (see .env.example)"
+            )
+        media = spec.header_media
+        if media is None:
+            raise ValueError(f"template {spec.name!r} has a media header but no file")
+
+        media.open("rb")
+        try:
+            data = media.read()
+        finally:
+            media.close()
+        file_name = (getattr(media, "name", "") or "sample").rsplit("/", 1)[-1]
+        file_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
+
+        session = requests.post(
+            f"{_GRAPH_BASE}/{_GRAPH_API_VERSION}/{settings.META_APP_ID}/uploads",
+            params={
+                "file_name": file_name,
+                "file_length": len(data),
+                "file_type": file_type,
+            },
+            headers=self._bearer_headers(),
+            timeout=_REQUEST_TIMEOUT,
+        )
+        if session.status_code >= 400:
+            logger.error(
+                "meta upload session failed: HTTP %s body=%s",
+                session.status_code,
+                session.text[:500],
+            )
+        session.raise_for_status()
+        session_id = session.json().get("id")
+        if not session_id:
+            raise ValueError(f"meta upload session without an id: {session.text[:200]}")
+
+        upload = requests.post(
+            f"{_GRAPH_BASE}/{_GRAPH_API_VERSION}/{session_id}",
+            data=data,
+            headers={
+                # This endpoint wants the OAuth scheme, not Bearer -- Meta's
+                # one inconsistency here, documented as such.
+                "Authorization": f"OAuth {settings.META_ACCESS_TOKEN}",
+                "file_offset": "0",
+                "Content-Type": file_type,
+            },
+            timeout=_REQUEST_TIMEOUT * 3,
+        )
+        if upload.status_code >= 400:
+            logger.error(
+                "meta upload failed: HTTP %s body=%s", upload.status_code, upload.text[:500]
+            )
+        upload.raise_for_status()
+        handle = upload.json().get("h")
+        if not handle:
+            raise ValueError(f"meta upload without a handle: {upload.text[:200]}")
+        return handle
+
+    def template_verdicts(self) -> list[TemplateVerdict]:
+        """GET the catalogue and normalize every entry with a status we
+        understand. Follows ``paging.next`` so a long catalogue comes back
+        whole (up to a sane page cap)."""
+        self._require_catalogue()
+
+        url = f"{_GRAPH_BASE}/{_GRAPH_API_VERSION}/{settings.META_WABA_ID}/message_templates"
+        params: dict | None = {
+            "fields": "id,name,language,status,rejected_reason",
+            "limit": _TEMPLATE_LIST_PAGE_SIZE,
+        }
+        verdicts: list[TemplateVerdict] = []
+        for _ in range(_TEMPLATE_LIST_MAX_PAGES):
+            response = requests.get(
+                url, params=params, headers=self._bearer_headers(), timeout=_REQUEST_TIMEOUT
+            )
+            if response.status_code >= 400:
+                logger.error(
+                    "meta template list failed: HTTP %s body=%s",
+                    response.status_code,
+                    response.text[:500],
+                )
+            response.raise_for_status()
+            data = response.json()
+
+            for entry in data.get("data", []):
+                status = _TEMPLATE_STATUS_MAP.get(str(entry.get("status", "")).upper())
+                if status is None or not entry.get("name"):
+                    continue
+                reason = str(entry.get("rejected_reason") or "")
+                if reason.upper() == "NONE":
+                    reason = ""
+                # A paused/disabled template has no rejected_reason -- the
+                # Meta state itself is the explanation worth showing.
+                if status is TemplateStatus.REJECTED and not reason:
+                    meta_state = str(entry.get("status", "")).upper()
+                    if meta_state != "REJECTED":
+                        reason = meta_state
+                verdicts.append(
+                    TemplateVerdict(
+                        name=str(entry["name"]),
+                        language=str(entry.get("language") or _DEFAULT_TEMPLATE_LANGUAGE),
+                        status=status,
+                        rejection_reason=reason,
+                        provider_template_id=str(entry.get("id") or ""),
+                    )
+                )
+
+            next_url = (data.get("paging") or {}).get("next")
+            if not next_url:
+                break
+            # ``next`` is a complete URL with the cursor and fields baked in.
+            url, params = next_url, None
+        return verdicts
+
+    @staticmethod
+    def _require_catalogue() -> None:
+        if not settings.META_ACCESS_TOKEN or not settings.META_WABA_ID:
+            raise RuntimeError(
+                "Meta template catalogue is not configured: set META_ACCESS_TOKEN "
+                "and META_WABA_ID (see .env.example)"
+            )
+
+    @staticmethod
+    def _bearer_headers() -> dict:
+        return {
+            "Authorization": f"Bearer {settings.META_ACCESS_TOKEN}",
+            "Content-Type": "application/json",
+        }
 
     # --- Webhook -----------------------------------------------------------
 

@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 
+from messaging.providers.types import TemplateSpec
+
 from .models import MessageTemplate
 
 #: Meta's hard template-name constraint: lowercase, digits and _ only.
@@ -393,6 +395,23 @@ def _valid_cta_url(url: str) -> bool:
     except ValidationError:
         return False
     return True
+
+
+def template_spec(template) -> TemplateSpec:
+    """A MessageTemplate as the provider-neutral spec ``create_template``
+    takes -- the one place the model crosses into ``messaging.providers``."""
+    return TemplateSpec(
+        name=template.name,
+        language=template.language,
+        category=template.category,
+        body=template.body,
+        body_sample_values=list(template.body_sample_values or []),
+        header_type=template.header_type,
+        header_text=template.header_text,
+        header_media=template.header_media if template.header_media else None,
+        footer=template.footer,
+        buttons=list(template.buttons or []),
+    )
 
 
 def build_buttons(state: dict) -> list[dict]:

@@ -284,6 +284,13 @@ META_ACCESS_TOKEN = os.environ.get('META_ACCESS_TOKEN', '')
 META_PHONE_NUMBER_ID = os.environ.get('META_PHONE_NUMBER_ID', '')
 META_APP_SECRET = os.environ.get('META_APP_SECRET', '')
 META_VERIFY_TOKEN = os.environ.get('META_VERIFY_TOKEN', '')
+# The template catalogue lives on the WhatsApp Business Account, not the phone
+# number: submitting a plantilla for approval and reading verdicts back both
+# go to /{META_WABA_ID}/message_templates. A media header's sample file is
+# pushed through the Resumable Upload API, which is addressed by app id.
+# Leave either empty and the CRM keeps plantillas locally, unsubmitted.
+META_WABA_ID = os.environ.get('META_WABA_ID', '')
+META_APP_ID = os.environ.get('META_APP_ID', '')
 
 # Baileys (unofficial WhatsApp Web/Desktop connection via a Node sidecar --
 # see whatsapp-sidecar/. QR-code pairing, no Meta Developers app needed; good

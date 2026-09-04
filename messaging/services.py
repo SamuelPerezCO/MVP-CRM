@@ -25,7 +25,7 @@ from core.models import Client
 
 from .models import Conversation, ConversationTag, Message, Tag
 from .providers.registry import get_provider
-from .providers.types import InboundEvent, MessageStatus, status_rank
+from .providers.types import InboundEvent, MessageStatus, TemplateStatus, status_rank
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,12 @@ class SendWindowClosed(Exception):
 class SendFailed(Exception):
     """The provider rejected or errored on a send. The Message row is kept
     with ``status=failed`` so the thread shows what happened."""
+
+
+class TemplateSubmissionFailed(Exception):
+    """The provider refused or errored on a template submission. The
+    plantilla row is kept, unsubmitted, so the editor's work is not lost --
+    the message says what Meta objected to."""
 
 
 # --- Sending ---------------------------------------------------------------
@@ -163,6 +169,83 @@ def start_conversation(contact: Client, channel: str = "whatsapp") -> Conversati
     channel, or a fresh row. Same rule as inbound routing, so an agent
     starting a chat and a customer writing in land in the same place."""
     return _get_or_create_open_conversation(contact, channel)
+
+
+# --- Template catalogue -----------------------------------------------------
+
+
+def submit_template(template) -> bool:
+    """Submit a freshly saved plantilla to the provider for approval.
+
+    Returns True when it was submitted (``provider_template_id`` is set) and
+    False when the active provider keeps no catalogue -- the plantilla then
+    simply stays a local record, which is what every provider but Meta means.
+    Raises :class:`TemplateSubmissionFailed` when the provider objects; the
+    caller decides how to show that, the row is already saved either way.
+    """
+    from core import plantillas  # local: core imports this module
+
+    provider = get_provider()
+    try:
+        provider_id = provider.create_template(plantillas.template_spec(template))
+    except Exception as exc:
+        logger.exception("create_template %s failed", template.name)
+        raise TemplateSubmissionFailed(str(exc)) from exc
+
+    if provider_id is None:
+        return False
+    template.provider_template_id = provider_id
+    template.status = TemplateStatus.PENDING.value
+    template.save(update_fields=["provider_template_id", "status"])
+    return True
+
+
+def sync_template_verdicts() -> int:
+    """Read every approval verdict the provider has and write the changed
+    ones onto the matching plantillas. Returns how many rows changed.
+
+    Matched by (name, language) -- the CRM's own uniqueness key and Meta's --
+    so a template created straight in Meta's console still reconciles with a
+    plantilla of the same name here, and one whose submission never recorded
+    an id catches up. Plantillas the provider does not know are left alone:
+    absence is not a verdict (the catalogue may have been created after them,
+    or the sync may be talking to a different WABA than the one they went to).
+
+    Every matched row gets ``status_synced_at`` stamped even when nothing
+    else moved, so the page can say *when* "Pendiente" was last true.
+    """
+    from core.models import MessageTemplate  # local: core imports this module
+
+    verdicts = get_provider().template_verdicts()
+    if not verdicts:
+        return 0
+
+    by_key = {(verdict.name, verdict.language): verdict for verdict in verdicts}
+    now = timezone.now()
+    changed = 0
+    for template in MessageTemplate.objects.filter(
+        name__in={verdict.name for verdict in verdicts}
+    ):
+        verdict = by_key.get((template.name, template.language))
+        if verdict is None:
+            continue
+        fields = ["status_synced_at"]
+        template.status_synced_at = now
+        if template.status != verdict.status.value:
+            template.status = verdict.status.value
+            fields.append("status")
+        if template.rejection_reason != verdict.rejection_reason:
+            template.rejection_reason = verdict.rejection_reason
+            fields.append("rejection_reason")
+        if verdict.provider_template_id and (
+            template.provider_template_id != verdict.provider_template_id
+        ):
+            template.provider_template_id = verdict.provider_template_id
+            fields.append("provider_template_id")
+        template.save(update_fields=fields)
+        if len(fields) > 1:
+            changed += 1
+    return changed
 
 
 # --- Inbound processing -----------------------------------------------------
