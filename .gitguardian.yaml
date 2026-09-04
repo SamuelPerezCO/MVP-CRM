@@ -1,0 +1,23 @@
+# GitGuardian configuration.
+#
+# The test suite is full of literals that look exactly like credentials --
+# `agents.create_user("lucia", "clave-larga")`, `APP_AGENTS=Admin:admin-pw:Admin`
+# -- because the thing under test *is* the login. They are fixtures: invented
+# for the test that uses them, never valid anywhere, and readable on purpose,
+# since a test whose password is `xxxxxxxx` is harder to follow.
+#
+# Scanning them produces one incident per fixture and no signal, so the test
+# modules are excluded here and nowhere else. Everything that could hold a real
+# credential -- config/settings.py, the providers, the templates, .env* -- is
+# still scanned, and .env itself is in .gitignore (never committed): real
+# secrets live in the hosting dashboard.
+#
+# APP_AGENTS entries in the environment carry a password *hash*, not a
+# password (see core/agents.py); `manage.py hashear_clave` generates one.
+version: 2
+
+secret:
+  ignored-paths:
+    - "core/tests_*.py"
+    - "messaging/tests*.py"
+    - "messaging/tests_*.py"
