@@ -13,13 +13,20 @@ the Inbox. Two things have to line up for that:
   with an unusable password -- the environment stays the only source of truth
   for who can log in, and nobody can authenticate through the ORM.
 
-``APP_AGENTS`` format -- comma-separated ``username:password:Nombre`` entries::
+``APP_AGENTS`` format -- comma-separated ``username:hash:Nombre`` entries::
 
-    APP_AGENTS=Admin:sup3rsecret:Admin,Samuel:1234:Samuel
+    APP_AGENTS=Admin:pbkdf2_sha256$1500000$SALT$HASH=:Admin
 
-The display name is optional (``username:password`` falls back to the
-username). Colons and commas can't appear in a password, since they are the
-separators.
+The middle field is a password *hash*, not a password: ``manage.py
+hashear_clave`` generates one, and :meth:`Agent.accepts` verifies it with
+``check_password`` at the same PBKDF2 cost as a database account. The display
+name is optional (``username:hash`` falls back to the username). Colons and
+commas can't appear in the middle field, since they are the separators --
+Django's default PBKDF2 hashes contain neither.
+
+A raw password is still accepted there so no redeploy locks a team out, but
+:mod:`core.checks` warns (``core.W001``) for every agent still configured
+that way.
 
 If ``APP_AGENTS`` is unset the older single pair
 (``APP_LOGIN_USERNAME``/``APP_LOGIN_PASSWORD``) is used as a one-agent list, so
