@@ -2,6 +2,7 @@
 as the CRM (core.crm), so these tests pin the sharing down -- same sections,
 same views, same crm_panel endpoint, different mount."""
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
@@ -24,6 +25,8 @@ class CampanasScreenTests(TestCase):
             self.assertContains(response, text)
 
     def test_every_crm_view_renders_under_campanas(self):
+        # As a master -- the Usuarios row is masters-only under either mount.
+        self.client.force_login(get_user_model().objects.create_superuser("jefa"))
         html = self.client.get(reverse("section", args=["campanas"])).content.decode()
         for view in ALL_VIEWS:
             with self.subTest(view.key):

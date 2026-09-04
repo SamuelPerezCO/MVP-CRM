@@ -91,10 +91,11 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Who can log in, and who a conversation can be assigned to -- the same list
 # either way (see core/agents.py for the format and the reasoning). Comma-
-# separated `username:password:Nombre` entries, e.g.
-#   APP_AGENTS=Admin:sup3rsecret:Admin,Samuel:1234:Samuel
-# Blank means the gate can never be satisfied (see core.middleware), rather
-# than an empty/empty login working.
+# separated `username:hash:Nombre` entries, e.g.
+#   APP_AGENTS=Admin:pbkdf2_sha256$1500000$SALT$HASH=:Admin
+# The middle field is a password hash, not a password -- generate one with
+# `manage.py hashear_clave`. Blank means the gate can never be satisfied (see
+# core.middleware), rather than an empty/empty login working.
 APP_AGENTS = os.environ.get('APP_AGENTS', '')
 
 # The pre-agents single pair, kept as a fallback so an environment that only

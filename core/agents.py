@@ -13,13 +13,20 @@ the Inbox. Two things have to line up for that:
   with an unusable password -- the environment stays the only source of truth
   for who can log in, and nobody can authenticate through the ORM.
 
-``APP_AGENTS`` format -- comma-separated ``username:password:Nombre`` entries::
+``APP_AGENTS`` format -- comma-separated ``username:hash:Nombre`` entries::
 
-    APP_AGENTS=Admin:sup3rsecret:Admin,Samuel:1234:Samuel
+    APP_AGENTS=Admin:pbkdf2_sha256$1500000$SALT$HASH=:Admin
 
-The display name is optional (``username:password`` falls back to the
-username). Colons and commas can't appear in a password, since they are the
-separators.
+The middle field is a password *hash*, not a password: ``manage.py
+hashear_clave`` generates one, and :meth:`Agent.accepts` verifies it with
+``check_password`` at the same PBKDF2 cost as a database account. The display
+name is optional (``username:hash`` falls back to the username). Colons and
+commas can't appear in the middle field, since they are the separators --
+Django's default PBKDF2 hashes contain neither.
+
+A raw password is still accepted there so no redeploy locks a team out, but
+:mod:`core.checks` warns (``core.W001``) for every agent still configured
+that way.
 
 If ``APP_AGENTS`` is unset the older single pair
 (``APP_LOGIN_USERNAME``/``APP_LOGIN_PASSWORD``) is used as a one-agent list, so
@@ -43,7 +50,12 @@ from dataclasses import dataclass
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Q
-from django.contrib.auth.hashers import check_password, get_hasher, make_password
+from django.contrib.auth.hashers import (
+    UNUSABLE_PASSWORD_PREFIX,
+    check_password,
+    get_hasher,
+    make_password,
+)
 
 
 @dataclass(frozen=True)
@@ -379,8 +391,15 @@ def _master_count(exclude_pk=None) -> int:
     if configured_agents():
         return 2   # any positive number above the guard's floor
     User = get_user_model()
-    masters = User.objects.filter(is_active=True).filter(
-        Q(is_superuser=True) | Q(groups__name=MASTER_GROUP)
+    masters = (
+        User.objects.filter(is_active=True)
+        .filter(Q(is_superuser=True) | Q(groups__name=MASTER_GROUP))
+        # Only masters who could actually log in. A mirror row left behind by
+        # an agent dropped from APP_AGENTS is still active and still a master
+        # on paper, but has an unusable password -- counting it as the
+        # survivor would let the last real master go and lock the team out.
+        .exclude(password="")
+        .exclude(password__startswith=UNUSABLE_PASSWORD_PREFIX)
     )
     if exclude_pk is not None:
         masters = masters.exclude(pk=exclude_pk)

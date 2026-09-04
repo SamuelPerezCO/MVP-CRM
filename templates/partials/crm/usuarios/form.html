@@ -69,6 +69,11 @@
   {% if edit_user and edit_user == request.user %}
     <p class="ffield__hint">No puedes quitarte a ti mismo el rol de maestro.</p>
   {% endif %}
+  {# Raised by core.agents.LastMaster: demoting this one would leave the team
+     with nobody able to manage it. #}
+  {% if errors.master %}
+    <p class="ffield__error" id="user-error-master">{{ errors.master }}</p>
+  {% endif %}
 
   <div class="client-form__actions">
     <span class="client-form__spacer"></span>
