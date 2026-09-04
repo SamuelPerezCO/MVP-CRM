@@ -219,3 +219,25 @@
 .reply-form__file { font-size: 12.5px; }
 
 .reply-delete__text { font-size: 13px; color: var(--text); }
+
+/* --- Plantillas: sync with WhatsApp ---------------------------------------- */
+
+.plantillas__sync { height: 36px; white-space: nowrap; }
+
+/* Result of a sync (or of a submission Meta refused), above the table. */
+.tpl-notice {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #eef4fd;
+  color: #1a5cb0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+/* The why under Rechazada, or "sin enviar" under a local-only Pendiente. */
+.tpl-table__reason {
+  display: block;
+  font-size: 11px;
+  line-height: 1.35;
+}

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from .types import InboundEvent
+from .types import InboundEvent, TemplateSpec, TemplateVerdict
 
 
 class MessagingProvider(ABC):
@@ -85,3 +85,23 @@ class MessagingProvider(ABC):
         has no such thing. Meta sends ``hub.mode=subscribe`` with a
         ``hub.challenge`` to echo; Twilio never GETs the webhook."""
         return None
+
+    # --- Template catalogue (optional) ---------------------------------------
+    #
+    # Only the official Cloud API keeps a catalogue of templates that must be
+    # submitted and approved before ``send_template`` will accept them. The
+    # defaults below are the "no catalogue" answer, so Twilio (templates are
+    # approved in its console), Baileys (renders templates as plain text) and
+    # the fake provider inherit them untouched -- same stance as ``handshake``.
+
+    def create_template(self, spec: TemplateSpec) -> str | None:
+        """Submit ``spec`` for approval. Returns the provider's id for the new
+        template, or ``None`` when this provider has no catalogue to submit
+        to (the CRM then simply keeps its own record). Raise on a rejected or
+        failed submission -- the caller reports it, never guesses."""
+        return None
+
+    def template_verdicts(self) -> list[TemplateVerdict]:
+        """Every template in the provider's catalogue with its current
+        approval state, normalized. Empty when there is no catalogue."""
+        return []

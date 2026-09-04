@@ -9,8 +9,13 @@
   active tab, the header renders and the two-half empty state below fills the
   card. The tab classes are the shared ones from comercio.css.
 
-  Context: tabs, active_tab, columns, templates
+  Context: tabs, active_tab, columns, templates, plantillas_notice (optional:
+  the result of a sync, or a failed submission to Meta)
 {% endcomment %}
+
+{% if plantillas_notice %}
+  <p class="tpl-notice" role="status">{{ plantillas_notice }}</p>
+{% endif %}
 
 <div class="product-card tpl-card">
 
@@ -47,7 +52,9 @@
             <td class="tpl-table__text">{{ template.body|truncatechars:60 }}</td>
             <td>{{ template.team }}</td>
             <td>{% if template.is_active %}Sí{% else %}No{% endif %}</td>
-            <td>{{ template.get_status_display }}</td>
+            {# Kept on one line so the display value abuts </td> -- the value #}
+            {# with nothing under it is what a plain "Aceptada" cell reads as. #}
+            <td{% if template.status_synced_at %} title="Consultado a WhatsApp el {{ template.status_synced_at|date:'d/m/Y H:i' }}"{% endif %}>{{ template.get_status_display }}{% if template.status == "rechazada" and template.rejection_reason %}<span class="table__muted tpl-table__reason">{{ template.rejection_reason }}</span>{% elif template.status == "pendiente" and not template.provider_template_id %}<span class="table__muted tpl-table__reason">sin enviar a WhatsApp</span>{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>
