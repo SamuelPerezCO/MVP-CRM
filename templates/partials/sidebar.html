@@ -40,9 +40,11 @@
         login.html document, which an htmx #content swap can't render.
       {% endcomment %}
       <li class="nav-list__row">
-        <a class="nav-item" href="{% url 'logout' %}" aria-label="Cerrar sesión">
+        <a class="nav-item" href="{% url 'logout' %}"
+           aria-label="Cerrar sesión{% if request.user.is_authenticated %} ({{ request.user.get_full_name|default:request.user.username }}){% endif %}">
           {% include "icons/lock.svg" %}
-          <span class="nav-item__tip" role="tooltip" aria-hidden="true">Cerrar sesión</span>
+          {# The one place the shell says who you are, now accounts are individual. #}
+          <span class="nav-item__tip" role="tooltip" aria-hidden="true">Cerrar sesión{% if request.user.is_authenticated %} · {{ request.user.get_full_name|default:request.user.username }}{% endif %}</span>
         </a>
       </li>
     </ul>

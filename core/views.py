@@ -1728,7 +1728,11 @@ def usuario_form(request, user_id: int | None = None):
                         # hash; without this the very next request logs you out.
                         update_session_auth_hash(request, saved)
                     notice = f"Usuario actualizado: {saved.get_full_name() or saved.username}."
-            except (agents.UsernameTaken, agents.LastMaster, ValueError) as exc:
+            except agents.LastMaster as exc:
+                # A message about the master role belongs beside the master
+                # checkbox, not under the username field it says nothing about.
+                errors["master"] = str(exc)
+            except (agents.UsernameTaken, ValueError) as exc:
                 errors["username"] = str(exc)
             else:
                 return _user_saved_response(request, notice)

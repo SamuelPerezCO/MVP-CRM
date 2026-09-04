@@ -313,3 +313,237 @@ class TuInboxFilterTests(TestCase):
         html = response.content.decode()
         self.assertIn(f"/inbox/chat/{self.nobodys.pk}/", html)
         self.assertNotIn(f"/inbox/chat/{self.mine.pk}/", html)
+
+
+# --- Hashed environment secrets ---------------------------------------------
+
+
+def env_entry(username, password, name=None):
+    """An APP_AGENTS entry with a real hash in it, the way an operator would
+    paste one from `manage.py hashear_clave`."""
+    from django.contrib.auth.hashers import make_password
+
+    return f"{username}:{make_password(password)}:{name or username}"
+
+
+class EnvSecretShapeTests(TestCase):
+    """What counts as a hash, and what is a raw password wearing a $."""
+
+    def test_a_real_hash_is_recognised(self):
+        from django.contrib.auth.hashers import make_password
+
+        self.assertTrue(agents.Agent("x", make_password("y"), "X").is_hashed)
+
+    def test_plain_passwords_are_not(self):
+        for secret in ("1234", "una clave larga", "", "no-dollar-here"):
+            with self.subTest(secret):
+                self.assertFalse(agents.Agent("x", secret, "X").is_hashed)
+
+    def test_a_password_containing_a_dollar_is_not_a_hash(self):
+        for secret in ("me$4gusta", "$$$", "sha999$abc$def"):
+            with self.subTest(secret):
+                self.assertFalse(agents.Agent("x", secret, "X").is_hashed)
+
+    def test_a_32_character_password_is_not_read_as_unsalted_md5(self):
+        """identify_hasher would; that's why core.agents doesn't use it."""
+        self.assertFalse(agents.Agent("x", "a" * 32, "X").is_hashed)
+
+    def test_hashes_carry_no_app_agents_separator(self):
+        from django.contrib.auth.hashers import make_password
+
+        encoded = make_password("clave-segura-1")
+        self.assertNotIn(":", encoded)
+        self.assertNotIn(",", encoded)
+
+
+class HashedEnvLoginTests(TestCase):
+    def setUp(self):
+        self.entries = ",".join(
+            [env_entry("Admin", "clave-de-admin"), env_entry("Samuel", "clave-de-samuel")]
+        )
+
+    def settings(self, **extra):
+        return override_settings(
+            APP_AGENTS=self.entries, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD="", **extra
+        )
+
+    def test_the_environment_holds_no_readable_password(self):
+        for password in ("clave-de-admin", "clave-de-samuel"):
+            with self.subTest(password):
+                self.assertNotIn(password, self.entries)
+
+    def test_every_agent_is_hashed(self):
+        with self.settings():
+            self.assertTrue(all(a.is_hashed for a in agents.configured_agents()))
+
+    def test_the_right_password_authenticates(self):
+        with self.settings():
+            self.assertEqual(agents.authenticate("Admin", "clave-de-admin").username, "Admin")
+            self.assertEqual(agents.authenticate("Samuel", "clave-de-samuel").username, "Samuel")
+
+    def test_a_wrong_password_does_not(self):
+        with self.settings():
+            self.assertIsNone(agents.authenticate("Admin", "clave-de-samuel"))
+            self.assertIsNone(agents.authenticate("Admin", "clave-de-admin "))
+            self.assertIsNone(agents.authenticate("Nadie", "clave-de-admin"))
+
+    def test_the_hash_itself_is_not_a_password(self):
+        """Someone who reads the env and pastes what they found gets nowhere."""
+        encoded = self.entries.split(":")[1]
+        with self.settings():
+            self.assertIsNone(agents.authenticate("Admin", encoded))
+
+    def test_logging_in_through_the_view(self):
+        with self.settings(TESTING=False):
+            response = self.client.post(
+                reverse("login"), {"username": "Samuel", "password": "clave-de-samuel"}
+            )
+            self.assertRedirects(response, reverse("home"), fetch_redirect_response=False)
+            self.assertTrue(self.client.session.get(SESSION_KEY))
+
+    def test_a_hashed_agent_still_cannot_log_in_through_the_database(self):
+        """The mirror row keeps an unusable password: the env is the one door."""
+        with self.settings():
+            mirror = agents.authenticate("Admin", "clave-de-admin").user
+            self.assertFalse(mirror.has_usable_password())
+            self.assertFalse(mirror.check_password("clave-de-admin"))
+
+    def test_non_ascii_passwords_survive_hashing(self):
+        with override_settings(
+            APP_AGENTS=env_entry("José", "contraseña-ñ"),
+            APP_LOGIN_USERNAME="",
+            APP_LOGIN_PASSWORD="",
+        ):
+            self.assertIsNotNone(agents.authenticate("José", "contraseña-ñ"))
+            self.assertIsNone(agents.authenticate("José", "contrasena-n"))
+
+    def test_a_non_ascii_username_never_raises(self):
+        """compare_digest on str raises for non-ASCII; that was a 500."""
+        with self.settings():
+            self.assertIsNone(agents.authenticate("José", "x"))
+
+    def test_the_legacy_pair_may_be_hashed_too(self):
+        from django.contrib.auth.hashers import make_password
+
+        with override_settings(
+            APP_AGENTS="",
+            APP_LOGIN_USERNAME="viejo",
+            APP_LOGIN_PASSWORD=make_password("clave-vieja"),
+        ):
+            self.assertIsNotNone(agents.authenticate("viejo", "clave-vieja"))
+            self.assertIsNone(agents.authenticate("viejo", "otra"))
+
+    def test_plaintext_entries_still_work_alongside_hashed_ones(self):
+        """Deprecated, warned about, but never a lockout on redeploy."""
+        mixed = f"{env_entry('Admin', 'clave-de-admin')},Viejo:en-claro:Viejo"
+        with override_settings(APP_AGENTS=mixed, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD=""):
+            self.assertIsNotNone(agents.authenticate("Admin", "clave-de-admin"))
+            self.assertIsNotNone(agents.authenticate("Viejo", "en-claro"))
+            self.assertIsNone(agents.authenticate("Viejo", "otra"))
+
+
+class PlaintextWarningTests(TestCase):
+    def run_check(self):
+        from core.checks import plaintext_env_secrets
+
+        return plaintext_env_secrets(None)
+
+    @override_settings(APP_AGENTS=TWO_AGENTS, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD="")
+    def test_plaintext_agents_are_named_in_the_warning(self):
+        (warning,) = self.run_check()
+        self.assertEqual(warning.id, "core.W001")
+        self.assertIn("'Admin'", warning.msg)
+        self.assertIn("'Samuel'", warning.msg)
+        self.assertIn("hashear_clave", warning.hint)
+
+    def test_hashed_agents_raise_nothing(self):
+        entries = ",".join([env_entry("Admin", "clave-de-admin"), env_entry("Samuel", "clave-x")])
+        with override_settings(APP_AGENTS=entries, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD=""):
+            self.assertEqual(self.run_check(), [])
+
+    def test_only_the_plaintext_ones_are_named(self):
+        mixed = f"{env_entry('Admin', 'clave-de-admin')},Viejo:en-claro:Viejo"
+        with override_settings(APP_AGENTS=mixed, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD=""):
+            (warning,) = self.run_check()
+            self.assertIn("'Viejo'", warning.msg)
+            self.assertNotIn("'Admin'", warning.msg)
+
+    @override_settings(APP_AGENTS="", APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD="")
+    def test_nothing_configured_raises_nothing(self):
+        self.assertEqual(self.run_check(), [])
+
+    @override_settings(APP_AGENTS="", APP_LOGIN_USERNAME="viejo", APP_LOGIN_PASSWORD="en-claro")
+    def test_the_legacy_pair_is_checked_too(self):
+        (warning,) = self.run_check()
+        self.assertIn("'viejo'", warning.msg)
+
+
+class HashearClaveCommandTests(TestCase):
+    def run_command(self, *args, **kwargs):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("hashear_clave", *args, stdout=out, **kwargs)
+        return out.getvalue().strip()
+
+    def test_prints_a_pasteable_entry_that_actually_logs_in(self):
+        entry = self.run_command("Samuel", "--name", "Samuel", "--password", "clave-segura-1")
+        self.assertTrue(entry.startswith("Samuel:"))
+        self.assertTrue(entry.endswith(":Samuel"))
+        self.assertNotIn("clave-segura-1", entry)
+        with override_settings(APP_AGENTS=entry, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD=""):
+            self.assertEqual([a.username for a in agents.configured_agents()], ["Samuel"])
+            self.assertEqual(agents.authenticate("Samuel", "clave-segura-1").display_name, "Samuel")
+
+    def test_without_a_username_it_prints_only_the_hash(self):
+        encoded = self.run_command("--password", "clave-segura-1")
+        self.assertTrue(agents.Agent("x", encoded, "X").is_hashed)
+        self.assertNotIn(":", encoded)
+
+    def test_it_applies_a_password_floor(self):
+        from django.core.management import CommandError
+
+        for bad, message in (("corta", "al menos 8"), ("12345678", "solo números")):
+            with self.subTest(bad):
+                with self.assertRaisesMessage(CommandError, message):
+                    self.run_command("samuel", "--password", bad)
+
+    def test_several_usernames_print_the_whole_variable(self):
+        from unittest.mock import patch
+
+        with patch(
+            "core.management.commands.hashear_clave.getpass",
+            side_effect=["clave-de-admin", "clave-de-admin", "clave-de-samuel", "clave-de-samuel"],
+        ):
+            line = self.run_command("Admin", "Samuel")
+
+        self.assertTrue(line.startswith("APP_AGENTS="))
+        for password in ("clave-de-admin", "clave-de-samuel"):
+            self.assertNotIn(password, line)
+
+        with override_settings(
+            APP_AGENTS=line.split("=", 1)[1], APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD=""
+        ):
+            self.assertEqual([a.username for a in agents.configured_agents()], ["Admin", "Samuel"])
+            self.assertTrue(all(a.is_hashed for a in agents.configured_agents()))
+            self.assertIsNotNone(agents.authenticate("Admin", "clave-de-admin"))
+            self.assertIsNone(agents.authenticate("Admin", "clave-de-samuel"))
+
+    def test_several_usernames_reject_the_single_agent_flags(self):
+        from django.core.management import CommandError
+
+        for flag in ("--name", "--password"):
+            with self.subTest(flag):
+                with self.assertRaisesMessage(CommandError, "un solo usuario"):
+                    self.run_command("Admin", "Samuel", flag, "x")
+
+    def test_a_mistyped_confirmation_is_refused(self):
+        from unittest.mock import patch
+
+        from django.core.management import CommandError
+
+        with patch("core.management.commands.hashear_clave.getpass", side_effect=["uno", "dos"]):
+            with self.assertRaisesMessage(CommandError, "no coinciden"):
+                self.run_command("samuel")
