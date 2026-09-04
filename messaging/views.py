@@ -24,7 +24,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from . import services
-from .providers.registry import get_provider, is_known_provider, webhook_enabled
+from .providers.registry import get_provider, is_enabled_provider
 
 logger = logging.getLogger(__name__)
 
@@ -33,16 +33,12 @@ logger = logging.getLogger(__name__)
 @require_http_methods(["GET", "POST"])
 def webhook(request, provider_name: str):
     """Receive one provider webhook (POST) or a verification handshake (GET)."""
-    if not is_known_provider(provider_name):
-        # Not a provider retry -- a misconfigured URL. 404 is honest here.
-        raise Http404(f"Unknown messaging provider: {provider_name!r}")
-    if not webhook_enabled(provider_name):
-        # The simulator's door, shut on real deployments -- see
-        # registry.webhook_enabled. 404 rather than 403: on this deployment
-        # the endpoint genuinely does not exist, and saying so tells a probe
-        # nothing about what it would have to forge.
-        logger.warning("rejected %s webhook: disabled on this deployment", provider_name)
-        raise Http404(f"Webhook disabled: {provider_name!r}")
+    if not is_enabled_provider(provider_name):
+        # Either not a provider at all, or one that has no business answering
+        # in this environment (the fake simulator on a real deployment -- see
+        # registry.is_enabled_provider). Both are a misconfigured URL from the
+        # caller's side, and 404 is the honest answer: here, it does not exist.
+        raise Http404(f"Messaging provider not enabled here: {provider_name!r}")
     provider = get_provider(provider_name)
 
     if request.method == "GET":
@@ -51,7 +47,9 @@ def webhook(request, provider_name: str):
         challenge = provider.handshake(request)
         if challenge is None:
             return HttpResponse("verification failed", status=403)
-        return HttpResponse(challenge)
+        # text/plain: the challenge is caller-supplied, and reflecting it as
+        # HTML would be a scripting hole on the deployment's own origin.
+        return HttpResponse(challenge, content_type="text/plain; charset=utf-8")
 
     if not provider.verify_signature(request):
         logger.warning("rejected %s webhook: bad signature", provider_name)

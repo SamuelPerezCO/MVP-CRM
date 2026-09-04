@@ -43,26 +43,28 @@ def is_known_provider(name: str) -> bool:
     return name in _PROVIDERS
 
 
-def webhook_enabled(name: str) -> bool:
-    """May this provider's webhook answer on this deployment?
+#: Providers that exist only for local development. They mint contacts,
+#: conversations and messages straight out of the request body, with no real
+#: account behind them -- see :func:`is_enabled_provider`.
+_DEV_ONLY = frozenset({FakeProvider.name})
 
-    Every provider's webhook is a door into the database: it creates contacts,
-    conversations and messages, exempt from the login gate and from CSRF,
-    trusting a signature instead. For the real providers that signature is a
-    credential only Meta/Twilio/the sidecar holds. For the *fake* one it is
-    ``MESSAGING_FAKE_SECRET``, whose default (``dev-secret``) is published in
-    ``.env.example`` and the README -- so on a deployment that never set it,
-    anyone who knows this project could POST invented customers into a live
-    Inbox.
 
-    So the fake webhook answers only where fake data belongs: local
-    development and the test runner. ``MESSAGING_ALLOW_FAKE_WEBHOOK=True``
-    re-opens it for a staging deployment that wants the simulator.
+def is_enabled_provider(name: str) -> bool:
+    """Whether ``name`` may answer a webhook in *this* environment.
+
+    Real providers stay routable even when another one is active: a Twilio
+    status callback for a message sent last week must still parse as Twilio
+    halfway through a migration to Meta, which is why the webhook URL names
+    the provider instead of reading the setting.
+
+    The fake provider is the exception. It invents whatever the request body
+    says, so on a deployment running a real provider its endpoint is simply
+    an unauthenticated writer into the production database -- and the rows it
+    creates are indistinguishable from real customers afterwards. It answers
+    only where it is itself the configured provider.
     """
-    if name != FakeProvider.name:
-        return True
-    return bool(
-        settings.DEBUG
-        or getattr(settings, "TESTING", False)
-        or getattr(settings, "MESSAGING_ALLOW_FAKE_WEBHOOK", False)
-    )
+    if not is_known_provider(name):
+        return False
+    if name in _DEV_ONLY:
+        return settings.MESSAGING_PROVIDER == name
+    return True

@@ -173,7 +173,8 @@ def assignment_options(conversation) -> list:
     whoever it is currently assigned to if they are no longer one.
 
     That last part is the point. An agent can leave ``APP_AGENTS`` (or be
-    assigned from a seed script, or from /admin) while their conversations
+    assigned from /admin, or by the automation writing into the database)
+    while their conversations
     stay assigned to them; without an option for them the ``<select>`` would
     fall back to its first entry and quietly claim the chat is "Sin asignar".
     Showing the real assignee -- reassignable, but not misrepresented -- is the
