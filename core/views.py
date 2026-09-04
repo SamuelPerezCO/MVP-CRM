@@ -37,6 +37,7 @@ from django.db.models import Count, Q
 
 from messaging import services as messaging_services
 from messaging.models import Conversation, Tag
+from messaging.providers.base import MessagingProvider as MessagingProviderBase
 
 from . import (
     agents,
@@ -2046,6 +2047,41 @@ def respuesta_toggle(request, reply_id: int):
     )
 
 
+def plantillas_sync(request):
+    """Pull approval verdicts from the provider and re-render the table.
+
+    Behind the "Sincronizar con WhatsApp" button. Meta reviews templates on
+    its own clock and the CRM has no webhook for the verdict, so this is how
+    Pendiente becomes Aceptada (or Rechazada, with the reason). On a provider
+    without a catalogue it says so instead of pretending to have checked.
+    """
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    provider = messaging_services.get_provider()
+    try:
+        changed = messaging_services.sync_template_verdicts()
+    except Exception as exc:
+        notice = f"No se pudo consultar a WhatsApp: {exc}"
+    else:
+        if type(provider).template_verdicts is MessagingProviderBase.template_verdicts:
+            # Inherited the base no-op: there is nothing to consult.
+            notice = (
+                f"El proveedor activo ({provider.name}) no tiene catálogo de "
+                "plantillas que consultar."
+            )
+        elif changed:
+            notice = f"Estados actualizados: {changed} plantilla(s) cambiaron."
+        else:
+            notice = "Estados al día: ninguna plantilla cambió."
+
+    context = _plantillas_context(request)
+    context["plantillas_notice"] = notice
+    return HttpResponse(
+        render_to_string("partials/mensajeria/template_table.html", context, request=request)
+    )
+
+
 def _mensajeria_page(request, panel_template: str, panel_context: dict) -> HttpResponse:
     """The full mensajería page (base.html + sidebar + section) with the
     Plantillas panel swapped for ``panel_template``.
@@ -2126,14 +2162,25 @@ def plantilla_editor(request):
                     template.header_media.delete(save=False)
                 errors["name"] = "Ya existe una plantilla con este nombre en este idioma."
             else:
-                # TODO(meta): submit the new template to the Meta Cloud API
-                # here once credentials exist (settings.META_ACCESS_TOKEN et
-                # al.). Until then every template simply stays Pendiente.
+                # Saved locally first, submitted second: a Meta hiccup must
+                # not cost the editor's work. On a provider without a
+                # catalogue (fake, Twilio, Baileys) this is a no-op and the
+                # plantilla simply stays a local Pendiente record.
+                notice = None
+                try:
+                    messaging_services.submit_template(template)
+                except messaging_services.TemplateSubmissionFailed as exc:
+                    notice = (
+                        f"La plantilla «{template.name}» se guardó, pero WhatsApp "
+                        f"no la aceptó para revisión: {exc}"
+                    )
                 if _is_htmx(request):
+                    context = _plantillas_context(request)
+                    context["plantillas_notice"] = notice
                     return HttpResponse(
                         render_to_string(
                             "partials/mensajeria/panels/plantillas-whatsapp.html",
-                            _plantillas_context(request),
+                            context,
                             request=request,
                         )
                     )

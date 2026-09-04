@@ -64,6 +64,73 @@ def status_rank(status: str) -> int:
         return -1 if status != MessageStatus.FAILED.value else len(_STATUS_ORDER)
 
 
+class TemplateStatus(str, enum.Enum):
+    """Approval state of a message template, in the CRM's vocabulary.
+
+    Values are stored verbatim in ``MessageTemplate.status``. Providers
+    translate their own words into these (Meta says APPROVED/PENDING/
+    REJECTED, plus states like PAUSED and DISABLED that mean "you cannot
+    send this") so nothing outside ``providers/`` learns a second dialect --
+    the same normalization :class:`MessageStatus` does for deliveries.
+    """
+
+    PENDING = "pendiente"
+    APPROVED = "aceptada"
+    REJECTED = "rechazada"
+
+
+@dataclass(frozen=True)
+class TemplateSpec:
+    """One message template on its way *out* to a provider for approval.
+
+    The mirror image of :class:`InboundEvent`: a normalized shape so
+    ``providers/`` never imports a Django model and the CRM never builds a
+    provider's payload. ``core.plantillas.template_spec`` is the one place a
+    ``MessageTemplate`` becomes one of these.
+    """
+
+    name: str
+    language: str
+    category: str
+    """``marketing`` | ``utility`` | ``authentication`` (MessageTemplate.CATEGORY_CHOICES)."""
+
+    body: str
+    body_sample_values: list[str] = field(default_factory=list)
+    """One example per {{n}}, in numeric order. Meta rejects a template whose
+    body has variables and no examples."""
+
+    header_type: str = "none"
+    """``none`` | ``text`` | ``image`` | ``video`` | ``document``."""
+
+    header_text: str = ""
+
+    header_media: object | None = None
+    """The uploaded example file for a media header, as an open file-like
+    object (a Django ``FieldFile``). Meta will not accept a media header
+    without a sample of the real bytes, so a URL is not enough."""
+
+    footer: str = ""
+
+    buttons: list[dict] = field(default_factory=list)
+    """``MessageTemplate.buttons`` verbatim: ``{"type": "quick_reply"|"url"|
+    "phone", "text": ..., ...}`` dicts."""
+
+
+@dataclass(frozen=True)
+class TemplateVerdict:
+    """What a provider currently says about one template it holds.
+
+    ``(name, language)`` is the key, matching the CRM's own uniqueness rule --
+    Meta scopes template names per language too.
+    """
+
+    name: str
+    language: str
+    status: TemplateStatus
+    rejection_reason: str = ""
+    provider_template_id: str = ""
+
+
 @dataclass(frozen=True)
 class InboundEvent:
     """One normalized event out of a webhook payload.
