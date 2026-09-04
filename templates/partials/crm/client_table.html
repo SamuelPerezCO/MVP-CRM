@@ -79,6 +79,36 @@
                  hx-target="#client-modal-body"
                  hx-swap="innerHTML"
                  hx-include="#client-search, #client-page">
+              {% comment %}
+                Escribirle primero. A client who has never written has no
+                thread and no open 24h window, so the only message WhatsApp
+                will deliver is a plantilla -- which is exactly what the
+                Inbox's Nuevo chat modal sends. This is a deep link into it
+                rather than a second send path: core.views._inbox_context
+                reads ?nuevo= and nav_panel.html auto-opens the modal with
+                this client preselected.
+
+                Offered whenever WhatsApp could reach them, which includes
+                the client typed in by hand who has no channel yet -- the
+                person this is most for. An Instagram or TikTok row gets
+                nothing, plantillas being a WhatsApp mechanism.
+
+                hx-target/hx-swap are set here because the enclosing
+                .row-actions points every request at #client-modal-body;
+                this one replaces the whole screen instead, the way the
+                sidebar's own links do.
+              {% endcomment %}
+              {% if not client.channel or client.channel == "whatsapp" %}
+                <a class="icon-btn icon-btn--bare"
+                   href="{% url 'section' 'inbox' %}?nuevo={{ client.pk }}"
+                   hx-get="{% url 'section' 'inbox' %}?nuevo={{ client.pk }}"
+                   hx-target="#content"
+                   hx-swap="innerHTML"
+                   hx-push-url="true"
+                   aria-label="Escribirle a {{ client.full_name }}">
+                  {% include "icons/message-circle.svg" %}
+                </a>
+              {% endif %}
               <button type="button" class="icon-btn icon-btn--bare"
                       data-dialog-open="client-modal"
                       hx-get="{% url 'cliente_detail' client.pk %}"
