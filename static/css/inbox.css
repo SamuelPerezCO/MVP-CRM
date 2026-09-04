@@ -1196,3 +1196,24 @@
   gap: 8px;
   margin-block-start: 18px;
 }
+
+
+/* The price of a template send, inside the Enviar plantilla dialog. Every one
+   of these is billed, so the number sits with the plantilla it belongs to
+   rather than in a footnote. */
+.tpl-send__cost {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--content-bg);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tpl-send__spend {
+  margin: 12px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
