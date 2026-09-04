@@ -162,16 +162,34 @@
 
   var chatWasAtBottom = true;
 
+  /* How far from the bottom still counts as "at the bottom". This only has to
+     absorb sub-pixel rounding -- scrollTop comes back fractional (3821.5 for a
+     maximum of 3821) on a scaled display, and an exact comparison would then
+     never be true. It must NOT be big enough to swallow a real gesture: at 48
+     it did, and a reader who nudged the thread up a little to re-read
+     something got dragged back to the newest message a few seconds later by
+     the poll, over and over, with nothing on screen explaining why. Content
+     growing between polls is already handled -- "was at the bottom" is
+     measured before the swap, not after -- so the slack buys nothing else. */
+  var CHAT_BOTTOM_SLACK = 4;
+
   function isChatBox(el) {
     return el && el.id === "chat-messages";
   }
 
   function nearBottom(box) {
-    return box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+    return box.scrollHeight - box.scrollTop - box.clientHeight < CHAT_BOTTOM_SLACK;
   }
 
   document.addEventListener("htmx:beforeSwap", function (event) {
-    if (isChatBox(event.detail.target)) chatWasAtBottom = nearBottom(event.detail.target);
+    if (!isChatBox(event.detail.target)) return;
+    // The composer posts to this same target, so a send lands here too.
+    // Sending is an explicit "show me the newest" -- jump to it wherever the
+    // reader was, or their own message arrives off-screen above the fold.
+    // Only the 5s poll (a GET) has to leave a scrolled-up reader alone.
+    var config = event.detail.requestConfig;
+    var sent = config && String(config.verb).toLowerCase() === "post";
+    chatWasAtBottom = sent || nearBottom(event.detail.target);
   });
 
   document.addEventListener("htmx:afterSwap", function (event) {
