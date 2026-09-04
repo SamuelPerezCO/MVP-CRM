@@ -839,37 +839,71 @@
     if (event.detail.xhr.status === 422) event.detail.shouldSwap = true;
   });
 
-  // Mirrors core.respuestas.SHORTCUT_RE / normalize_shortcut. The server
-  // re-does all of this; here it just means nobody types a "/" or a capital
-  // and then gets told off for it.
-  document.addEventListener("input", function (event) {
-    var field = event.target.closest("[data-quickreply-shortcut]");
-    if (!field) return;
-    var cleaned = field.value.toLowerCase().replace(/[^a-z0-9_-]/g, "");
-    if (cleaned === field.value) return;
-    var caret = field.selectionStart - (field.value.length - cleaned.length);
-    field.value = cleaned;
-    field.setSelectionRange(caret, caret);
+  /* -------------------------------------------------------------------------
+   * Server-error banner: the one thing every hx-post in this app was missing.
+   *
+   * A form that fails *validation* re-renders with its own inline messages --
+   * that is a normal, successful HTTP response and needs nothing here. This
+   * is for the other case: the request never got a body back at all (a 500,
+   * a network drop), so the target never swaps and the screen just... sits
+   * there. Until this, that looked identical to "nothing happened" -- click
+   * Guardar, no error, no save, no clue. A quick reply's image upload hit
+   * exactly this against a misconfigured storage backend: every attempt 500'd
+   * server-side and the modal simply stayed open with what was typed, giving
+   * no sign anything had gone wrong.
+   *
+   * Deliberately generic and content-free: the response body for a 500 is a
+   * Django error page, not something to show an agent. This only answers
+   * "did it work", which is the one thing its absence was hiding.
+   * ---------------------------------------------------------------------- */
+
+  var errorBannerTimer = null;
+
+  function showErrorBanner(message) {
+    var banner = document.querySelector("[data-error-banner]");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.className = "error-banner";
+      banner.setAttribute("data-error-banner", "");
+      banner.setAttribute("role", "alert");
+      var text = document.createElement("span");
+      text.className = "error-banner__text";
+      banner.appendChild(text);
+      var close = document.createElement("button");
+      close.type = "button";
+      close.className = "error-banner__close";
+      close.setAttribute("aria-label", "Cerrar aviso");
+      close.textContent = "×";
+      close.addEventListener("click", function () { hideErrorBanner(); });
+      banner.appendChild(close);
+      document.body.appendChild(banner);
+    }
+    banner.querySelector(".error-banner__text").textContent = message;
+    banner.hidden = false;
+    if (errorBannerTimer) clearTimeout(errorBannerTimer);
+    errorBannerTimer = setTimeout(hideErrorBanner, 8000);
+  }
+
+  function hideErrorBanner() {
+    var banner = document.querySelector("[data-error-banner]");
+    if (banner) banner.hidden = true;
+    if (errorBannerTimer) { clearTimeout(errorBannerTimer); errorBannerTimer = null; }
+  }
+
+  // A response in the 4xx/5xx range that htmx therefore did NOT swap in.
+  // (A 422 IS swapped -- see the beforeSwap handler above -- so it never
+  // reaches here; that path already shows its own inline field errors.)
+  document.addEventListener("htmx:responseError", function (event) {
+    var status = event.detail.xhr.status;
+    showErrorBanner(
+      status >= 500
+        ? "No se pudo guardar: ocurrió un error en el servidor. Inténtalo de nuevo."
+        : "No se pudo completar la acción (" + status + "). Inténtalo de nuevo."
+    );
   });
 
-  document.addEventListener("change", function (event) {
-    var input = event.target.closest("[data-quickreply-photo]");
-    if (!input) return;
-    var preview = input.parentElement.querySelector("[data-quickreply-preview]");
-    if (!preview) return;
-    // Revoke the previous object URL before replacing it: without this every
-    // re-pick leaks the last file for the life of the document.
-    if (preview.dataset.objectUrl) URL.revokeObjectURL(preview.dataset.objectUrl);
-    var file = input.files && input.files[0];
-    if (!file) {
-      delete preview.dataset.objectUrl;
-      preview.removeAttribute("src");
-      preview.hidden = true;
-      return;
-    }
-    var url = URL.createObjectURL(file);
-    preview.dataset.objectUrl = url;
-    preview.src = url;
-    preview.hidden = false;
+  // The request never reached the server at all -- offline, DNS, CORS.
+  document.addEventListener("htmx:sendError", function () {
+    showErrorBanner("No se pudo conectar. Revisa tu conexión e inténtalo de nuevo.");
   });
 })();
