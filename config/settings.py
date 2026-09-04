@@ -280,7 +280,19 @@ if os.environ.get('BLOB_READ_WRITE_TOKEN') and not TESTING:
         'default': {'BACKEND': 'core.storage.VercelBlobStorage'},
         'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
     }
-elif os.environ.get('VERCEL') and not TESTING:
+elif not TESTING and (
+    os.environ.get('VERCEL')
+    # VERCEL is a system environment variable, and a project can be configured
+    # not to expose those -- in which case the check above is silently false
+    # and uploads go back to failing on the read-only filesystem, with nothing
+    # to see. Whether it is exposed on this project could not be confirmed
+    # from outside (the alias that would have proved it sits behind Vercel
+    # SSO), so don't rely on it alone: a real database plus DEBUG off is the
+    # same "deployed, not a workstation" condition, reached independently.
+    # Locally DEBUG is on and DATABASE_URL is commented out, so neither arm
+    # fires and development keeps writing to MEDIA_ROOT.
+    or (os.environ.get('DATABASE_URL') and not DEBUG)
+):
     # On Vercel with no Blob store connected. The filesystem is read-only, so
     # FileSystemStorage would raise OSError(30) on the first byte written --
     # every image upload 500s, which is exactly what shipped. The database is
