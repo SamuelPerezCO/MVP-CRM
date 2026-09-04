@@ -338,3 +338,106 @@
 }
 
 .widget-snippet code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* ==========================================================================
+   Respuestas rápidas -- live WhatsApp preview inside the drawer
+   Shows the message as the customer receives it: photo on top, text as its
+   caption, which is exactly how messaging.services.send_image() delivers it.
+   Repainted on every keystroke by the [data-reply-preview] code in shell.js.
+   ========================================================================== */
+
+.wa-preview {
+  margin: 0 0 22px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #efeae2;              /* WhatsApp's light chat wallpaper */
+}
+
+.wa-preview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-block-end: 1px solid rgb(15 30 50 / 8%);
+  background: #f7f5f2;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.wa-preview__stage {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 92px;
+  padding: 14px 12px;
+}
+
+/* Outgoing bubble: WhatsApp's own green, with the corner notch squared off
+   on the side the tail would sit. */
+.wa-preview__bubble {
+  max-width: 85%;
+  min-width: 92px;
+  padding: 4px 4px 6px;
+  border-radius: 10px 10px 2px 10px;
+  background: #d9fdd3;
+  box-shadow: 0 1px 1px rgb(15 30 50 / 14%);
+}
+
+.wa-preview__image {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  border-radius: 7px;
+  object-fit: cover;
+  background: rgb(15 30 50 / 6%);
+}
+
+.wa-preview__image[hidden] { display: none; }
+
+.wa-preview__text {
+  margin: 0;
+  padding: 5px 6px 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #111b21;
+  /* Agents paste multi-line answers; keep their line breaks and wrap long
+     unbroken strings (URLs) instead of blowing out the bubble. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wa-preview__text[hidden] { display: none; }
+
+.wa-preview__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  padding: 1px 6px 0;
+  font-size: 11px;
+  color: #667781;
+}
+
+.wa-preview__checks { color: #53bdeb; font-size: 12px; line-height: 1; }
+
+/* Shown instead of the bubble until there is something to preview. */
+.wa-preview__empty {
+  margin: 0;
+  padding: 26px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.wa-preview__empty[hidden] { display: none; }
+.wa-preview__stage[hidden] { display: none; }
+
+/* Narrow drawer: the "Lo que recibe el cliente" gloss wraps onto two lines and
+   crowds the header, so drop it -- the bubble makes the same point. */
+@media (max-width: 620px) {
+  .wa-preview__head > :last-child { display: none; }
+}

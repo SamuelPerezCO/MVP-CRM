@@ -1,10 +1,16 @@
 {% comment %}
-  The Crear/Editar respuesta rápida form -- the body of the shared modal on
-  the Respuestas rápidas panel. With ``reply`` it edits, without it creates.
+  The Crear/Editar respuesta rápida form -- the body of the right-hand drawer
+  on the Respuestas rápidas panel. With ``reply`` it edits, without it creates.
 
-  Multipart (hx-encoding) because of the image. The form targets the modal
+  Multipart (hx-encoding) because of the image. The form targets the drawer
   body: a rejected save lands back here with per-field errors and what was
   typed, a successful one answers with saved.html.
+
+  Opens with a live WhatsApp preview of the outgoing message -- photo on top,
+  text as its caption, the shape send_image() actually delivers. It is painted
+  entirely by shell.js from the fields below (see [data-reply-preview]); the
+  markup here is only the empty shell, so a drawer that loads with values
+  already in it (editing) looks the same as one the agent has just typed into.
 
   Context: form, errors, reply (or None), title_max, body_max
 {% endcomment %}
@@ -12,6 +18,27 @@
 <h2 class="modal__title modal__title--start" id="reply-modal-title">
   {% if reply %}Editar respuesta rápida{% else %}Crear respuesta rápida{% endif %}
 </h2>
+
+<div class="wa-preview" data-reply-preview>
+  <div class="wa-preview__head">
+    <span>Vista previa</span>
+    <span>Lo que recibe el cliente</span>
+  </div>
+  <div class="wa-preview__stage" data-reply-preview-stage hidden>
+    <div class="wa-preview__bubble">
+      <img class="wa-preview__image" data-reply-preview-image alt="" hidden
+           {% if reply and reply.has_image %}data-current-src="{{ reply.image.url }}"{% endif %}>
+      <p class="wa-preview__text" data-reply-preview-text hidden></p>
+      <span class="wa-preview__meta">
+        12:04
+        <span class="wa-preview__checks" aria-hidden="true">✓✓</span>
+      </span>
+    </div>
+  </div>
+  <p class="wa-preview__empty" data-reply-preview-empty>
+    Escribe un texto o elige una imagen para ver cómo llega.
+  </p>
+</div>
 
 <form class="client-form reply-form"
       hx-post="{% if reply %}{% url 'respuesta_update' reply.pk %}{% else %}{% url 'respuesta_create' %}{% endif %}"

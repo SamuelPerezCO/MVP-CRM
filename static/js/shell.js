@@ -840,6 +840,112 @@
   });
 
   /* -------------------------------------------------------------------------
+   * Respuestas rápidas: live WhatsApp preview inside the drawer.
+   *
+   * Paints the outgoing message as the customer will receive it -- photo on
+   * top, the text as its caption -- which is the shape send_image() delivers.
+   * Note it previews the *body*, never the title: the title is the internal
+   * label for the chat picker and the customer never sees it, which is the
+   * one thing about this form agents got wrong most often.
+   *
+   * Delegated from the document because the form arrives by htmx swap and is
+   * replaced on every failed save, so nothing here may hold a node reference
+   * across renders -- each repaint re-reads the DOM.
+   * ---------------------------------------------------------------------- */
+
+  // The object URL for a locally chosen file, so the photo previews without
+  // uploading anything. Tracked at module scope (not on the element) so it
+  // survives the element being swapped away and can still be revoked.
+  var replyObjectUrl = null;
+
+  function releaseReplyObjectUrl() {
+    if (replyObjectUrl) {
+      URL.revokeObjectURL(replyObjectUrl);
+      replyObjectUrl = null;
+    }
+  }
+
+  function paintReplyPreview() {
+    var root = document.querySelector("[data-reply-preview]");
+    if (!root) return;
+
+    var stage = root.querySelector("[data-reply-preview-stage]");
+    var empty = root.querySelector("[data-reply-preview-empty]");
+    var imageEl = root.querySelector("[data-reply-preview-image]");
+    var textEl = root.querySelector("[data-reply-preview-text]");
+
+    var bodyField = document.getElementById("reply-body");
+    var fileField = document.getElementById("reply-image");
+    var removeField = document.querySelector('input[name="remove_image"]');
+
+    var text = bodyField ? bodyField.value.trim() : "";
+
+    // Which image wins: a file just chosen beats the stored one, and ticking
+    // "Quitar la imagen actual" drops the stored one entirely.
+    var src = "";
+    var chosen = fileField && fileField.files && fileField.files[0];
+    if (chosen) {
+      src = replyObjectUrl || "";
+    } else if (!(removeField && removeField.checked)) {
+      src = imageEl ? imageEl.getAttribute("data-current-src") || "" : "";
+    }
+
+    if (imageEl) {
+      if (src) {
+        if (imageEl.getAttribute("src") !== src) imageEl.setAttribute("src", src);
+        imageEl.hidden = false;
+      } else {
+        imageEl.removeAttribute("src");
+        imageEl.hidden = true;
+      }
+    }
+
+    if (textEl) {
+      textEl.textContent = text;   // textContent, never innerHTML -- agent input
+      textEl.hidden = text === "";
+    }
+
+    // Nothing to show yet: keep the frame, swap the bubble for the hint.
+    var hasSomething = Boolean(text || src);
+    if (stage) stage.hidden = !hasSomething;
+    if (empty) empty.hidden = hasSomething;
+  }
+
+  document.addEventListener("input", function (event) {
+    if (event.target.id === "reply-body") paintReplyPreview();
+  });
+
+  document.addEventListener("change", function (event) {
+    var target = event.target;
+    if (target.id === "reply-image") {
+      releaseReplyObjectUrl();
+      var file = target.files && target.files[0];
+      // Only build a URL for something the browser can actually render; the
+      // server still does the real type/size validation on submit.
+      if (file && file.type.indexOf("image/") === 0) {
+        replyObjectUrl = URL.createObjectURL(file);
+      }
+      paintReplyPreview();
+    } else if (target.name === "remove_image") {
+      paintReplyPreview();
+    }
+  });
+
+  // The form arrives (and re-arrives, after a rejected save) by htmx swap, so
+  // paint once it lands -- an edit drawer opens with values already in it.
+  document.body.addEventListener("htmx:afterSwap", function (event) {
+    if (event.target && event.target.id === "reply-modal-body") {
+      releaseReplyObjectUrl();
+      paintReplyPreview();
+    }
+  });
+
+  // Closing the drawer drops the preview along with the form it described.
+  document.addEventListener("close", function (event) {
+    if (event.target && event.target.id === "reply-modal") releaseReplyObjectUrl();
+  }, true);
+
+  /* -------------------------------------------------------------------------
    * Server-error banner: the one thing every hx-post in this app was missing.
    *
    * A form that fails *validation* re-renders with its own inline messages --

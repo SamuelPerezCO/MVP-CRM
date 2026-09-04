@@ -128,3 +128,59 @@
   .modal__body { padding: 20px; }
   .modal-choice { flex-direction: column; }
 }
+
+/* --- Drawer variant ------------------------------------------------------- */
+
+/* A <dialog> pinned to the right edge instead of floating in the middle. It
+   stays a real modal dialog -- showModal(), ::backdrop, focus trap and ESC all
+   still come from the element, so data-dialog-open/-close need no changes --
+   this only moves and reshapes it. The centring `margin: auto` a dialog gets
+   by default is what normally holds it in the middle; overriding the inline
+   margins is what walks it over to the right.
+
+   Defined after .modal (same specificity, later wins) and in this file rather
+   than a section stylesheet, since modal.css loads after crm.css/mensajeria.css
+   and so beats any .modal--* modifier defined there. */
+.modal--drawer {
+  width: min(560px, 100vw);
+  height: 100dvh;
+  /* Both caps override the UA's own dialog sizing: Chrome ships
+     `max-width/max-height: calc(100% - 6px - 2em)`, which quietly held the
+     drawer 38px short of the screen edge on a phone and left a strip of the
+     page showing down one side. */
+  max-width: 100vw;
+  max-height: 100dvh;
+  margin-block: 0;
+  margin-inline: auto 0;      /* auto on the left pushes it to the right edge */
+  border-radius: 0;
+  box-shadow: -18px 0 48px rgb(15 30 50 / 22%);
+}
+
+.modal--drawer .modal__body { padding: 28px 28px 32px; }
+
+/* A drawer's heading sits at the top-left, not centred like a dialog's. This
+   repeats what .modal--client did for the centred modal rather than relying on
+   the modal__title--start class the templates carry -- that class is declared
+   in nine templates but defined in no stylesheet, so it styles nothing. Left
+   alone here deliberately: making it live would also move the headings of the
+   other modals that carry it. */
+.modal--drawer .modal__title {
+  padding-inline-end: 28px;   /* clear of the absolutely positioned close X */
+  font-size: 18px;
+  text-align: start;
+}
+
+/* Slide in from off-screen. The global prefers-reduced-motion block in
+   sidebar.css already collapses this to ~0s, so no separate opt-out here. */
+.modal--drawer[open] { animation: drawer-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+
+@keyframes drawer-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+/* Full width once the drawer would leave too little of the page behind it. */
+@media (max-width: 620px) {
+  .modal--drawer { width: 100vw; }
+  .modal--drawer .modal__body { padding: 24px 18px 28px; }
+}
