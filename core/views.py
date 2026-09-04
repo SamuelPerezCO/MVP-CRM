@@ -36,6 +36,7 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Count, Q
 
+from messaging import pricing
 from messaging import services as messaging_services
 from messaging.models import Conversation, Tag
 from messaging.providers.base import MessagingProvider as MessagingProviderBase
@@ -981,7 +982,24 @@ def _template_variables(template, values=None) -> list[dict]:
 
 
 def _template_send_body_context(conversation, selected=None, values=None, error=None) -> dict:
+    """The Enviar plantilla dialog's contents for one conversation.
+
+    Every entry carries its own price. A template send is billed per message
+    by the plantilla's category and the recipient's market, and
+    ``services.send_template`` records that amount either way -- showing it
+    here is what lets the agent see the cost *before* pressing Enviar rather
+    than afterwards on the invoice.
+
+    The quote is an estimate: Meta charges on delivery, at the category it
+    assigned the plantilla, and ``services._apply_pricing`` corrects the row
+    when the receipt arrives. ``budget`` is the month's running total, plus
+    the ceiling when ``MESSAGING_MONTHLY_BUDGET`` sets one.
+    """
     templates = list(_sendable_templates())
+    # One window check for the whole dialog: it is the same conversation for
+    # every entry, and it changes the price (a utility plantilla inside an
+    # open window is billed as a service message).
+    window_open = conversation.is_within_24h_window
     return {
         "active_conversation": conversation,
         "entries": [
@@ -990,11 +1008,15 @@ def _template_send_body_context(conversation, selected=None, values=None, error=
                 "variables": _template_variables(
                     template, values if selected == template else None
                 ),
+                "quote": pricing.quote(
+                    template, conversation.contact, window_open=window_open
+                ),
             }
             for template in templates
         ],
         "selected_id": selected.pk if selected else (templates[0].pk if templates else None),
         "send_form_error": error,
+        "budget": pricing.budget_state(),
     }
 
 
@@ -1046,7 +1068,13 @@ def inbox_template_send(request, conversation_id: int):
     send_error = None
     try:
         messaging_services.send_template(conversation, template, values, request.user)
-    except messaging_services.TemplateNotSendable as exc:
+    except (
+        messaging_services.TemplateNotSendable,
+        # A template send is billed, so it can also be refused for costing
+        # too much this month (MESSAGING_MONTHLY_BUDGET). Same surface as any
+        # other refusal: the dialog comes back with the reason, not a 500.
+        messaging_services.BudgetExceeded,
+    ) as exc:
         return _template_send_rejected(request, conversation, template, values, str(exc))
     except messaging_services.SendFailed:
         # Same surface as a failed free-form send: the thread shows it.
@@ -1175,7 +1203,12 @@ def inbox_new_chat(request):
     conversation = messaging_services.start_conversation(client, "whatsapp")
     try:
         messaging_services.send_template(conversation, template, values, request.user)
-    except messaging_services.TemplateNotSendable as exc:
+    except (
+        messaging_services.TemplateNotSendable,
+        # As in the composer's dialog: over the month's ceiling is a refusal
+        # the agent should read, not a crash.
+        messaging_services.BudgetExceeded,
+    ) as exc:
         return _new_chat_response(request, client, str(exc), template)
     except messaging_services.SendFailed:
         # The provider's own text is for the log, not for the agent.
