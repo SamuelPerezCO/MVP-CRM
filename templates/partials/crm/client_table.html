@@ -48,9 +48,33 @@
               <span>{{ client.phone }}</span>
             </span>
 
-            {# Only offered when the client actually came in over WhatsApp. #}
-            {% if client.has_whatsapp %}
-              <a class="wa-link" href="{{ client.whatsapp_url }}" target="_blank" rel="noopener">
+            {% comment %}
+              Escribirle primero, inside the CRM. This used to be a wa.me link
+              that opened WhatsApp on the operator's own device -- useless
+              here: the business has no handset, its number lives on the Meta
+              API and every message goes out through this app.
+
+              A client who has never written has no thread and no open 24h
+              window, so the only message WhatsApp will deliver is an approved
+              plantilla, which is what the Inbox's Nuevo chat modal sends.
+              This is a deep link into it rather than a second send path:
+              core.views._inbox_context reads ?nuevo= and nav_panel.html
+              auto-opens the modal with this client preselected.
+
+              Offered whenever WhatsApp could reach them, which includes the
+              client typed in by hand who has no channel yet -- the person
+              this is most for, and who the old wa.me condition
+              (has_whatsapp, i.e. channel == "whatsapp") left out. An
+              Instagram or TikTok row gets nothing, plantillas being a
+              WhatsApp mechanism.
+            {% endcomment %}
+            {% if not client.channel or client.channel == "whatsapp" %}
+              <a class="wa-link"
+                 href="{% url 'section' 'inbox' %}?nuevo={{ client.pk }}"
+                 hx-get="{% url 'section' 'inbox' %}?nuevo={{ client.pk }}"
+                 hx-target="#content"
+                 hx-swap="innerHTML"
+                 hx-push-url="true">
                 {% include "icons/brands/whatsapp.svg" %}
                 <span>Iniciar conversación</span>
               </a>
@@ -79,36 +103,6 @@
                  hx-target="#client-modal-body"
                  hx-swap="innerHTML"
                  hx-include="#client-search, #client-page">
-              {% comment %}
-                Escribirle primero. A client who has never written has no
-                thread and no open 24h window, so the only message WhatsApp
-                will deliver is a plantilla -- which is exactly what the
-                Inbox's Nuevo chat modal sends. This is a deep link into it
-                rather than a second send path: core.views._inbox_context
-                reads ?nuevo= and nav_panel.html auto-opens the modal with
-                this client preselected.
-
-                Offered whenever WhatsApp could reach them, which includes
-                the client typed in by hand who has no channel yet -- the
-                person this is most for. An Instagram or TikTok row gets
-                nothing, plantillas being a WhatsApp mechanism.
-
-                hx-target/hx-swap are set here because the enclosing
-                .row-actions points every request at #client-modal-body;
-                this one replaces the whole screen instead, the way the
-                sidebar's own links do.
-              {% endcomment %}
-              {% if not client.channel or client.channel == "whatsapp" %}
-                <a class="icon-btn icon-btn--bare"
-                   href="{% url 'section' 'inbox' %}?nuevo={{ client.pk }}"
-                   hx-get="{% url 'section' 'inbox' %}?nuevo={{ client.pk }}"
-                   hx-target="#content"
-                   hx-swap="innerHTML"
-                   hx-push-url="true"
-                   aria-label="Escribirle a {{ client.full_name }}">
-                  {% include "icons/message-circle.svg" %}
-                </a>
-              {% endif %}
               <button type="button" class="icon-btn icon-btn--bare"
                       data-dialog-open="client-modal"
                       hx-get="{% url 'cliente_detail' client.pk %}"

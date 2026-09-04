@@ -77,11 +77,6 @@ class Client(models.Model):
         return f"icons/brands/{self.channel}.svg"
 
     @property
-    def has_whatsapp(self) -> bool:
-        """Whether to offer the green 'Iniciar conversación' link on this row."""
-        return self.channel == "whatsapp"
-
-    @property
     def flag(self) -> str:
         """The country as a flag emoji, built from regional indicator symbols.
 
@@ -93,11 +88,14 @@ class Client(models.Model):
             return ""
         return "".join(chr(0x1F1E6 + ord(char) - ord("A")) for char in code)
 
-    @property
-    def whatsapp_url(self) -> str:
-        """wa.me link for the phone number, digits only."""
-        digits = "".join(char for char in self.phone if char.isdigit())
-        return f"https://wa.me/{digits}"
+    # No whatsapp_url / has_whatsapp here. They built a wa.me link for an
+    # "Iniciar conversación" that opened WhatsApp on the operator's own
+    # device. This business has no handset -- its number lives on the Meta
+    # API and every message leaves through this app -- so that link was a
+    # dead end, and the properties behind it are gone rather than left
+    # lying around to be wired up again. Writing to someone starts at the
+    # Inbox's Nuevo chat modal (?nuevo=<client id>), which sends an approved
+    # plantilla through the provider.
 
 
 class Product(models.Model):

@@ -51,10 +51,11 @@
     {% include "partials/tags/picker.html" with conversation=active_conversation %}
   </div>
 
-  {% if active_conversation.contact.has_whatsapp %}
-    <a class="details__wa" href="{{ active_conversation.contact.whatsapp_url }}"
-       target="_blank" rel="noopener">
-      {% include "icons/brands/whatsapp.svg" %}<span>Abrir en WhatsApp</span>
-    </a>
-  {% endif %}
+  {% comment %}
+    No "Abrir en WhatsApp" here. It opened wa.me on the operator's own device,
+    which this business does not have -- its number lives on the Meta API and
+    every message leaves through this app. There is also nothing for it to do:
+    the thread it would open is the one already on screen, with its composer
+    right there.
+  {% endcomment %}
 </div>

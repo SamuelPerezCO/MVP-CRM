@@ -28,8 +28,9 @@
         {% endif %}
         <span>{{ client.phone }}</span>
       </span>
-      {% if client.has_whatsapp %}
-        <a class="wa-link" href="{{ client.whatsapp_url }}" target="_blank" rel="noopener">
+      {# Into Nuevo chat, not out to WhatsApp -- see client_table.html. #}
+      {% if not client.channel or client.channel == "whatsapp" %}
+        <a class="wa-link" href="{% url 'section' 'inbox' %}?nuevo={{ client.pk }}">
           {% include "icons/brands/whatsapp.svg" %}
           <span>Iniciar conversación</span>
         </a>

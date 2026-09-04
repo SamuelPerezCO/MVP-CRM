@@ -25,16 +25,34 @@ class ClientModelTests(TestCase):
             with self.subTest(bad):
                 self.assertEqual(Client(country=bad).flag, "")
 
-    def test_has_whatsapp_only_for_the_whatsapp_channel(self):
-        self.assertTrue(Client(channel="whatsapp").has_whatsapp)
-        for other in ("messenger", "instagram", ""):
-            with self.subTest(other):
-                self.assertFalse(Client(channel=other).has_whatsapp)
+    def test_nothing_builds_a_link_out_to_the_whatsapp_app(self):
+        """No screen may hand the operator off to wa.me.
 
-    def test_whatsapp_url_strips_formatting(self):
-        self.assertEqual(
-            Client(phone="+57 316 768 7288").whatsapp_url, "https://wa.me/573167687288"
-        )
+        This business has no handset: its number lives on the Meta API and
+        every message leaves through this app, so a link that opens WhatsApp
+        is a dead end for the person clicking it. Writing to someone starts
+        at the Inbox's Nuevo chat modal instead. Asserted over the templates
+        because that is where such a link would reappear -- the properties
+        that used to build one (Client.whatsapp_url, Client.has_whatsapp) are
+        gone, and a new href would not need them.
+        """
+        import pathlib
+        import re
+
+        offenders = []
+        for path in pathlib.Path("templates").rglob("*.html"):
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                markup = re.search(r"(href|src)\s*=", line)
+                # A literal link out, or a reference to the deleted property.
+                # The second half matters more: with the property gone Django
+                # resolves the variable to "" rather than raising, so this
+                # would come back as a silent href="" nobody notices.
+                if markup and ("wa.me" in line or "whatsapp_url" in line):
+                    offenders.append(f"{path}:{number}  {line.strip()[:70]}")
+        self.assertEqual(offenders, [], "link out to the WhatsApp app: %s" % offenders)
+
+        # The property really is gone, so nothing can quietly re-use it.
+        self.assertFalse(hasattr(Client(phone="+573001112233"), "whatsapp_url"))
 
 
 class CrmScreenTests(TestCase):
