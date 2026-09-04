@@ -2,6 +2,7 @@
 non-ASCII crash, and the doors a Usuarios master must not be able to open."""
 
 from io import StringIO
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
@@ -201,3 +202,25 @@ class SelfPasswordResetTests(TestCase):
         self.assertEqual(
             self.client.get(reverse("section", args=["crm"])).status_code, 200
         )
+
+
+class HashearClaveManyAgentsTests(TestCase):
+    """Rehashing a team by hand is where a stray comma produces an
+    APP_AGENTS that parses to fewer agents than you meant -- on a deploy
+    nobody can then log in to fix."""
+
+    def test_several_agents_print_one_pasteable_line(self):
+        # The command prompts per agent; drive it with a scripted getpass.
+        import core.management.commands.hashear_clave as cmd
+        answers = iter(["clave-larga-1", "clave-larga-1", "clave-larga-2", "clave-larga-2"])
+        with mock.patch.object(cmd, "getpass", lambda *a, **k: next(answers)):
+            out = StringIO()
+            call_command("hashear_clave", "Admin", "Samuel", stdout=out)
+        line = next(l for l in out.getvalue().splitlines() if l.startswith("APP_AGENTS="))
+        with override_settings(APP_AGENTS=line.split("=", 1)[1]):
+            self.assertEqual(
+                [a.username for a in agents.configured_agents()], ["Admin", "Samuel"]
+            )
+            self.assertIsNotNone(agents.authenticate("Admin", "clave-larga-1"))
+            self.assertIsNotNone(agents.authenticate("Samuel", "clave-larga-2"))
+            self.assertIsNone(agents.authenticate("Admin", "clave-larga-2"))
