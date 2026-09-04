@@ -292,3 +292,58 @@ class SpendTests(TestCase):
     def test_a_malformed_budget_is_ignored_rather_than_blocking_sends(self):
         self.assertEqual(pricing.budget(), Decimal("0"))
         self.assertFalse(pricing.would_exceed_budget(Decimal("1")))
+
+
+class InWindowBillingSwitchTests(TestCase):
+    """A utility template inside the customer service window is billed as a
+    *service* message -- and Meta starts charging for those on 2026-10-01.
+
+    The July 2026 card prices Service as "n/a" in all 38 markets; the October
+    2026 card prices it in all 47, at exactly each market's utility rate.
+    quote() reads that off the card instead of hardcoding a date, so these
+    tests pin both sides of the switch. No override_settings here on purpose:
+    the point is the real card.
+    """
+
+    def setUp(self):
+        self.client_row = client()
+        self.utility = template(category="utility", name="pedido_en_camino")
+
+    def test_before_the_switch_an_in_window_utility_send_is_free(self):
+        quote = pricing.quote(
+            self.utility, self.client_row, window_open=True, when=date(2026, 7, 1)
+        )
+        self.assertTrue(quote.is_free)
+        self.assertEqual(quote.amount, Decimal("0"))
+        # The list price still travels, so the dialog can show what was saved.
+        self.assertEqual(quote.unit_amount, Decimal("0.0008"))
+
+    def test_after_the_switch_the_same_send_costs_the_service_rate(self):
+        quote = pricing.quote(
+            self.utility, self.client_row, window_open=True, when=date(2026, 10, 1)
+        )
+        self.assertFalse(quote.is_free)
+        self.assertEqual(
+            quote.amount, pricing.rate_for("Colombia", "service", date(2026, 10, 1))
+        )
+        # Meta prices Service at each market's utility rate, so an in-window
+        # send stops being a discount at all.
+        self.assertEqual(quote.amount, quote.unit_amount)
+
+    def test_the_reason_shown_to_the_agent_changes_with_it(self):
+        free = pricing.quote(
+            self.utility, self.client_row, window_open=True, when=date(2026, 7, 1)
+        )
+        charged = pricing.quote(
+            self.utility, self.client_row, window_open=True, when=date(2026, 10, 1)
+        )
+        self.assertIn("no se cobran", free.free_reason)
+        self.assertIn("se cobra", charged.free_reason)
+
+    def test_marketing_is_unaffected_by_the_switch(self):
+        marketing = template(category="marketing", name="promo_x")
+        for on in (date(2026, 7, 1), date(2026, 10, 1)):
+            with self.subTest(on=on):
+                quote = pricing.quote(marketing, self.client_row, window_open=True, when=on)
+                self.assertEqual(quote.amount, pricing.rate_for("Colombia", "marketing", on))
+                self.assertFalse(quote.is_free)

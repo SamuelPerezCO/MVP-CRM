@@ -180,12 +180,19 @@ resueltas en [messaging/pricing.py](messaging/pricing.py):
   comparten +1 con Estados Unidos y Canadá pero pagan «Rest of Latin America»:
   0,0740 contra 0,0250. Se resuelven por el código de área NANP.
 
-Reglas de gratuidad que el CRM aplica: una plantilla *utility* enviada con la
-ventana de 24 horas abierta no se cobra (regla de WhatsApp). Lo que todavía
-**no** modela, y por eso la cotización puede quedar por encima de la factura
-pero nunca por debajo: los descuentos por volumen (utility y authentication,
-según el volumen mensual de todo el portafolio) y la ventana de free entry
-point (72 horas gratis tras responder a un anuncio Click-to-WhatsApp).
+Una plantilla *utility* enviada con la ventana de 24 horas abierta se factura
+como mensaje de **servicio**, y eso cambia el **1 de octubre de 2026**: en la
+tarifa vigente la columna Service es «n/a» en los 38 mercados (no se cobra),
+y en la de octubre Meta le pone precio en los 47 — exactamente la tarifa
+utility de cada mercado. El CRM lo lee de la tarjeta, no de una fecha escrita
+a mano, así que la cotización sigue siendo correcta a ambos lados del cambio
+sin tocar código.
+
+Lo que todavía **no** modela, y por eso la cotización puede quedar por encima
+de la factura pero nunca por debajo: los descuentos por volumen (utility y
+authentication, según el volumen mensual de todo el portafolio) y la ventana
+de free entry point (72 horas en las que *todo* es gratis, tras responder a
+un anuncio Click-to-WhatsApp).
 
 Toda cotización es una **estimación** hasta la entrega: Meta cobra al
 entregar y con la categoría que *ella* le asignó a la plantilla. La verdad

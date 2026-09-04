@@ -357,23 +357,41 @@ def quote(template, client, window_open: bool = False, when=None) -> Quote:
     market = market_for(client)
     unit = rate_for(market, category, when)
 
-    # 3. The one rule that makes a send free here: a utility template inside
-    #    an open window (Meta reports it back as pricing.type
-    #    "free_customer_service"). ``amount`` starts equal to the list price
-    #    and is zeroed only then; ``unit_amount`` keeps the list price either
-    #    way so the dialog can still show it. The reason is user-facing
-    #    Spanish because send_form.html prints it verbatim.
+    # 3. A utility template inside an open customer service window is billed
+    #    as a *service* message, not at the utility rate -- Meta reports it
+    #    back as pricing.type "free_customer_service".
     #
-    #    Not modelled: the free entry point window (72 hours of free
-    #    messages after replying to a Click-to-WhatsApp ad). The CRM does not
-    #    record the inbound `referral` object that opens one, so a send
-    #    inside such a window is quoted as billable and Meta reports it free.
-    #    Erring that way keeps the estimate above the invoice.
+    #    Whether that costs anything is read off the card rather than
+    #    hardcoded, because it is about to change. On the card effective
+    #    2026-07-01 the Service column is "n/a" for every market: in-window
+    #    messaging is free. On the card effective 2026-10-01 Meta prices
+    #    Service in all 47 markets -- at exactly each market's utility rate --
+    #    so the same send starts costing money that day. Asking the card
+    #    keeps the quote right on both sides of the switch with no deploy and
+    #    no date literal to forget.
+    #
+    #    ``amount`` is what this send costs; ``unit_amount`` keeps the
+    #    category's own list price either way, so the dialog can still show
+    #    what a plain utility send would have cost. The reason is
+    #    user-facing Spanish: send_form.html prints it verbatim.
+    #
+    #    Not modelled: the free entry point window (72 hours in which every
+    #    category is free, after replying to a Click-to-WhatsApp ad). The CRM
+    #    does not record the inbound `referral` object that opens one, so a
+    #    send inside such a window is quoted as billable and Meta reports it
+    #    free. Erring that way keeps the estimate above the invoice.
     free_reason = ""
     amount = unit
     if window_open and category == "utility":
-        amount = Decimal("0")
-        free_reason = "Ventana de 24 horas abierta: las plantillas de servicio no se cobran."
+        amount = rate_for(market, "service", when)
+        if amount == 0:
+            free_reason = (
+                "Ventana de 24 horas abierta: las plantillas de servicio no se cobran."
+            )
+        else:
+            free_reason = (
+                "Ventana de 24 horas abierta: se cobra la tarifa de servicio."
+            )
 
     # 4. Freeze the answer. Nothing downstream recomputes it: send_template
     #    copies these fields onto the Message row as they are.
