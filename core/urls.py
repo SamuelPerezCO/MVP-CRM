@@ -102,6 +102,10 @@ urlpatterns = [
     path("crm/clientes/tabla/", views.clientes_table, name="clientes_table"),
     # Clientes CRUD. Each one answers with a fragment for the shared modal in
     # the Clientes panel; the saves additionally swap the table in out-of-band.
+    # Usuarios (CRM > Equipo): masters create/edit/deactivate teammates.
+    path("crm/usuarios/nuevo/", views.usuario_form, name="usuario_create"),
+    path("crm/usuarios/<int:user_id>/editar/", views.usuario_form, name="usuario_update"),
+    path("crm/usuarios/<int:user_id>/activo/", views.usuario_active, name="usuario_active"),
     # The whole client base as an .xlsx download (CRM > Exportaciones).
     path("crm/clientes/exportar/", views.clientes_export, name="clientes_export"),
     path("crm/clientes/nuevo/", views.cliente_form, name="cliente_create"),

@@ -1,0 +1,92 @@
+{% comment %}
+  The team table -- the swappable region inside #user-table.
+
+  Env-configured agents carry an "Entorno" pill and no edit controls: their
+  login lives in APP_AGENTS. Deactivated users sink to the bottom, muted,
+  with a Restaurar action. A visible notice line (unlike the Clientes
+  page's sr-only one) because "you can't deactivate yourself" is something
+  the master needs to read.
+
+  Context: team, can_manage, user_notice (optional), active_ids
+{% endcomment %}
+
+{% if user_notice %}
+  <p class="tag-error usuarios__notice" role="status">{{ user_notice }}</p>
+{% endif %}
+
+<table class="table">
+  <thead>
+    <tr>
+      <th scope="col">Nombre</th>
+      <th scope="col">Usuario</th>
+      <th scope="col">Rol</th>
+      <th scope="col">Origen</th>
+      <th scope="col">Estado</th>
+      {% if can_manage %}<th scope="col" class="table__actions-col">Acciones</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in team %}
+      <tr{% if not row.user.is_active %} class="tag-row--archived"{% endif %}>
+        <td class="table__name">
+          {{ row.user.get_full_name|default:row.user.username }}
+          {% if row.user == request.user %}<span class="table__muted"> · tú</span>{% endif %}
+        </td>
+        <td class="table__muted">{{ row.user.username }}</td>
+        <td>
+          {% if row.is_master %}
+            <span class="tag-pill tag-pill--purple">Maestro</span>
+          {% else %}
+            <span class="tag-pill tag-pill--gray">Agente</span>
+          {% endif %}
+        </td>
+        <td class="table__muted">
+          {% if row.is_env %}Entorno (APP_AGENTS){% else %}Creado en la app{% endif %}
+        </td>
+        <td class="table__muted">
+          {% if row.user.is_active %}Activo{% else %}Desactivado{% endif %}
+        </td>
+        {% if can_manage %}
+          <td class="table__actions-col">
+            {% if not row.is_env %}
+              <div class="row-actions">
+                {% if row.user.is_active %}
+                  <button type="button" class="icon-btn icon-btn--bare"
+                          data-dialog-open="user-modal"
+                          hx-get="{% url 'usuario_update' row.user.pk %}"
+                          hx-target="#user-modal-body"
+                          hx-swap="innerHTML"
+                          aria-label="Editar {{ row.user.username }}">
+                    {% include "icons/pencil.svg" %}
+                  </button>
+                  {% if row.user != request.user %}
+                    <button type="button" class="icon-btn icon-btn--bare icon-btn--danger"
+                            hx-post="{% url 'usuario_active' row.user.pk %}"
+                            hx-vals='{"active": "0"}'
+                            hx-confirm="¿Desactivar a {{ row.user.get_full_name|default:row.user.username }}? No podrá iniciar sesión hasta que lo restaures."
+                            hx-target="#user-table"
+                            hx-swap="innerHTML"
+                            aria-label="Desactivar {{ row.user.username }}">
+                      {% include "icons/archive.svg" %}
+                    </button>
+                  {% endif %}
+                {% else %}
+                  <button type="button" class="icon-btn icon-btn--bare"
+                          hx-post="{% url 'usuario_active' row.user.pk %}"
+                          hx-vals='{"active": "1"}'
+                          hx-target="#user-table"
+                          hx-swap="innerHTML"
+                          aria-label="Restaurar {{ row.user.username }}">
+                    {% include "icons/history.svg" %}
+                  </button>
+                {% endif %}
+              </div>
+            {% endif %}
+          </td>
+        {% endif %}
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="table__muted">No hay usuarios configurados.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

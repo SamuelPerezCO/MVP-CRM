@@ -24,6 +24,15 @@ separators.
 If ``APP_AGENTS`` is unset the older single pair
 (``APP_LOGIN_USERNAME``/``APP_LOGIN_PASSWORD``) is used as a one-agent list, so
 an environment that predates this module keeps working untouched.
+
+**Users created in the app.** The env list is where the *master* users come
+from -- whoever configured the deployment. From CRM > Equipo > Usuarios a
+master creates the rest of the team as ordinary ``User`` rows with a real
+(usable) password; :func:`authenticate` checks the env list first and the
+database second, and :func:`agent_users` lists both, so a teammate created
+in the app can log in, be assigned conversations and appear in every
+dropdown with no redeploy. Masters are the env agents plus any DB user
+in the "Maestros" group (:func:`is_master`); only they manage users.
 """
 
 from __future__ import annotations
@@ -89,9 +98,13 @@ def configured_agents() -> list[Agent]:
 def authenticate(username: str, password: str) -> Agent | None:
     """Return the agent these credentials belong to, or ``None``.
 
-    Every configured agent is compared against, without breaking out early, so
-    the time this takes doesn't leak which usernames exist; the comparison
-    itself is ``compare_digest`` for the same reason.
+    The env list first: every configured agent is compared against, without
+    breaking out early, so the time this takes doesn't leak which usernames
+    exist; the comparison itself is ``compare_digest`` for the same reason.
+    Then the database: a user created from the Usuarios page has a usable
+    password and is checked by Django's own hasher. Env mirrors never reach
+    that step -- their password is unusable (see :func:`_mirror`), so a
+    username that is in the env list can only log in with the env password.
     """
     match: Agent | None = None
     for agent in configured_agents():
@@ -100,30 +113,59 @@ def authenticate(username: str, password: str) -> Agent | None:
         )
         if ok and match is None:
             match = agent
-    return match
+    if match is not None:
+        return match
+
+    if not username or not password:
+        return None
+    # An env username never falls through to the database, whatever its
+    # mirror row's password field holds (a seed or /admin could set one):
+    # the env is the only way in for those accounts.
+    if username in {agent.username for agent in configured_agents()}:
+        return None
+    User = get_user_model()
+    user = User.objects.filter(username=username, is_active=True).first()
+    if user is None or not _is_app_user(user) or not user.check_password(password):
+        return None
+    return Agent(user.username, "", user.get_full_name() or user.username)
+
+
+def _is_app_user(user) -> bool:
+    """A row someone can actually log in with: a real, usable password.
+    Env mirrors have an unusable one and rows a seed or /admin made without
+    a password have an empty one -- neither is a teammate."""
+    return bool(user.password) and user.has_usable_password()
 
 
 def agent_users() -> list:
-    """The ``User`` rows for every configured agent, in env order.
+    """The ``User`` rows for every agent: the env list in env order, then
+    the users created in the app (active, with a real password), by name.
 
     This is what fills the Inbox's assignment dropdown, so it must list
     teammates who have never logged in yet -- an agent you can't assign work to
-    until they show up would defeat the point. Steady state is a single SELECT;
-    rows are only written the first time an agent appears in the env list.
+    until they show up would defeat the point. Steady state is two SELECTs;
+    env rows are only written the first time an agent appears in the list.
     """
     agents = configured_agents()
-    if not agents:
-        return []
-
     User = get_user_model()
+    env_names = [a.username for a in agents]
     existing = {
-        user.username: user
-        for user in User.objects.filter(username__in=[a.username for a in agents])
+        user.username: user for user in User.objects.filter(username__in=env_names)
     }
-    return [
+    users = [
         existing.get(agent.username) or _mirror(agent.username, agent.display_name)
         for agent in agents
     ]
+    # App-created teammates -- see _is_app_user for what separates them from
+    # env mirrors and from password-less rows.
+    for user in (
+        User.objects.filter(is_active=True)
+        .exclude(username__in=env_names)
+        .order_by("first_name", "username")
+    ):
+        if _is_app_user(user):
+            users.append(user)
+    return users
 
 
 def assignment_options(conversation) -> list:
@@ -158,4 +200,100 @@ def _mirror(username: str, display_name: str):
     if created:
         user.set_unusable_password()
         user.save(update_fields=["password"])
+    return user
+
+
+# --- Team management (CRM > Equipo > Usuarios) ------------------------------
+
+
+#: Django group carrying the master role. A group rather than ``is_staff``
+#: on purpose: ``is_staff`` means "may open /admin/", a different question
+#: from "may manage this CRM's team" -- the seed marks its demo advisor
+#: staff for /admin access, and that must not make them a master here.
+#: Built-in model, so no migration of our own.
+MASTER_GROUP = "Maestros"
+
+
+def is_master(user) -> bool:
+    """Whether ``user`` may manage the team: an env-configured agent (they
+    own the deployment), a Django superuser, or a DB user a master put in
+    the Maestros group."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_superuser:
+        return True
+    if user.username in {agent.username for agent in configured_agents()}:
+        return True
+    return user.groups.filter(name=MASTER_GROUP).exists()
+
+
+def is_app_user(user) -> bool:
+    """Public face of :func:`_is_app_user` for the Usuarios page."""
+    return _is_app_user(user)
+
+
+def is_env_agent(user) -> bool:
+    """Whether this row mirrors an env-configured agent -- whose password and
+    existence live in the environment, so the page can only *show* them."""
+    return user.username in {agent.username for agent in configured_agents()}
+
+
+class UsernameTaken(Exception):
+    """Another user already has this username."""
+
+
+def create_user(username: str, password: str, display_name: str = "", master: bool = False):
+    """Create a teammate who can log in with ``password``.
+
+    Raises :class:`UsernameTaken` -- including for env usernames, whose
+    mirror rows exist (or will) and must keep their unusable password.
+    """
+    User = get_user_model()
+    username = username.strip()
+    if User.objects.filter(username__iexact=username).exists() or username in {
+        agent.username for agent in configured_agents()
+    }:
+        raise UsernameTaken(f"Ya existe un usuario llamado «{username}».")
+    user = User(username=username, first_name=(display_name or username)[:150])
+    user.set_password(password)
+    user.save()
+    _set_master(user, master)
+    return user
+
+
+def _set_master(user, master: bool) -> None:
+    """Put the user in (or out of) the Maestros group, creating it on first
+    use so a fresh deployment needs no fixture."""
+    from django.contrib.auth.models import Group
+
+    group, _ = Group.objects.get_or_create(name=MASTER_GROUP)
+    if master:
+        user.groups.add(group)
+    else:
+        user.groups.remove(group)
+
+
+def update_user(user, display_name: str, master: bool, password: str = ""):
+    """Rename, promote/demote and optionally reset the password of an
+    app-created user. Env mirrors are refused: their identity is the env's."""
+    if is_env_agent(user):
+        raise ValueError("Este usuario se configura en el entorno (APP_AGENTS), no aquí.")
+    user.first_name = (display_name or user.username)[:150]
+    fields = ["first_name"]
+    if password:
+        user.set_password(password)
+        fields.append("password")
+    user.save(update_fields=fields)
+    _set_master(user, master)
+    return user
+
+
+def set_user_active(user, active: bool):
+    """Deactivate (or restore) an app-created user. Deactivating is the only
+    "delete": their conversations, messages and events keep pointing at
+    them, they just can't log in or be assigned anything new."""
+    if is_env_agent(user):
+        raise ValueError("Este usuario se configura en el entorno (APP_AGENTS), no aquí.")
+    user.is_active = active
+    user.save(update_fields=["is_active"])
     return user

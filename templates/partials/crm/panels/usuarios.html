@@ -1,0 +1,62 @@
+{% comment %}
+  CRM column 3 -- the Usuarios page (Equipo): who can log in and be
+  assigned conversations.
+
+  Two kinds of rows share the table: agents configured in the environment
+  (APP_AGENTS -- shown, never edited here) and users a master created from
+  this page. Only masters (core.agents.is_master) see the create/edit
+  controls; everyone else gets the list read-only and a line saying why.
+
+  Same shared-modal shape as the Clientes panel.
+
+  Context: team -- [{user, is_env, is_master}], can_manage
+{% endcomment %}
+
+<div class="crm-panel">
+
+  <header class="crm-panel__head">
+    <h1 class="crm-panel__title">
+      Usuarios
+      <span class="info-dot" role="img" aria-label="Información sobre usuarios">
+        {% include "icons/info.svg" %}
+      </span>
+    </h1>
+
+    <div class="crm-panel__toolbar">
+      {% if can_manage %}
+        <button type="button" class="btn-primary"
+                data-dialog-open="user-modal"
+                hx-get="{% url 'usuario_create' %}"
+                hx-target="#user-modal-body"
+                hx-swap="innerHTML">
+          + Crear usuario
+        </button>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if not can_manage %}
+    <p class="usuarios__readonly">
+      Solo un usuario maestro puede crear o editar usuarios. Pídeselo a quien
+      administra la cuenta.
+    </p>
+  {% endif %}
+
+  {# HTMX swap target for every save and activate/deactivate. #}
+  <div id="user-table" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+    {% include "partials/crm/usuarios/table.html" %}
+  </div>
+
+  <p id="user-notice" class="sr-only" role="status"></p>
+
+  <dialog class="modal modal--client" id="user-modal"
+          aria-labelledby="user-modal-title"
+          data-dialog-backdrop-close>
+    <button type="button" class="modal__close" data-dialog-close aria-label="Cerrar">
+      {% include "icons/x.svg" %}
+    </button>
+    <div class="modal__body" id="user-modal-body">
+      <p class="table__muted">Cargando…</p>
+    </div>
+  </dialog>
+</div>

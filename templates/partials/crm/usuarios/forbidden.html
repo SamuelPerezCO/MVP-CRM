@@ -1,0 +1,12 @@
+{% comment %}
+  Answered (with a 403) when a non-master hits a Usuarios mutation -- a
+  stale button, or a hand-made request. Lands in the modal so it reads.
+{% endcomment %}
+<h2 class="modal__title modal__title--start" id="user-modal-title">Sin permiso</h2>
+<p class="client-delete__text">
+  Solo un usuario maestro puede crear o editar usuarios.
+</p>
+<div class="client-form__actions">
+  <span class="client-form__spacer"></span>
+  <button type="button" class="btn-ghost" data-dialog-close>Cerrar</button>
+</div>

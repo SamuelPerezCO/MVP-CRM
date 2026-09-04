@@ -1,0 +1,14 @@
+{% comment %}
+  What a successful user save answers with: close the modal, refresh the
+  table out-of-band, announce. Same contract as partials/crm/client_saved.html.
+
+  Context: team, can_manage, user_notice
+{% endcomment %}
+
+<div data-dialog-dismiss hidden></div>
+
+<div id="user-table" hx-swap-oob="innerHTML">
+  {% include "partials/crm/usuarios/table.html" %}
+</div>
+
+<p id="user-notice" class="sr-only" role="status" hx-swap-oob="innerHTML">{{ user_notice }}</p>
