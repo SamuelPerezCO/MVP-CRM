@@ -883,6 +883,49 @@ class HashearClaveCommandTests(TestCase):
         with override_settings(APP_AGENTS=entry, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD=""):
             self.assertIsNotNone(agents.authenticate("samuel", "clave-segura-1"))
 
+    def test_several_usernames_print_the_whole_variable(self):
+        from unittest.mock import patch
+
+        with patch(
+            "core.management.commands.hashear_clave.getpass",
+            side_effect=["clave-de-admin", "clave-de-admin", "clave-de-samuel", "clave-de-samuel"],
+        ):
+            line = self.run_command("Admin", "Samuel")
+
+        self.assertTrue(line.startswith("APP_AGENTS="))
+        for password in ("clave-de-admin", "clave-de-samuel"):
+            self.assertNotIn(password, line)
+
+        # The whole point: paste it back and both agents log in.
+        with override_settings(
+            APP_AGENTS=line.split("=", 1)[1], APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD=""
+        ):
+            self.assertEqual([a.username for a in agents.configured_agents()], ["Admin", "Samuel"])
+            self.assertTrue(all(a.is_hashed for a in agents.configured_agents()))
+            self.assertIsNotNone(agents.authenticate("Admin", "clave-de-admin"))
+            self.assertIsNotNone(agents.authenticate("Samuel", "clave-de-samuel"))
+            self.assertIsNone(agents.authenticate("Admin", "clave-de-samuel"))
+
+    def test_several_usernames_reject_the_single_agent_flags(self):
+        from django.core.management import CommandError
+
+        for flag in ("--name", "--password"):
+            with self.subTest(flag):
+                with self.assertRaisesMessage(CommandError, "un solo usuario"):
+                    self.run_command("Admin", "Samuel", flag, "x")
+
+    def test_a_weak_password_names_the_agent_it_belongs_to(self):
+        from unittest.mock import patch
+
+        from django.core.management import CommandError
+
+        with patch(
+            "core.management.commands.hashear_clave.getpass",
+            side_effect=["clave-de-admin", "clave-de-admin", "corta", "corta"],
+        ):
+            with self.assertRaisesMessage(CommandError, "Samuel: La contraseña"):
+                self.run_command("Admin", "Samuel")
+
     def test_a_mistyped_confirmation_is_refused(self):
         from unittest.mock import patch
 

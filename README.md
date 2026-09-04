@@ -66,11 +66,15 @@ es opcional y por defecto es el usuario). El campo del medio es un **hash**, no
 una contraseña: genéralo con
 
 ```bash
-python manage.py hashear_clave Admin
+python manage.py hashear_clave Admin Samuel
 ```
 
-que pide la contraseña por teclado (no queda en el historial) e imprime la
-entrada completa lista para pegar. Así, quien pueda leer el entorno — el panel
+que pide cada contraseña por teclado (no quedan en el historial) e imprime la
+línea `APP_AGENTS=...` completa, lista para pegar en el `.env` y en el panel de
+Vercel. Con un solo usuario imprime solo su entrada `usuario:hash:Nombre`, y
+sin ninguno solo el hash. Unir las entradas a mano es justo donde una coma de
+más deja al equipo fuera de un despliegue en el que ya nadie puede entrar a
+arreglarlo. Así, quien pueda leer el entorno — el panel
 de Vercel, un log de CI, un `.env` compartido — encuentra un hash y no una
 credencial que funcione. Se verifica con `check_password`, la misma función y
 el mismo coste (PBKDF2) que la contraseña de una cuenta de la app.

@@ -37,7 +37,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, username, password, name, **options):
         if password is None:
-            password = ask_password(self.stderr)
+            password = ask_password()
         try:
             user = usuarios.bootstrap_master(username, name or username, password)
         except usuarios.UserError as exc:
