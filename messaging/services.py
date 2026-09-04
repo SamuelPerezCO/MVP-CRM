@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 from core import plantillas
@@ -293,6 +293,137 @@ def send_template(
     return message
 
 
+#: Meta's status vocabulary is wider than the CRM's three-value ``status``
+#: field, so the extra verdicts collapse onto "pendiente" -- which the UI
+#: reads as "not usable yet", true of every one of them. The raw value is
+#: kept in ``MessageTemplate.meta_status``, and that is what decides whether
+#: a plantilla may actually be sent (only APPROVED may).
+_META_STATUS_TO_LOCAL = {
+    "APPROVED": "aceptada",
+    "REJECTED": "rechazada",
+}
+
+
+def sync_templates() -> dict:
+    """Pull the WABA's templates from Meta and reconcile the CRM's rows.
+
+    Two things only Meta knows, and both cost money to get wrong:
+
+    * **Which plantillas may actually send.** Only an APPROVED template can
+      be delivered; a PAUSED or DISABLED one is refused at the API. Without
+      this the send dialog offers plantillas WhatsApp would reject.
+    * **The category Meta assigned.** Meta re-categorises templates on its
+      own -- a utility template it judges promotional becomes marketing --
+      and bills at *its* category. Syncing that keeps the quote honest
+      before the send, instead of finding out from the delivery receipt.
+
+    Rows are matched on (name, language), which is Meta's own key for a
+    template and this model's unique constraint. A template that exists in
+    Meta but not here (created in WhatsApp Manager) is imported, so the
+    Plantillas table shows the whole account; a row that exists only here is
+    left alone and reported as ``unmatched`` -- it may simply not have been
+    submitted to Meta yet, and deleting a user's draft because Meta has not
+    heard of it would be wrong.
+
+    Returns a small report ``{"fetched", "updated", "created", "unmatched",
+    "recategorised"}`` for the management command to print. Raises whatever
+    the provider raises when Meta is unreachable or unconfigured: a sync
+    that half-failed should be visible, not silent.
+    """
+    provider = get_provider()
+    fetch = getattr(provider, "fetch_templates", None)
+    if fetch is None:
+        raise RuntimeError(
+            f"the {provider.name!r} provider cannot list templates -- "
+            "set MESSAGING_PROVIDER=meta"
+        )
+
+    rows = fetch()
+    report = {
+        "fetched": len(rows),
+        "updated": 0,
+        "created": 0,
+        "unmatched": 0,
+        "recategorised": [],
+    }
+    now = timezone.now()
+    seen = set()
+
+    for row in rows:
+        name = (row.get("name") or "").strip()
+        language = (row.get("language") or "").strip()
+        if not name or not language:
+            logger.info("meta template without name/language, skipped: %r", row)
+            continue
+        seen.add((name, language))
+
+        meta_status = (row.get("status") or "").strip().upper()
+        # Meta's categories are upper case (MARKETING); the CRM stores them
+        # lower case, and only knows the three a plantilla can be created
+        # with. Anything else (FREE_SERVICE and whatever Meta adds next) is
+        # recorded as a status change but leaves the category alone rather
+        # than writing a value the editor and pricing cannot read.
+        meta_category = (row.get("category") or "").strip().lower()
+        if meta_category not in pricing.CATEGORIES:
+            meta_category = ""
+
+        template = MessageTemplate.objects.filter(name=name, language=language).first()
+        if template is None:
+            # Imported from WhatsApp Manager. The body stays empty: this
+            # endpoint returns `components`, but rebuilding the editor's
+            # body/samples/buttons from them is a translation this sync does
+            # not do -- the row exists so the account is visible and its
+            # status is right, and the editor can fill it in.
+            MessageTemplate.objects.create(
+                name=name,
+                language=language,
+                category=meta_category or "marketing",
+                status=_META_STATUS_TO_LOCAL.get(meta_status, "pendiente"),
+                meta_template_id=str(row.get("id") or ""),
+                meta_status=meta_status,
+                meta_synced_at=now,
+            )
+            report["created"] += 1
+            continue
+
+        changed = []
+        for field, value in (
+            ("meta_template_id", str(row.get("id") or "")),
+            ("meta_status", meta_status),
+            ("status", _META_STATUS_TO_LOCAL.get(meta_status, "pendiente")),
+        ):
+            if getattr(template, field) != value:
+                setattr(template, field, value)
+                changed.append(field)
+
+        # A category change is worth reporting, not just applying: it moves
+        # what every future send of this plantilla costs.
+        if meta_category and template.category != meta_category:
+            report["recategorised"].append(
+                {"name": name, "from": template.category, "to": meta_category}
+            )
+            logger.info(
+                "meta re-categorised plantilla %s: %s -> %s",
+                name, template.category, meta_category,
+            )
+            template.category = meta_category
+            changed.append("category")
+
+        template.meta_synced_at = now
+        changed.append("meta_synced_at")
+        template.save(update_fields=changed)
+        if len(changed) > 1:  # more than the timestamp
+            report["updated"] += 1
+
+    # Rows the account does not have. Counted, never touched.
+    report["unmatched"] = sum(
+        1
+        for name, language in MessageTemplate.objects.values_list("name", "language")
+        if (name, language) not in seen
+    )
+    return report
+
+
 def sendable_templates():
     """The plantillas the send dialog offers, best first.
 
@@ -311,7 +442,15 @@ def sendable_templates():
     """
     return (
         MessageTemplate.objects.filter(is_active=True)
-        .exclude(status="rechazada")
+        # Once a plantilla has been synced with Meta, Meta decides: only
+        # APPROVED can be delivered, so a PAUSED or DISABLED one drops out of
+        # the picker instead of being offered for a send WhatsApp refuses. A
+        # plantilla Meta has never seen (meta_status blank -- no Meta account,
+        # or created here and not submitted) keeps the lenient MVP rule.
+        .filter(
+            models.Q(meta_status="APPROVED")
+            | (models.Q(meta_status="") & ~models.Q(status="rechazada"))
+        )
         # "aceptada" sorts before "pendiente" alphabetically, which is also
         # the order they should be offered in -- approved plantillas first.
         .order_by("status", "name")

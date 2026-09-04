@@ -311,6 +311,12 @@ TWILIO_WHATSAPP_FROM = os.environ.get('TWILIO_WHATSAPP_FROM', '')
 # verify token is any string you also type into the webhook form.
 META_ACCESS_TOKEN = os.environ.get('META_ACCESS_TOKEN', '')
 META_PHONE_NUMBER_ID = os.environ.get('META_PHONE_NUMBER_ID', '')
+# The WhatsApp Business Account the phone number belongs to. Needed only by
+# the Business Management API -- today that is the plantilla sync
+# (`manage.py sync_templates`), which reads Meta's approval status and the
+# category Meta assigned, since that category is what a send is billed at.
+# The token must carry the whatsapp_business_management permission.
+META_WABA_ID = os.environ.get('META_WABA_ID', '')
 META_APP_SECRET = os.environ.get('META_APP_SECRET', '')
 META_VERIFY_TOKEN = os.environ.get('META_VERIFY_TOKEN', '')
 

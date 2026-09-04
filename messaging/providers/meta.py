@@ -453,6 +453,59 @@ class MetaProvider(MessagingProvider):
             pricing=_parse_pricing(raw.get("pricing")),
         )
 
+    # --- Business Management API ------------------------------------------
+
+    def fetch_templates(self) -> list[dict]:
+        """Every message template on the WhatsApp Business Account.
+
+        ``GET /{version}/{WABA_ID}/message_templates`` -- a different API from
+        the one the rest of this class talks to: the Business Management API,
+        addressed by *WABA* id rather than phone-number id, and needing the
+        ``whatsapp_business_management`` permission on the token.
+
+        Returns Meta's raw rows (id, name, language, status, category,
+        previous_category), following ``paging.next`` to the end -- a WABA
+        can hold far more templates than one page. Translating them into
+        MessageTemplate rows is ``messaging.services.sync_templates``'s job;
+        this method only fetches.
+
+        Raises ``RuntimeError`` when the account is not configured and lets
+        ``requests`` raise on a transport or HTTP error, so a caller (the
+        management command) reports the failure rather than silently syncing
+        nothing.
+        """
+        if not settings.META_ACCESS_TOKEN or not settings.META_WABA_ID:
+            raise RuntimeError(
+                "Meta template sync is not configured: set META_ACCESS_TOKEN "
+                "and META_WABA_ID (see .env.example)"
+            )
+
+        url = (
+            f"{_GRAPH_BASE}/{_GRAPH_API_VERSION}/"
+            f"{settings.META_WABA_ID}/message_templates"
+        )
+        # Ask only for what the sync uses. `limit` is Meta's page size, not a
+        # cap on the result: the loop below follows paging.next to the end.
+        params = {
+            "fields": "id,name,language,status,category,previous_category",
+            "limit": 100,
+        }
+        headers = {"Authorization": f"Bearer {settings.META_ACCESS_TOKEN}"}
+
+        rows: list[dict] = []
+        while url:
+            response = requests.get(
+                url, params=params, headers=headers, timeout=_REQUEST_TIMEOUT
+            )
+            response.raise_for_status()
+            payload = response.json()
+            rows.extend(payload.get("data") or [])
+            # paging.next is a fully-formed URL with its own cursor and a copy
+            # of the query, so params must not be sent again with it.
+            url = ((payload.get("paging") or {}).get("next")) or ""
+            params = None
+        return rows
+
     def _fetch_and_store_media(self, media_id: str) -> str:
         """Trade a media id for a durable URL of our own.
 

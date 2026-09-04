@@ -248,6 +248,28 @@ class MessageTemplate(models.Model):
     )
     rejection_reason = models.TextField("motivo de rechazo", blank=True)
 
+    # --- What Meta says about this plantilla ------------------------------
+    #
+    # Filled in by ``messaging.services.sync_templates`` from
+    # GET /{WABA_ID}/message_templates. Until that runs (no Meta account, or
+    # the Baileys/fake providers) they stay blank and the CRM's own
+    # ``status``/``category`` above are all there is.
+    #
+    # Why they are separate columns rather than overwriting: ``meta_status``
+    # is Meta's full vocabulary (APPROVED, PENDING, REJECTED, PAUSED,
+    # DISABLED, IN_APPEAL, LIMIT_EXCEEDED...), far wider than the three
+    # values this app's tabs and editor understand, and only APPROVED may
+    # actually send. Keeping the raw verdict means a PAUSED plantilla is
+    # recognisably paused instead of being flattened into "pendiente" and
+    # offered for a send that WhatsApp would reject.
+
+    #: Meta's own id for the template, for later Graph API calls.
+    meta_template_id = models.CharField("id en Meta", max_length=64, blank=True)
+    #: Meta's raw status, verbatim. Blank means never synced.
+    meta_status = models.CharField("estado en Meta", max_length=24, blank=True)
+    #: When Meta last confirmed the row above.
+    meta_synced_at = models.DateTimeField("sincronizado con Meta", null=True, blank=True)
+
     created_by = models.CharField("creado por", max_length=80, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -265,6 +287,17 @@ class MessageTemplate(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    @property
+    def is_approved_by_meta(self) -> bool:
+        """Whether Meta has this template in the one status that can send.
+
+        False for a plantilla that was never synced, so callers must decide
+        what an unsynced one means -- ``messaging.services.sendable_templates``
+        treats it leniently, because this MVP can create plantillas Meta has
+        never seen.
+        """
+        return self.meta_status == "APPROVED"
 
 class CalendarEvent(models.Model):
     """One entry in the CRM's Mi calendario.

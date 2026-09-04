@@ -197,6 +197,31 @@ un anuncio Click-to-WhatsApp).
 Toda cotización es una **estimación** hasta la entrega: Meta cobra al
 entregar y con la categoría que *ella* le asignó a la plantilla.
 
+### Traer de Meta el estado y la categoría de las plantillas
+
+```bash
+python manage.py sync_templates
+```
+
+Trae de `GET /{WABA_ID}/message_templates` dos cosas que solo Meta sabe, y las
+dos cuestan dinero si se ignoran:
+
+- **Cuáles se pueden enviar de verdad.** Solo una plantilla `APPROVED` se
+  entrega; una `PAUSED` o `DISABLED` la rechaza la API. Una vez sincronizada,
+  el diálogo de envío ya no ofrece las que WhatsApp rechazaría. Una plantilla
+  que Meta nunca ha visto (sin cuenta de Meta, o creada aquí y no enviada a
+  revisión) mantiene la regla laxa del MVP.
+- **La categoría que Meta le asignó.** Meta recategoriza plantillas por su
+  cuenta — una *utility* que juzga promocional pasa a *marketing* — y cobra
+  con **su** categoría. El comando avisa en pantalla de cada recategorización,
+  porque cambia el precio de todos los envíos futuros de esa plantilla.
+
+Una plantilla que existe en Meta pero no en el CRM (creada en WhatsApp
+Manager) se importa; una que solo existe aquí se deja intacta y se reporta,
+porque puede ser un borrador todavía sin enviar a revisión. Requiere
+`MESSAGING_PROVIDER=meta`, `META_WABA_ID` y un token con el permiso
+`whatsapp_business_management`.
+
 ### La verdad final: lo que Meta dice que cobró
 
 Con `MESSAGING_PROVIDER=meta`, cada acuse de entrega trae un objeto `pricing`
