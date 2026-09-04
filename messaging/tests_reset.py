@@ -5,7 +5,7 @@ from __future__ import annotations
 from io import StringIO
 
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from core.models import CalendarEvent, Client
@@ -179,3 +179,44 @@ class DemoOnlyResetTests(TestCase):
         self.assertEqual(
             Client.objects.count(), 1, list(Client.objects.values_list("first_name", "phone"))
         )
+
+
+class DemoUserIsProtectedWhenRealTests(TestCase):
+    """'asesor' is a plausible username for an actual advisor. Every FK to a
+    user is SET_NULL, so deleting one that someone uses does not fail loudly
+    -- it silently erases their authorship everywhere."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        self.user = get_user_model().objects.create_user("asesor", password="x" * 12)
+        contact = Client.objects.create(
+            first_name="Ana", last_name="Real", phone="+573167687288"
+        )
+        self.chat = Conversation.objects.create(
+            contact=contact, channel="whatsapp", assigned_to=self.user
+        )
+
+    def run_command(self, *args):
+        out = StringIO()
+        call_command("reset_conversations", "--demo-only", *args, stdout=out)
+        return out.getvalue()
+
+    @override_settings(APP_AGENTS="asesor:secreto123:Asesor")
+    def test_a_configured_agent_named_asesor_is_left_alone(self):
+        from django.contrib.auth import get_user_model
+
+        output = self.run_command("--yes")
+
+        self.assertIn("APP_AGENTS", output)
+        self.assertTrue(get_user_model().objects.filter(username="asesor").exists())
+        self.chat.refresh_from_db()
+        self.assertEqual(self.chat.assigned_to, self.user)
+
+    @override_settings(APP_AGENTS="samuel:secreto123:Samuel")
+    def test_the_leftover_demo_login_still_goes_when_nobody_uses_it(self):
+        from django.contrib.auth import get_user_model
+
+        self.run_command("--yes")
+
+        self.assertFalse(get_user_model().objects.filter(username="asesor").exists())

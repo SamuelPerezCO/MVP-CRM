@@ -1,19 +1,14 @@
 """App-wide login gate.
 
-Every request needs a session that logged in through core.views.login_view --
-against the accounts in core.agents (the APP_AGENTS environment list and the
-database users a master creates) -- except for the handful of paths that must
-stay reachable without a browser session: provider webhooks (hit by
-Twilio/Meta/the Baileys sidecar, authenticated by their own signature check
-instead), the public legal pages, static/media assets, and Django admin
-(gated separately by django.contrib.auth).
-
-Two things have to hold. The session must carry the flag login_view sets, and
-django.contrib.auth must still resolve it to a real user: AuthenticationMiddleware
-hands back AnonymousUser for an account that was deleted, or deactivated
-(ModelBackend.get_user checks is_active), since the session was created. So a
-master deactivating someone locks them out on their very next request, flag or
-no flag -- and the dead session is flushed so their next login starts clean.
+Not django.contrib.auth -- there is no user model, signup or password reset.
+It's one shared username/password pair from the environment (APP_LOGIN_USERNAME
+/ APP_LOGIN_PASSWORD, see .env.example), checked in core.views.login_view and
+remembered as a flag in the session. This middleware is what enforces it: any
+request without that flag is redirected to the login page, except for the
+handful of paths that must stay reachable without a browser session --
+provider webhooks (hit by Twilio/Meta/the Baileys sidecar, authenticated by
+their own signature check instead), the public legal pages, static/media
+assets, and Django admin (gated separately by django.contrib.auth).
 """
 
 from django.shortcuts import redirect
@@ -36,10 +31,17 @@ class LoginRequiredMiddleware:
     def __call__(self, request):
         if settings.TESTING or self._is_exempt(request.path):
             return self.get_response(request)
+
+        # Two things have to hold. The session must carry the flag login_view
+        # sets, and django.contrib.auth must still resolve it to a real user:
+        # AuthenticationMiddleware hands back AnonymousUser for an account
+        # deleted or deactivated since the session was created. So a master
+        # deactivating someone locks them out on their very next request,
+        # flag or no flag -- and the dead session is flushed so their next
+        # login starts clean.
         if request.session.get(SESSION_KEY):
             if request.user.is_authenticated:
                 return self.get_response(request)
-            # The flag outlived the account behind it.
             request.session.flush()
         login_url = reverse('login')
         if request.path != '/':

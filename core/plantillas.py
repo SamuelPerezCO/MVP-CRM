@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 
+from messaging.providers.types import TemplateSpec
+
 from .models import MessageTemplate
 
 #: Meta's hard template-name constraint: lowercase, digits and _ only.
@@ -393,6 +395,39 @@ def _valid_cta_url(url: str) -> bool:
     except ValidationError:
         return False
     return True
+
+
+def render_with(template, values: dict) -> str:
+    """A template's body with each {{n}} replaced by ``values[str(n)]``.
+
+    What the Inbox stores on the Message row when a plantilla is *sent*: the
+    text the customer will actually read, so the thread and the conversation
+    list preview show words instead of a template name. A variable without a
+    value keeps its ``{{n}}`` -- the send endpoint validates before it ever
+    gets here, so that is a programming error made visible, not hidden.
+    """
+
+    def substitute(match):
+        return str(values.get(match.group(1), match.group(0)))
+
+    return VARIABLE_RE.sub(substitute, template.body)
+
+
+def template_spec(template) -> TemplateSpec:
+    """A MessageTemplate as the provider-neutral spec ``create_template``
+    takes -- the one place the model crosses into ``messaging.providers``."""
+    return TemplateSpec(
+        name=template.name,
+        language=template.language,
+        category=template.category,
+        body=template.body,
+        body_sample_values=list(template.body_sample_values or []),
+        header_type=template.header_type,
+        header_text=template.header_text,
+        header_media=template.header_media if template.header_media else None,
+        footer=template.footer,
+        buttons=list(template.buttons or []),
+    )
 
 
 def build_buttons(state: dict) -> list[dict]:

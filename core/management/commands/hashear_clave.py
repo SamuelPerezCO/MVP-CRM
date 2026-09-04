@@ -81,7 +81,7 @@ class Command(BaseCommand):
     def _hash(self, password: str, username: str) -> str:
         try:
             agents.validate_password(password, username)
-        except ValueError as exc:
+        except agents.WeakPassword as exc:
             raise CommandError(f"{username or 'la contraseña'}: {exc}" if username else str(exc))
 
         encoded = make_password(password)

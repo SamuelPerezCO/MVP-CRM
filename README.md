@@ -92,40 +92,29 @@ conversación en el Inbox. La lista vive en el entorno, no en la base de datos
 pantalla de gestión de usuarios ni registro:
 
 ```
-APP_AGENTS=Admin:pbkdf2_sha256$1500000$SALT$HASH=:Admin
+APP_AGENTS=Admin:cambia-esta-clave:Admin,Samuel:1234:Samuel
 ```
 
 Entradas separadas por coma, cada una `usuario:hash:Nombre` (el nombre visible
 es opcional y por defecto es el usuario). El campo del medio es un **hash**, no
-una contraseña: genéralo con
+la contraseña en claro:
 
-```bash
-python manage.py hashear_clave Admin Samuel
+```
+python manage.py hashear_clave Samuel
 ```
 
-que pide cada contraseña por teclado (no quedan en el historial) e imprime la
-línea `APP_AGENTS=...` completa, lista para pegar en el `.env` y en el panel de
-Vercel. Con un solo usuario imprime solo su entrada `usuario:hash:Nombre`, y sin
-ninguno solo el hash. Unir las entradas a mano es justo donde una coma de más
-deja al equipo fuera de un despliegue en el que ya nadie puede entrar a
-arreglarlo.
-
-Así, quien pueda leer el entorno — el panel de Vercel, un log de CI, un `.env`
-compartido — encuentra un hash y no una credencial que funcione. Se verifica con
-`check_password`, la misma función y el mismo coste (PBKDF2) que la contraseña
-de un usuario creado en la app.
-
-Una contraseña en texto plano ahí **sigue funcionando**, para que ningún
-despliegue anterior se quede fuera, pero está desaconsejada: `manage.py check`
-avisa por cada agente que siga así (`core.W001`). Ni `:` ni `,` pueden aparecer
-en el campo del medio, que son los separadores; los hashes PBKDF2 de Django no
-llevan ninguno de los dos.
+pide la contraseña por terminal (no queda en el historial del shell) e imprime
+la entrada lista para pegar. Una contraseña en claro ahí sigue funcionando —
+un redespliegue nunca puede dejar al equipo fuera — pero `manage.py check`
+avisa de cada agente que siga así (`core.W001`): quien pueda leer el entorno
+(el panel de Vercel, un log de CI, un `.env` compartido) tiene un login válido.
+Ni el hash ni la contraseña pueden llevar `:` ni `,`, que son los separadores.
 
 Al iniciar sesión se abre una sesión real de `django.contrib.auth` contra un
 `User` espejo de ese agente ([core/agents.py](core/agents.py)), creado bajo
 demanda y con contraseña inutilizable: existe para que `assigned_to` y
 `sent_by` tengan a quién apuntar, nunca para autenticar — el entorno sigue
-siendo la única vía de entrada, ni siquiera con el hash que guarda. Eso es lo que hace que el filtro "Tu inbox"
+siendo la única vía de entrada. Eso es lo que hace que el filtro "Tu inbox"
 funcione y que cada mensaje enviado registre quién lo escribió.
 
 En el Inbox, el desplegable junto al estado de la conversación ("Abierta")
@@ -140,15 +129,7 @@ desplegar. Un usuario creado ahí es un `User` de Django con contraseña real:
 inicia sesión por el mismo formulario, aparece en el desplegable de
 asignación y en "Tu inbox", y puede marcarse también como maestro. Los
 usuarios se desactivan (nunca se borran): su historial de conversaciones y
-mensajes sigue apuntando a ellos, y al desactivar se cierran sus sesiones, así
-que restaurarlo después no revive el navegador de nadie.
-
-Nadie puede quitarse a sí mismo el rol de maestro ni desactivarse, y el
-servicio ([core/agents.py](core/agents.py)) rechaza además dejar al equipo sin
-ningún maestro que pueda entrar: cuentan los agentes de `APP_AGENTS` (siempre
-maestros), los superusuarios y los maestros de la app que sigan activos y con
-contraseña utilizable — un espejo sin contraseña, el que queda al sacar a
-alguien de `APP_AGENTS`, no sirve de reemplazo. Los agentes del entorno se muestran en la
+mensajes sigue apuntando a ellos. Los agentes del entorno se muestran en la
 misma tabla pero solo se editan en `APP_AGENTS` ([core/agents.py](core/agents.py)).
 
 El rol maestro vive en el grupo `Maestros` de Django, no en `is_staff`: ese
@@ -235,6 +216,100 @@ Cuando lleguen credenciales reales de Twilio o Meta:
 3. Cambia `MESSAGING_PROVIDER` y registra la URL del webhook en la consola del proveedor: `https://tu-dominio/webhooks/messaging/twilio/` o `.../meta/` (Meta verifica primero con un GET; el endpoint ya responde el `hub.challenge`).
 
 El webhook verifica la firma antes de tocar el payload (401 si es inválida), es idempotente por `provider_message_id` (los reintentos del proveedor no duplican mensajes) y siempre responde 200 tras autenticar, registrando errores en el log en lugar de provocar tormentas de reintentos. El envío de texto libre está bloqueado fuera de la ventana de 24 horas ([messaging/services.py](messaging/services.py)) — fuera de ella solo cabe `send_template`, igual que en la plataforma real.
+
+## Escribir en la base de datos desde fuera (n8n u otra automatización)
+
+Esta base de datos es compartida: además de esta app, una automatización
+inserta clientes, conversaciones y mensajes directamente en las tablas, sin
+pasar por `messaging/services.py`. Eso funciona, pero hay que respetar el
+contrato de abajo, porque **Django rellena sus valores por defecto en Python,
+no en la base**: un `INSERT` externo no recibe ninguno. Las columnas de texto
+opcionales son `NOT NULL` con `''` como valor vacío — nunca insertes `NULL`
+en ellas.
+
+La app ya no se cae con un valor desconocido (hay tests en
+[messaging/tests_external_writer.py](messaging/tests_external_writer.py)),
+pero *tolerar* no es *mostrar bien*: una conversación con un canal que no
+existe sale con un icono genérico, y un mensaje con un estado que no existe
+sale con el icono de alerta. El contrato es lo que hace que se vean bien.
+
+### Reglas generales
+
+- Todas las columnas de fecha son `timestamptz`; la app corre con `USE_TZ=True` y `TIME_ZONE='UTC'`. Manda siempre **UTC con offset** (`2026-09-04T15:04:05+00:00`). Una fecha sin zona se reinterpreta en la zona de tu sesión y desplaza la ventana de 24 h y todos los informes.
+- Los valores de tipo enum van en **minúsculas, exactos y sin espacios**.
+- Teléfonos: `+` + indicativo + dígitos, sin espacios ni guiones (`+573001112233`). El `wa_id` de WhatsApp (`573001112233`) hay que prefijarlo con `+`.
+
+### `core_client`
+
+| columna | valor |
+|---|---|
+| `first_name` | texto ≤80. El nombre del perfil, o el teléfono si no hay |
+| `last_name`, `email`, `country` | `''` si no se conocen (`country` acepta ISO-3166 alfa-2 en mayúsculas, ej. `CO`) |
+| `phone` | E.164 exacto, ≤20 |
+| `channel` | `''` \| `whatsapp` \| `messenger` \| `instagram` \| `facebook` \| `tiktok` |
+| `created_at` | `now()` |
+
+Busca antes de insertar: `SELECT id FROM core_client WHERE phone = $1;`
+
+### `messaging_conversation`
+
+| columna | valor |
+|---|---|
+| `contact_id` | el `core_client.id` anterior |
+| `channel` | `whatsapp` \| `messenger` \| `instagram-dm` \| `facebook` \| `instagram` \| `tiktok-dm` \| `tiktok-coment` |
+| `status` | `open` \| `pending` \| `resolved` |
+| `assigned_to_id` | `NULL` = «Sin asignar» |
+| `last_message_at` | fecha del mensaje más reciente del hilo |
+| `last_inbound_at` | fecha del **entrante** más reciente; sin esto el compositor queda cerrado |
+| `unread_count` | entero ≥ 0 (hay CHECK); empieza en `0` |
+| `created_at` | `now()` |
+
+Reutiliza el hilo abierto antes de crear otro:
+
+```sql
+SELECT id FROM messaging_conversation
+WHERE contact_id = $1 AND channel = $2 AND status <> 'resolved'
+ORDER BY last_message_at DESC NULLS LAST
+LIMIT 1;
+```
+
+### `messaging_message`
+
+| columna | valor |
+|---|---|
+| `conversation_id` | una conversación **de ese mismo contacto** |
+| `direction` | exactamente `inbound` o `outbound` |
+| `body` | texto, `''` si no hay. Para media sin pie: `[imagen]` / `[video]` / `[audio]` / `[documento]` / `[sticker]` |
+| `media_url` | `''` o una URL https, **≤200 caracteres** |
+| `media_type` | `''` \| `image` \| `video` \| `audio` \| `document` \| `sticker` |
+| `status` | `queued` \| `sent` \| `delivered` \| `read` \| `failed`. Para algo ya entregado: `delivered` |
+| `provider_message_id` | el id real del proveedor (`wamid....`), ≤255, ÚNICO. Si de verdad no lo hay, `NULL` — nunca `''` (el segundo `''` viola el índice único) |
+| `timestamp` | fecha del proveedor, UTC con offset |
+| `sent_by_id` | `NULL`. Ojo: `NULL` en un saliente significa «automático» para el informe de Tiempos de Respuesta |
+
+### Después de cada mensaje, en la misma transacción
+
+Entrante:
+
+```sql
+UPDATE messaging_conversation
+   SET last_message_at = $ts,
+       last_inbound_at = $ts,
+       unread_count    = unread_count + 1,
+       status          = CASE WHEN status = 'resolved' THEN 'open' ELSE status END
+ WHERE id = $conversation_id;
+```
+
+Saliente (no toques `last_inbound_at`, `unread_count` ni `status`):
+
+```sql
+UPDATE messaging_conversation
+   SET last_message_at = $ts
+ WHERE id = $conversation_id;
+```
+
+Envuelve cliente → conversación → mensaje → `UPDATE` en una sola transacción,
+para que un fallo no deje un mensaje sin su contabilidad.
 
 ## Deploy en Vercel
 

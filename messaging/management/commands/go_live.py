@@ -220,6 +220,12 @@ def _split_team(users) -> tuple[list, list]:
         is_team = user.username != DEMO_USERNAME and (
             agents.is_env_agent(user)
             or user.is_superuser
+            # Named here rather than left to is_app_user, which excludes staff
+            # on purpose (a /admin account is not the Usuarios page's to hand
+            # out). Right for a screen that resets passwords, wrong for a
+            # command that deletes rows: somebody with /admin access is a
+            # colleague, whatever this CRM thinks of them.
+            or user.is_staff
             or agents.is_app_user(user)
         )
         (keep if is_team else drop).append(user)

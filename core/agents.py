@@ -13,22 +13,13 @@ the Inbox. Two things have to line up for that:
   with an unusable password -- the environment stays the only source of truth
   for who can log in, and nobody can authenticate through the ORM.
 
-``APP_AGENTS`` format -- comma-separated ``username:hash:Nombre`` entries::
+``APP_AGENTS`` format -- comma-separated ``username:password:Nombre`` entries::
 
-    APP_AGENTS=Admin:pbkdf2_sha256$1500000$XbY...$vTh...=:Admin
+    APP_AGENTS=Admin:sup3rsecret:Admin,Samuel:1234:Samuel
 
-The middle field is a password **hash**, not a password: generate one with
-``manage.py hashear_clave`` and paste it in. Verification goes through
-``check_password``, the same function and the same PBKDF2 cost as a user
-created in the app, so whoever can read the environment (a Vercel dashboard,
-a CI log, a shared .env) sees a hash rather than a working credential. The
-display name is optional (``username:hash`` falls back to the username).
-Colons and commas can't appear in the middle field, since they are the
-separators -- Django's default PBKDF2 hashes contain neither.
-
-A **plaintext** password is still accepted there, so an environment written
-before this existed keeps working, but it is deprecated: ``manage.py check``
-warns for every agent still configured that way (see :mod:`core.checks`).
+The display name is optional (``username:password`` falls back to the
+username). Colons and commas can't appear in a password, since they are the
+separators.
 
 If ``APP_AGENTS`` is unset the older single pair
 (``APP_LOGIN_USERNAME``/``APP_LOGIN_PASSWORD``) is used as a one-agent list, so
@@ -51,15 +42,13 @@ from dataclasses import dataclass
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.contrib.auth.hashers import (
     UNUSABLE_PASSWORD_PREFIX,
     check_password,
     get_hasher,
     make_password,
 )
-from django.db import transaction
-from django.db.models import Q
-from django.utils import timezone
 
 
 @dataclass(frozen=True)
@@ -72,9 +61,7 @@ class Agent:
     """This agent's password *hash* -- or, deprecated, a raw password.
 
     Named for what it holds rather than what it is: :meth:`accepts` is what
-    knows the difference, and nothing else should have to. Empty for the
-    Agent that :func:`authenticate` returns for a database user, whose
-    password was already verified by Django.
+    knows the difference, and nothing else should have to.
     """
 
     display_name: str
@@ -115,12 +102,12 @@ def configured_agents() -> list[Agent]:
         parts = [part.strip() for part in entry.split(":", 2)]
         if len(parts) < 2:
             continue
-        username, password = parts[0], parts[1]
+        username, secret = parts[0], parts[1]
         display_name = parts[2] if len(parts) > 2 and parts[2] else username
-        if not username or not password or username in seen:
+        if not username or not secret or username in seen:
             continue
         seen.add(username)
-        agents.append(Agent(username, password, display_name))
+        agents.append(Agent(username, secret, display_name))
 
     if agents:
         return agents
@@ -136,40 +123,31 @@ def configured_agents() -> list[Agent]:
 def authenticate(username: str, password: str) -> Agent | None:
     """Return the agent these credentials belong to, or ``None``.
 
-    The env list first. Usernames are compared against every configured agent
-    without breaking out early, and with ``compare_digest``, so the time this
-    takes doesn't leak which exist; then *one* password verification runs --
-    the matched agent's, or a throwaway hash of the same cost when nothing
-    matched, the trick ``ModelBackend`` uses for the same reason. One rather
-    than one per agent matters now that verifying is deliberately expensive
-    (PBKDF2). The throwaway is skipped in an all-plaintext (deprecated)
-    configuration, where every comparison is cheap and burning a PBKDF2 on
-    the no-match path would invert the very leak it prevents.
+    The environment is checked first and wins outright. Every configured
+    username is compared without breaking out early, so the time this takes
+    doesn't leak which ones exist, and exactly *one* password verification
+    runs: the matched agent's, or a throwaway of equal cost when nothing
+    matched (the trick ``ModelBackend`` uses), so a hit and a miss cost the
+    same. The throwaway is skipped when no agent is hashed -- verifying a
+    raw password is free, and paying for a hash there would invert the leak.
 
     Then the database: a user created from the Usuarios page has a usable
-    password and is checked by Django's own hasher. Env mirrors never reach
-    that step -- their password is unusable (see :func:`_mirror`), so a
-    username that is in the env list can only log in with the env password.
+    password, checked by Django's own hasher. An env username never reaches
+    that step, whatever its mirror row holds -- the environment stays the
+    only way into those accounts.
     """
-    configured = configured_agents()
-
+    agents = configured_agents()
     match: Agent | None = None
-    for agent in configured:
+    for agent in agents:
         if _same(username, agent.username) and match is None:
             match = agent
+
     if match is not None:
-        if match.accepts(password):
-            return match
-        return None
-    if any(agent.is_hashed for agent in configured):
-        make_password(password)
+        return match if match.accepts(password) else None
+    if any(agent.is_hashed for agent in agents):
+        make_password(password)   # equal-cost miss; result discarded
 
     if not username or not password:
-        return None
-    # An env username never falls through to the database, whatever its
-    # mirror row's password field holds (a seed or /admin could set one):
-    # the env is the only way in for those accounts.
-    if username in {agent.username for agent in configured_agents()}:
         return None
     User = get_user_model()
     user = User.objects.filter(username=username, is_active=True).first()
@@ -191,7 +169,8 @@ def _is_hash(secret: str) -> bool:
     A hash is ``<algorithm>$<rest>`` with an algorithm this project actually
     has a hasher for. Deliberately stricter than ``identify_hasher``, which
     reads any bare 32-character string as an unsalted MD5 digest -- and a
-    32-character passphrase is an ordinary thing to find in an env var.
+    32-character passphrase is a perfectly ordinary thing to find in an env
+    var.
     """
     algorithm, separator, rest = secret.partition("$")
     if not separator or not rest:
@@ -203,28 +182,45 @@ def _is_hash(secret: str) -> bool:
     return True
 
 
-#: Floor for a password this app hashes. Env passwords predate it, so it is
-#: applied where we mint one (manage.py hashear_clave), not retroactively.
+#: Floor for a password this app sets, wherever it is set from.
 MIN_PASSWORD_LENGTH = 8
 
 
+class WeakPassword(Exception):
+    """The password does not clear :func:`validate_password`'s floor."""
+
+
 def validate_password(password: str, username: str = "") -> None:
-    """Raise ``ValueError`` with a Spanish reason if ``password`` is too weak."""
+    """A small, Spanish-worded floor -- the project's AUTH_PASSWORD_VALIDATORS
+    would say the same things in English, in an all-Spanish UI.
+
+    Public because the Usuarios dialog and ``manage.py hashear_clave`` apply
+    the same rule: a password reaching APP_AGENTS as a hash should clear the
+    same bar as one typed into the dialog.
+    """
     password = password or ""
     if len(password) < MIN_PASSWORD_LENGTH:
-        raise ValueError(
+        raise WeakPassword(
             f"La contraseña debe tener al menos {MIN_PASSWORD_LENGTH} caracteres."
         )
     if password.isdigit():
-        raise ValueError("La contraseña no puede ser solo números.")
+        raise WeakPassword("La contraseña no puede ser solo números.")
     if username and password.casefold() == username.casefold():
-        raise ValueError("La contraseña no puede ser igual al usuario.")
+        raise WeakPassword("La contraseña no puede ser igual al usuario.")
 
 
 def _is_app_user(user) -> bool:
-    """A row someone can actually log in with: a real, usable password.
-    Env mirrors have an unusable one and rows a seed or /admin made without
-    a password have an empty one -- neither is a teammate."""
+    """A row this app's Usuarios page owns: a real, usable password, and not
+    a Django staff account.
+
+    Env mirrors have an unusable password and rows made without one have an
+    empty one -- neither is a teammate. ``is_staff`` is the load-bearing
+    part: it means "may open /admin/", a door this CRM does not manage.
+    Listing such a row here would let a CRM master reset its password and
+    walk into the Django admin, which is a bigger key than the page grants.
+    """
+    if user.is_staff or user.is_superuser:
+        return False
     return bool(user.password) and user.has_usable_password()
 
 
@@ -334,15 +330,6 @@ class UsernameTaken(Exception):
     """Another user already has this username."""
 
 
-class LastMaster(ValueError):
-    """This change would leave nobody able to manage the team.
-
-    A ``ValueError`` so the callers that already treat one as a refusal keep
-    working; a named class so the form can show it against the master
-    checkbox instead of the username field.
-    """
-
-
 def create_user(username: str, password: str, display_name: str = "", master: bool = False):
     """Create a teammate who can log in with ``password``.
 
@@ -376,98 +363,85 @@ def _set_master(user, master: bool) -> None:
 
 def update_user(user, display_name: str, master: bool, password: str = ""):
     """Rename, promote/demote and optionally reset the password of an
-    app-created user. Env mirrors are refused: their identity is the env's.
-
-    Demoting the last master who could still log in is refused too -- see
-    :func:`_guard_last_master`. Resetting the password needs no session purge:
-    Django's session auth hash is derived from it, so every other browser is
-    signed out on its next request anyway.
-    """
+    app-created user. Env mirrors are refused: their identity is the env's."""
     if is_env_agent(user):
         raise ValueError("Este usuario se configura en el entorno (APP_AGENTS), no aquí.")
-    with transaction.atomic():
-        if is_master(user) and not master:
-            _guard_last_master(user, "quitarle el rol de maestro a")
-        user.first_name = (display_name or user.username)[:150]
-        fields = ["first_name"]
-        if password:
-            user.set_password(password)
-            fields.append("password")
-        user.save(update_fields=fields)
-        _set_master(user, master)
+    if not master:
+        _guard_last_master(user)
+    user.first_name = (display_name or user.username)[:150]
+    fields = ["first_name"]
+    if password:
+        user.set_password(password)
+        fields.append("password")
+    user.save(update_fields=fields)
+    _set_master(user, master)
     return user
+
+
+def _master_count(exclude_pk=None) -> int:
+    """How many masters would remain. Env agents count: while APP_AGENTS
+    names anybody, the team can always be administered."""
+    if configured_agents():
+        return 2   # any positive number above the guard's floor
+    User = get_user_model()
+    masters = (
+        User.objects.filter(is_active=True)
+        .filter(Q(is_superuser=True) | Q(groups__name=MASTER_GROUP))
+        # Only masters who could actually log in. A mirror row left behind by
+        # an agent dropped from APP_AGENTS is still active and still a master
+        # on paper, but has an unusable password -- counting it as the
+        # survivor would let the last real master go and lock the team out.
+        .exclude(password="")
+        .exclude(password__startswith=UNUSABLE_PASSWORD_PREFIX)
+    )
+    if exclude_pk is not None:
+        masters = masters.exclude(pk=exclude_pk)
+    return masters.distinct().count()
+
+
+class LastMaster(Exception):
+    """Refused: the change would leave nobody able to manage the team."""
+
+
+def _guard_last_master(user) -> None:
+    """Refuse a demotion/deactivation that removes the final master."""
+    if not is_master(user):
+        return
+    if _master_count(exclude_pk=user.pk) == 0:
+        raise LastMaster(
+            "Es el único usuario maestro: nombra a otro antes de quitarle el rol "
+            "o desactivarlo."
+        )
 
 
 def set_user_active(user, active: bool):
     """Deactivate (or restore) an app-created user. Deactivating is the only
     "delete": their conversations, messages and events keep pointing at
-    them, they just can't log in or be assigned anything new.
-
-    Deactivating also ends their sessions. ``is_active`` alone only stops
-    ``ModelBackend.get_user`` from resolving the session, leaving the row in
-    place -- so a later restore would silently revive a browser nobody logged
-    into again.
-    """
+    them, they just can't log in or be assigned anything new."""
     if is_env_agent(user):
         raise ValueError("Este usuario se configura en el entorno (APP_AGENTS), no aquí.")
-    with transaction.atomic():
-        if not active and is_master(user):
-            _guard_last_master(user, "desactivar a")
-        user.is_active = active
-        user.save(update_fields=["is_active"])
-        if not active:
-            end_sessions(user)
+    if not active:
+        _guard_last_master(user)
+    user.is_active = active
+    user.save(update_fields=["is_active"])
+    if not active:
+        end_sessions(user)
     return user
 
 
-def end_sessions(user) -> None:
-    """Delete every live session belonging to ``user``.
+def end_sessions(user) -> int:
+    """Drop every live session belonging to ``user``; returns how many.
 
-    Sessions carry the user id inside their signed payload rather than in a
-    column, so there is nothing to filter on -- each unexpired row has to be
-    decoded. The table holds one row per logged-in browser, and this only runs
-    when someone is deactivated, so the scan is cheap where it happens.
+    Deactivating a row only stops the *next* login unless the sessions it
+    already has are cleared -- otherwise someone just locked out keeps
+    browsing until their cookie expires.
     """
     from django.contrib.sessions.models import Session
+    from django.utils import timezone
 
-    wanted = str(user.pk)
+    ended = 0
     for session in Session.objects.filter(expire_date__gte=timezone.now()):
-        if session.get_decoded().get("_auth_user_id") == wanted:
+        if str(session.get_decoded().get("_auth_user_id", "")) == str(user.pk):
             session.delete()
-
-
-def _guard_last_master(user, verb: str) -> None:
-    """Refuse to strip the last master who can actually log in.
-
-    The view already stops a master doing this to *themselves*; this is the
-    other half, and the half that survives an env change: with ``APP_AGENTS``
-    configured the environment always supplies a master, so nothing here can
-    empty the set. Without it, the masters are whoever is in the Maestros
-    group or a superuser -- and only the ones who can still log in count, so
-    a deactivated master, or a mirror row left behind by an agent dropped from
-    ``APP_AGENTS`` (no usable password), is not a stand-in for a real one.
-
-    Called inside the callers' ``transaction.atomic``, and the candidates are
-    locked, so two masters removing each other at the same moment cannot both
-    read "there is still another one" and both go through.
-    """
-    if _another_master_can_log_in(user):
-        return
-    raise LastMaster(f"No puedes {verb} al último usuario maestro que puede entrar.")
-
-
-def _another_master_can_log_in(user) -> bool:
-    if configured_agents():
-        return True
-    User = get_user_model()
-    others = (
-        User.objects.select_for_update()
-        .filter(is_active=True)
-        .filter(Q(is_superuser=True) | Q(groups__name=MASTER_GROUP))
-        .exclude(pk=user.pk)
-        .exclude(password="")
-        .exclude(password__startswith=UNUSABLE_PASSWORD_PREFIX)
-        .distinct()
-    )
-    # Materialised rather than .exists() so the rows are actually locked.
-    return bool(list(others.values_list("pk", flat=True)))
+            ended += 1
+    return ended

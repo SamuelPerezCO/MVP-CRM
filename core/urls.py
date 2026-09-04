@@ -33,12 +33,6 @@ urlpatterns = [
         views.inbox_send,
         name="inbox_send",
     ),
-    # A plantilla into an existing chat -- the closed composer's picker.
-    path(
-        "inbox/chat/<int:conversation_id>/plantilla/",
-        views.inbox_send_template,
-        name="inbox_send_template",
-    ),
     # "Nuevo Chat": GET the modal body, POST to start a conversation.
     path("inbox/nuevo/", views.inbox_new_chat, name="inbox_new_chat"),
     # The chat header's agent dropdown posts here on every change.
@@ -46,6 +40,13 @@ urlpatterns = [
         "inbox/chat/<int:conversation_id>/asignar/",
         views.inbox_assign,
         name="inbox_assign",
+    ),
+    # The Enviar plantilla dialog: GET renders it for one conversation, POST
+    # sends the chosen plantilla as a real template message.
+    path(
+        "inbox/chat/<int:conversation_id>/plantilla/",
+        views.inbox_template_send,
+        name="inbox_template_send",
     ),
     # The composer's Respuestas rápidas popover, fetched when first opened.
     # Conversation-scoped because each entry posts itself to inbox_send.
@@ -208,6 +209,12 @@ urlpatterns = [
         "mensajeria/respuestas/<int:reply_id>/activa/",
         views.respuesta_toggle,
         name="respuesta_toggle",
+    ),
+    # "Sincronizar con WhatsApp": pull approval verdicts, answer with the table.
+    path(
+        "mensajeria/plantillas/sincronizar/",
+        views.plantillas_sync,
+        name="plantillas_sync",
     ),
     # The chooser modal's first card: pick a ready-made template (placeholder).
     path(

@@ -310,14 +310,14 @@ class LastMasterTests(TestCase):
 
     def test_the_only_master_cannot_be_demoted(self):
         jefa = app_user("jefa", master=True)
-        with self.assertRaisesMessage(agents.LastMaster, "último usuario maestro"):
+        with self.assertRaisesMessage(agents.LastMaster, "único usuario maestro"):
             agents.update_user(jefa, "Jefa", False)
         jefa.refresh_from_db()
         self.assertTrue(agents.is_master(jefa))
 
     def test_the_only_master_cannot_be_deactivated(self):
         jefa = app_user("jefa", master=True)
-        with self.assertRaisesMessage(agents.LastMaster, "último usuario maestro"):
+        with self.assertRaisesMessage(agents.LastMaster, "único usuario maestro"):
             agents.set_user_active(jefa, False)
         jefa.refresh_from_db()
         self.assertTrue(jefa.is_active)
@@ -462,9 +462,9 @@ class LastMasterAndTheViewsTests(TestCase):
         """Deactivate the other master through the view, then try to take the
         last one out from under the app the way a script would."""
         self.client.post(reverse("usuario_active", args=[self.otro.pk]), {"active": "0"})
-        with self.assertRaisesMessage(agents.LastMaster, "último usuario maestro"):
+        with self.assertRaisesMessage(agents.LastMaster, "único usuario maestro"):
             agents.set_user_active(self.jefa, False)
-        with self.assertRaisesMessage(agents.LastMaster, "último usuario maestro"):
+        with self.assertRaisesMessage(agents.LastMaster, "único usuario maestro"):
             agents.update_user(self.jefa, "Jefa", False)
 
     def test_the_form_renders_a_master_error_when_there_is_one(self):
@@ -474,9 +474,9 @@ class LastMasterAndTheViewsTests(TestCase):
             "partials/crm/usuarios/form.html",
             {
                 "form": {"username": "jefa", "display_name": "Jefa", "master": True},
-                "errors": {"master": "No puedes quitarle el rol de maestro al último usuario maestro que puede entrar."},
+                "errors": {"master": "Es el único usuario maestro: nombra a otro antes de quitarle el rol o desactivarlo."},
                 "edit_user": self.otro,
             },
         )
         self.assertIn('id="user-error-master"', html)
-        self.assertIn("último usuario maestro", html)
+        self.assertIn("único usuario maestro", html)

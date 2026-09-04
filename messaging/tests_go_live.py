@@ -168,3 +168,26 @@ class GoLiveTests(TestCase):
         self.teammate.set_unusable_password()
         self.teammate.save(update_fields=["password"])
         self.assertIn("Ninguna cuenta del equipo sobrevive", run())
+
+
+class StaffAccountsSurviveTests(TestCase):
+    """core.agents.is_app_user excludes Django staff (a /admin account is not
+    the Usuarios page's to manage). go_live must not read that exclusion as
+    "delete them" -- it deletes rows, and /admin access means colleague."""
+
+    @override_settings(APP_AGENTS="")
+    def test_a_staff_only_account_is_kept(self):
+        User = get_user_model()
+        staff = User.objects.create_user("adminweb", password="clave-larga")
+        staff.is_staff = True
+        staff.save()
+        self.assertFalse(agents.is_app_user(staff))   # not a Usuarios row...
+        call_command("go_live", "--yes", stdout=StringIO())
+        self.assertTrue(User.objects.filter(pk=staff.pk).exists())   # ...but kept
+
+    @override_settings(APP_AGENTS="")
+    def test_a_superuser_is_kept(self):
+        User = get_user_model()
+        root = User.objects.create_superuser("root", password="clave-larga")
+        call_command("go_live", "--yes", stdout=StringIO())
+        self.assertTrue(User.objects.filter(pk=root.pk).exists())

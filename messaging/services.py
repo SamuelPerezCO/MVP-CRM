@@ -9,9 +9,13 @@ Two entry points matter:
   is Django only), so it runs synchronously.
 * :func:`send_message` -- the only way the app sends a free-form text (or
   a quick reply's image). It is where the 24-hour window rule lives.
-* :func:`send_template` -- the one send allowed outside that window: a
-  pre-approved plantilla, which is how a conversation is started from our
-  side (see :func:`start_conversation`).
+* :func:`send_template` -- the only way out of a closed window: a
+  pre-approved plantilla with its {{n}} filled in, sent through the
+  provider's template call. It is also how a conversation is started from
+  our side (see :func:`start_conversation`).
+* :func:`submit_template` / :func:`sync_template_verdicts` -- the plantilla
+  catalogue's round trip to the provider: submit for approval, read the
+  verdicts back. No-ops on providers without a catalogue.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from core.models import Client
 
 from .models import Conversation, ConversationTag, Message, Tag
 from .providers.registry import get_provider
-from .providers.types import InboundEvent, MessageStatus, status_rank
+from .providers.types import InboundEvent, MessageStatus, TemplateStatus, status_rank
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +46,20 @@ class SendWindowClosed(Exception):
 class SendFailed(Exception):
     """The provider rejected or errored on a send. The Message row is kept
     with ``status=failed`` so the thread shows what happened."""
+
+
+class TemplateNotSendable(Exception):
+    """Raised when a plantilla cannot go out as a template message: it is
+    switched off, or Meta rejected it. A *pendiente* one is allowed through --
+    the MVP has no approval pipeline of its own, and the provider is the
+    authority on whether an unapproved name sends (the fake provider always
+    will, Meta will answer with an error that surfaces as SendFailed)."""
+
+
+class TemplateSubmissionFailed(Exception):
+    """The provider refused or errored on a template submission. The
+    plantilla row is kept, unsubmitted, so the editor's work is not lost --
+    the message says what Meta objected to."""
 
 
 # --- Sending ---------------------------------------------------------------
@@ -108,22 +126,34 @@ def send_message(
     return message
 
 
-def send_template(conversation: Conversation, template, user=None) -> Message:
-    """Send a WhatsApp plantilla in ``conversation`` and record it.
+def send_template(conversation: Conversation, template, values: dict, user=None) -> Message:
+    """Send plantilla ``template`` in ``conversation`` with its {{n}} filled
+    from ``values`` (``{"1": "Ana", "2": "#4512"}``), and record it.
 
-    The one send that works *outside* the 24h window -- it is how a
-    conversation starts (a client who has never written in) or restarts (one
-    who went quiet). The rendered body (samples substituted for {{n}}, see
-    core.plantillas.render_body) is what the thread shows; the provider gets
-    the template's name and its parameters, which is what Meta actually
-    delivers. Providers without a template mechanism render the same text.
+    This is the one send that ignores the 24-hour window -- that is the
+    entire reason template messages exist, and it is how a conversation is
+    started from our side (a client who has never written in) or restarted
+    (one who went quiet). The Message row stores the *rendered* text
+    (core.plantillas.render_with), so the thread reads as what the customer
+    received rather than as ``order_confirmation``.
 
-    No window check on purpose; that is the point of a template. Raises
-    :class:`SendFailed` when the provider errors (row kept as ``failed``).
+    ``values`` comes from the agent filling the send dialog, never from the
+    plantilla's editor samples: those are examples for Meta's reviewer, and
+    sending them would greet every customer as "Camila".
+
+    Same crash-safety shape as :func:`send_message`: the row is created
+    ``queued`` before the provider call and marked ``failed`` if it errors.
+    Raises :class:`TemplateNotSendable` for an inactive or rejected plantilla
+    and :class:`SendFailed` when the provider errors.
     """
-    from core import plantillas  # local: core imports messaging, not the reverse
+    from core import plantillas  # local: core imports this module
 
-    body = plantillas.render_body(template)
+    if not template.is_active:
+        raise TemplateNotSendable("La plantilla está desactivada.")
+    if template.status == TemplateStatus.REJECTED.value:
+        raise TemplateNotSendable("WhatsApp rechazó esta plantilla; no se puede enviar.")
+
+    body = plantillas.render_with(template, values)
     message = Message.objects.create(
         conversation=conversation,
         direction=Message.OUTBOUND,
@@ -132,14 +162,12 @@ def send_template(conversation: Conversation, template, user=None) -> Message:
         sent_by=user if getattr(user, "is_authenticated", False) else None,
     )
 
-    samples = template.body_sample_values or []
-    params = {str(index + 1): value for index, value in enumerate(samples) if value}
+    provider = get_provider()
+    params = {str(key): str(value) for key, value in values.items()}
     params["_language"] = template.language
-    # For providers with no template mechanism (Baileys), so they send the
+    # For providers with no template catalogue (Baileys), so they send the
     # message rather than the template's name -- see MessagingProvider.
     params["_rendered"] = body
-
-    provider = get_provider()
     try:
         provider_id = provider.send_template(
             to=conversation.contact.phone, template_name=template.name, params=params
@@ -147,7 +175,9 @@ def send_template(conversation: Conversation, template, user=None) -> Message:
     except Exception as exc:
         message.status = MessageStatus.FAILED.value
         message.save(update_fields=["status"])
-        logger.exception("send_template failed for conversation %s", conversation.pk)
+        logger.exception(
+            "send_template %s failed for conversation %s", template.name, conversation.pk
+        )
         raise SendFailed(str(exc)) from exc
 
     message.provider_message_id = provider_id
@@ -163,6 +193,83 @@ def start_conversation(contact: Client, channel: str = "whatsapp") -> Conversati
     channel, or a fresh row. Same rule as inbound routing, so an agent
     starting a chat and a customer writing in land in the same place."""
     return _get_or_create_open_conversation(contact, channel)
+
+
+# --- Template catalogue ------------------------------------------------------
+
+
+def submit_template(template) -> bool:
+    """Submit a freshly saved plantilla to the provider for approval.
+
+    Returns True when it was submitted (``provider_template_id`` is set) and
+    False when the active provider keeps no catalogue -- the plantilla then
+    simply stays a local record, which is what every provider but Meta means.
+    Raises :class:`TemplateSubmissionFailed` when the provider objects; the
+    caller decides how to show that, the row is already saved either way.
+    """
+    from core import plantillas  # local: core imports this module
+
+    provider = get_provider()
+    try:
+        provider_id = provider.create_template(plantillas.template_spec(template))
+    except Exception as exc:
+        logger.exception("create_template %s failed", template.name)
+        raise TemplateSubmissionFailed(str(exc)) from exc
+
+    if provider_id is None:
+        return False
+    template.provider_template_id = provider_id
+    template.status = TemplateStatus.PENDING.value
+    template.save(update_fields=["provider_template_id", "status"])
+    return True
+
+
+def sync_template_verdicts() -> int:
+    """Read every approval verdict the provider has and write the changed
+    ones onto the matching plantillas. Returns how many rows changed.
+
+    Matched by (name, language) -- the CRM's own uniqueness key and Meta's --
+    so a template created straight in Meta's console still reconciles with a
+    plantilla of the same name here, and one whose submission never recorded
+    an id catches up. Plantillas the provider does not know are left alone:
+    absence is not a verdict (the catalogue may have been created after them,
+    or the sync may be talking to a different WABA than the one they went to).
+
+    Every matched row gets ``status_synced_at`` stamped even when nothing
+    else moved, so the page can say *when* "Pendiente" was last true.
+    """
+    from core.models import MessageTemplate  # local: core imports this module
+
+    verdicts = get_provider().template_verdicts()
+    if not verdicts:
+        return 0
+
+    by_key = {(verdict.name, verdict.language): verdict for verdict in verdicts}
+    now = timezone.now()
+    changed = 0
+    for template in MessageTemplate.objects.filter(
+        name__in={verdict.name for verdict in verdicts}
+    ):
+        verdict = by_key.get((template.name, template.language))
+        if verdict is None:
+            continue
+        fields = ["status_synced_at"]
+        template.status_synced_at = now
+        if template.status != verdict.status.value:
+            template.status = verdict.status.value
+            fields.append("status")
+        if template.rejection_reason != verdict.rejection_reason:
+            template.rejection_reason = verdict.rejection_reason
+            fields.append("rejection_reason")
+        if verdict.provider_template_id and (
+            template.provider_template_id != verdict.provider_template_id
+        ):
+            template.provider_template_id = verdict.provider_template_id
+            fields.append("provider_template_id")
+        template.save(update_fields=fields)
+        if len(fields) > 1:
+            changed += 1
+    return changed
 
 
 # --- Inbound processing -----------------------------------------------------
@@ -295,24 +402,60 @@ def _apply_status_event(event: InboundEvent) -> None:
     message.save(update_fields=["status"])
 
 
+def canonical_phone(phone: str) -> str:
+    """A phone number in the one shape this app stores: ``+`` then digits.
+
+    WhatsApp reports a ``wa_id`` with no ``+`` (``573001112233``) and people
+    type numbers with spaces and dashes, so the same customer reaches the
+    database under several spellings. Everything downstream compares phones
+    as plain strings -- ``_upsert_contact``'s lookup, the wa.me link, the
+    country flag -- so one customer with two spellings is two contacts, two
+    conversation threads and a send to a number the provider rejects.
+
+    Returns ``""`` for input with no digits at all, which callers treat as
+    "nothing to match on".
+    """
+    digits = "".join(character for character in phone if character.isdigit())
+    return f"+{digits}" if digits else ""
+
+
 def _upsert_contact(phone: str, contact_name: str, channel: str) -> Client:
     """Find the Client for a phone number, creating one on first contact.
 
     ``phone`` is whichever side of the event is the customer -- ``from_number``
     for an inbound message, ``to_number`` for one of ours sent outside the
-    Inbox (see :func:`_apply_outbound_event`)."""
-    contact = Client.objects.filter(phone=phone).first()
+    Inbox (see :func:`_apply_outbound_event`).
+
+    The lookup accepts the number as given *and* as stored: rows also arrive
+    from outside this app (see the README's external writer contract), and a
+    writer that stored the raw ``wa_id`` would otherwise get a duplicate
+    contact every time the app itself saw the same customer. New contacts are
+    always written canonically, so the ambiguity does not spread.
+    """
+    canonical = canonical_phone(phone)
+    # Both spellings, one query. Order the candidates so an exact hit wins
+    # when a database somehow holds both.
+    candidates = [value for value in (phone, canonical, canonical.lstrip("+")) if value]
+    contact = next(
+        (
+            found
+            for value in candidates
+            for found in Client.objects.filter(phone=value)[:1]
+        ),
+        None,
+    )
     if contact is not None:
         return contact
 
-    name = contact_name.strip() or phone
+    stored = canonical or phone
+    name = contact_name.strip() or stored
     return Client.objects.create(
         first_name=name[:80],
-        phone=phone,
+        phone=stored,
         channel=_client_channel(channel),
         # +57 numbers get the Colombian flag in the CRM table; other prefixes
         # are left blank rather than guessed.
-        country="CO" if phone.startswith("+57") else "",
+        country="CO" if stored.startswith("+57") else "",
     )
 
 

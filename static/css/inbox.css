@@ -1072,3 +1072,127 @@
 
 /* Generic icon default; individual contexts override the size. */
 .icon { display: block; }
+
+/* ==========================================================================
+   Enviar plantilla — the dialog behind the composer's second button.
+   Own compact skin, like .tag-dialog / .qr-dialog: a form column, not the
+   wide .modal chooser.
+   ========================================================================== */
+
+/* Tinted so the two composer buttons read as different actions: canned
+   text to *fill* the box vs. a template message that *sends*. */
+.composer__quick--template { color: var(--accent); border-color: #cfe0fa; }
+.composer__quick--template:hover { background: #eef4fd; color: var(--accent); }
+
+/* In the closed-window notice the button sits at the end of the row. */
+.composer--closed .composer__quick--template { margin-inline-start: auto; }
+
+.tpl-send {
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 20px;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 16px 48px rgb(15 30 50 / 25%);
+}
+
+.tpl-send::backdrop { background: rgb(15 30 50 / 35%); }
+
+.tpl-send__title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tpl-send__sub {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* The scroll lives here so the actions row stays visible on short screens. */
+.tpl-send__body {
+  max-height: min(58vh, 460px);
+  overflow-y: auto;
+  padding-inline-end: 4px;
+}
+
+.tpl-send__label {
+  display: block;
+  margin: 12px 0 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.tpl-send__select {
+  display: block;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.tpl-send__select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.tpl-send__fields { margin: 0; padding: 0; border: 0; min-width: 0; }
+
+.tpl-send__input { display: block; width: 100%; height: 36px; }
+
+.tpl-send__hint,
+.tpl-send__error,
+.tpl-send__warn {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tpl-send__hint { color: var(--muted); }
+.tpl-send__error { color: #9e2424; font-weight: 600; }
+
+/* A pendiente plantilla: sendable, with a caveat -- the same amber the
+   picker's Pendiente badge wears. */
+.tpl-send__warn {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fdf3e0;
+  color: #92600a;
+}
+
+/* Reads like the bubble it will become. */
+.tpl-send__preview {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #e7f6e3;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tpl-send__empty {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.tpl-send__empty a { color: var(--accent); }
+
+.tpl-send__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-block-start: 18px;
+}

@@ -31,12 +31,14 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth import login as auth_login, logout as auth_logout
+from django.contrib.auth import update_session_auth_hash
 from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Count, Q
 
 from messaging import services as messaging_services
 from messaging.models import Conversation, Tag
+from messaging.providers.base import MessagingProvider as MessagingProviderBase
 
 from . import (
     agents,
@@ -941,6 +943,136 @@ def inbox_quick_replies(request, conversation_id: int):
     )
 
 
+# --- Enviar plantilla ---------------------------------------------------------
+
+
+def _sendable_templates():
+    """The plantillas the Enviar plantilla dialog offers: active and not
+    rechazada. Pendientes are in -- the MVP has no approval pipeline of its
+    own, so shutting them out would hide every plantilla ever created here;
+    the provider is the authority on whether an unapproved one goes."""
+    return (
+        MessageTemplate.objects.filter(is_active=True)
+        .exclude(status="rechazada")
+        .order_by("name")
+    )
+
+
+def _template_variables(template, values=None) -> list[dict]:
+    """One entry per {{n}} in the body with the value its input should show.
+
+    A fresh dialog (``values`` is None) prefills each with the editor's
+    sample. A rejected submit passes what was typed, blanks included -- and
+    a blank must come back *blank*, not quietly refilled with the sample, or
+    "completa todas las variables" would point at a form with nothing empty.
+    """
+    samples = template.body_sample_values or []
+    return [
+        {
+            "number": number,
+            "value": (
+                values.get(str(number), "")
+                if values is not None
+                else (samples[number - 1] if number - 1 < len(samples) else "")
+            ),
+        }
+        for number in plantillas.body_variables(template.body)
+    ]
+
+
+def _template_send_body_context(conversation, selected=None, values=None, error=None) -> dict:
+    templates = list(_sendable_templates())
+    return {
+        "active_conversation": conversation,
+        "entries": [
+            {
+                "template": template,
+                "variables": _template_variables(
+                    template, values if selected == template else None
+                ),
+            }
+            for template in templates
+        ],
+        "selected_id": selected.pk if selected else (templates[0].pk if templates else None),
+        "send_form_error": error,
+    }
+
+
+def inbox_template_send(request, conversation_id: int):
+    """The Enviar plantilla dialog for one conversation: GET renders it, POST
+    sends the chosen plantilla with its {{n}} filled in.
+
+    This is the way out of a closed 24h window -- the only send that works
+    there -- but it is offered inside the window too, since a plantilla sent
+    as a *template* (buttons, header, Meta's own rendering) is not the same
+    thing as its wording pasted into the composer.
+
+    Answers: GET -> the <dialog> (dropped into the composer's slot and opened
+    by shell.js); a valid POST -> the refreshed thread, like inbox_send, with
+    the dialog closing on success; a POST missing a variable value -> 422
+    with just the dialog's body re-rendered into place, error included, so
+    the agent fixes the blank instead of starting over.
+    """
+    conversation = get_object_or_404(
+        Conversation.objects.select_related("contact"), pk=conversation_id
+    )
+
+    if request.method == "GET":
+        context = _template_send_body_context(conversation)
+        return HttpResponse(
+            render_to_string(
+                "partials/inbox/template_send_dialog.html", context, request=request
+            )
+        )
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["GET", "POST"])
+
+    template = _sendable_templates().filter(pk=request.POST.get("template") or 0).first()
+    if template is None:
+        return _template_send_rejected(
+            request, conversation, None, {}, "Elige una plantilla de la lista."
+        )
+
+    values = {
+        str(number): (request.POST.get(f"var_{template.pk}_{number}") or "").strip()
+        for number in plantillas.body_variables(template.body)
+    }
+    if any(not value for value in values.values()):
+        return _template_send_rejected(
+            request, conversation, template, values,
+            "Completa todas las variables antes de enviar.",
+        )
+
+    send_error = None
+    try:
+        messaging_services.send_template(conversation, template, values, request.user)
+    except messaging_services.TemplateNotSendable as exc:
+        return _template_send_rejected(request, conversation, template, values, str(exc))
+    except messaging_services.SendFailed:
+        # Same surface as a failed free-form send: the thread shows it.
+        send_error = "No se pudo enviar la plantilla. Inténtalo de nuevo."
+
+    context = _thread_context(conversation)
+    context["send_error"] = send_error
+    return HttpResponse(
+        render_to_string("partials/inbox/chat_messages.html", context, request=request)
+    )
+
+
+def _template_send_rejected(request, conversation, template, values, error) -> HttpResponse:
+    """422 + HX-Retarget into the open dialog -- the same shape the
+    Respuestas rápidas dialog uses, so the form (and the agent's typing)
+    survives the swap."""
+    context = _template_send_body_context(conversation, template, values, error)
+    response = HttpResponse(
+        render_to_string("partials/inbox/template_send_body.html", context, request=request),
+        status=422,
+    )
+    response["HX-Retarget"] = "#tpl-send-body"
+    response["HX-Reswap"] = "innerHTML"
+    return response
+
+
 # --- Nuevo chat / plantillas ------------------------------------------------
 #
 # WhatsApp's rule: a business may only *start* a conversation (or reopen one
@@ -954,24 +1086,30 @@ def inbox_quick_replies(request, conversation_id: int):
 
 
 def _template_options():
-    """The plantillas the picker offers: active, not rejected, body rendered
-    with its samples. Pendientes are included with a badge (the MVP has no
-    approval pipeline -- see inbox_quick_replies' history) but flagged; a
-    real Meta send of an unapproved template is rejected by the API."""
-    templates = (
-        MessageTemplate.objects.filter(is_active=True)
-        .exclude(status="rechazada")
-        .order_by("name")
-    )
+    """The plantillas the Nuevo chat picker offers, body rendered with its
+    samples for the preview line. The same queryset send_template accepts,
+    so nothing on offer can be refused as not sendable."""
     return [
         {"template": template, "body": plantillas.render_body(template)}
-        for template in templates
+        for template in _sendable_templates()
     ]
 
 
-def _new_chat_response(request, client=None, error=None):
-    """The Nuevo chat modal body: a searchable client list and the
-    plantilla picker."""
+def _new_chat_response(request, client=None, error=None, template=None):
+    """The Nuevo chat modal body: a searchable client list, the plantilla
+    picker and -- once a plantilla is chosen -- an input per {{n}}.
+
+    ``template`` is the plantilla a rejected submit had selected, so the
+    re-render comes back on the same one with what was typed still there.
+    """
+    values = None
+    if template is not None and request.method == "POST":
+        values = {
+            str(entry["number"]): (
+                request.POST.get(f"var_{template.pk}_{entry['number']}") or ""
+            ).strip()
+            for entry in _template_variables(template)
+        }
     return HttpResponse(
         render_to_string(
             "partials/inbox/new_chat.html",
@@ -979,6 +1117,11 @@ def _new_chat_response(request, client=None, error=None):
                 "clients": Client.objects.order_by("first_name", "last_name"),
                 "selected_client": client,
                 "template_options": _template_options(),
+                "selected_template": template,
+                "new_chat_url": reverse("inbox_new_chat"),
+                "template_variables": (
+                    _template_variables(template, values) if template else []
+                ),
                 "new_chat_error": error,
             },
             request=request,
@@ -998,7 +1141,8 @@ def inbox_new_chat(request):
     """
     if request.method == "GET":
         client = Client.objects.filter(pk=request.GET.get("cliente") or 0).first()
-        return _new_chat_response(request, client)
+        chosen = _sendable_templates().filter(pk=request.GET.get("plantilla") or 0).first()
+        return _new_chat_response(request, client, None, chosen)
     if request.method != "POST":
         return HttpResponseNotAllowed(["GET", "POST"])
 
@@ -1015,12 +1159,28 @@ def inbox_new_chat(request):
     if template is None:
         return _new_chat_response(request, client, "Elige una plantilla para abrir la conversación.")
 
+    # The agent fills the plantilla's {{n}} for THIS client; the editor's
+    # samples are examples for Meta's reviewer, not a greeting for a stranger.
+    values = {
+        str(entry["number"]): (
+            request.POST.get(f"var_{template.pk}_{entry['number']}") or ""
+        ).strip()
+        for entry in _template_variables(template)
+    }
+    if any(not value for value in values.values()):
+        return _new_chat_response(
+            request, client, "Completa todas las variables de la plantilla.", template
+        )
+
     conversation = messaging_services.start_conversation(client, "whatsapp")
     try:
-        messaging_services.send_template(conversation, template, request.user)
+        messaging_services.send_template(conversation, template, values, request.user)
+    except messaging_services.TemplateNotSendable as exc:
+        return _new_chat_response(request, client, str(exc), template)
     except messaging_services.SendFailed:
+        # The provider's own text is for the log, not for the agent.
         return _new_chat_response(
-            request, client, "No se pudo enviar la plantilla. Inténtalo de nuevo."
+            request, client, "No se pudo enviar la plantilla. Inténtalo de nuevo.", template
         )
 
     _mark_read(conversation)
@@ -1033,40 +1193,6 @@ def inbox_new_chat(request):
     )
     return HttpResponse(
         render_to_string("partials/inbox/new_chat_opened.html", context, request=request)
-    )
-
-
-def inbox_send_template(request, conversation_id: int):
-    """Send a plantilla into an existing conversation -- the closed
-    composer's picker posts here. Answers with the refreshed thread, like
-    inbox_send, and the composer itself swaps out-of-band: the reply that
-    just went out doesn't reopen the window (only the customer can), but the
-    thread now shows what was sent."""
-    if request.method != "POST":
-        return HttpResponseNotAllowed(["POST"])
-    conversation = get_object_or_404(
-        Conversation.objects.select_related("contact"), pk=conversation_id
-    )
-    template = (
-        MessageTemplate.objects.filter(
-            pk=request.POST.get("plantilla") or 0, is_active=True
-        )
-        .exclude(status="rechazada")
-        .first()
-    )
-    send_error = None
-    if template is None:
-        send_error = "Elige una plantilla."
-    else:
-        try:
-            messaging_services.send_template(conversation, template, request.user)
-        except messaging_services.SendFailed:
-            send_error = "No se pudo enviar la plantilla. Inténtalo de nuevo."
-
-    context = _thread_context(conversation)
-    context["send_error"] = send_error
-    return HttpResponse(
-        render_to_string("partials/inbox/chat_messages.html", context, request=request)
     )
 
 
@@ -1571,6 +1697,12 @@ def usuario_form(request, user_id: int | None = None):
         return _forbidden_fragment(request)
     User = get_user_model()
     user = get_object_or_404(User, pk=user_id) if user_id else None
+    if user is not None and (user.is_staff or user.is_superuser):
+        # A /admin account is not this page's to hand out -- see
+        # core.agents._is_app_user.
+        return _user_saved_response(
+            request, f"{user.username} es una cuenta de Django admin; no se gestiona aquí."
+        )
     if user is not None and agents.is_env_agent(user):
         return _user_saved_response(
             request, f"{user.username} se configura en el entorno (APP_AGENTS), no aquí."
@@ -1591,12 +1723,16 @@ def usuario_form(request, user_id: int | None = None):
                     # a team where nobody can manage anyone.
                     master = state["master"] or user.pk == request.user.pk
                     saved = agents.update_user(user, state["display_name"], master, state["password"])
+                    if state["password"] and saved.pk == request.user.pk:
+                        # Changing your own password rotates the session auth
+                        # hash; without this the very next request logs you out.
+                        update_session_auth_hash(request, saved)
                     notice = f"Usuario actualizado: {saved.get_full_name() or saved.username}."
-            except agents.UsernameTaken as exc:
-                errors["username"] = str(exc)
             except agents.LastMaster as exc:
+                # A message about the master role belongs beside the master
+                # checkbox, not under the username field it says nothing about.
                 errors["master"] = str(exc)
-            except ValueError as exc:
+            except (agents.UsernameTaken, ValueError) as exc:
                 errors["username"] = str(exc)
             else:
                 return _user_saved_response(request, notice)
@@ -1622,7 +1758,7 @@ def usuario_active(request, user_id: int):
         )
     try:
         agents.set_user_active(user, active)
-    except ValueError as exc:
+    except (agents.LastMaster, ValueError) as exc:
         return HttpResponse(_user_table_fragment(request, str(exc)))
     label = "restaurado" if active else "desactivado"
     return HttpResponse(
@@ -2048,6 +2184,41 @@ def respuesta_toggle(request, reply_id: int):
     )
 
 
+def plantillas_sync(request):
+    """Pull approval verdicts from the provider and re-render the table.
+
+    Behind the "Sincronizar con WhatsApp" button. Meta reviews templates on
+    its own clock and the CRM has no webhook for the verdict, so this is how
+    Pendiente becomes Aceptada (or Rechazada, with the reason). On a provider
+    without a catalogue it says so instead of pretending to have checked.
+    """
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    provider = messaging_services.get_provider()
+    try:
+        changed = messaging_services.sync_template_verdicts()
+    except Exception as exc:
+        notice = f"No se pudo consultar a WhatsApp: {exc}"
+    else:
+        if type(provider).template_verdicts is MessagingProviderBase.template_verdicts:
+            # Inherited the base no-op: there is nothing to consult.
+            notice = (
+                f"El proveedor activo ({provider.name}) no tiene catálogo de "
+                "plantillas que consultar."
+            )
+        elif changed:
+            notice = f"Estados actualizados: {changed} plantilla(s) cambiaron."
+        else:
+            notice = "Estados al día: ninguna plantilla cambió."
+
+    context = _plantillas_context(request)
+    context["plantillas_notice"] = notice
+    return HttpResponse(
+        render_to_string("partials/mensajeria/template_table.html", context, request=request)
+    )
+
+
 def _mensajeria_page(request, panel_template: str, panel_context: dict) -> HttpResponse:
     """The full mensajería page (base.html + sidebar + section) with the
     Plantillas panel swapped for ``panel_template``.
@@ -2128,14 +2299,25 @@ def plantilla_editor(request):
                     template.header_media.delete(save=False)
                 errors["name"] = "Ya existe una plantilla con este nombre en este idioma."
             else:
-                # TODO(meta): submit the new template to the Meta Cloud API
-                # here once credentials exist (settings.META_ACCESS_TOKEN et
-                # al.). Until then every template simply stays Pendiente.
+                # Saved locally first, submitted second: a Meta hiccup must
+                # not cost the editor's work. On a provider without a
+                # catalogue (fake, Twilio, Baileys) this is a no-op and the
+                # plantilla simply stays a local Pendiente record.
+                notice = None
+                try:
+                    messaging_services.submit_template(template)
+                except messaging_services.TemplateSubmissionFailed as exc:
+                    notice = (
+                        f"La plantilla «{template.name}» se guardó, pero WhatsApp "
+                        f"no la aceptó para revisión: {exc}"
+                    )
                 if _is_htmx(request):
+                    context = _plantillas_context(request)
+                    context["plantillas_notice"] = notice
                     return HttpResponse(
                         render_to_string(
                             "partials/mensajeria/panels/plantillas-whatsapp.html",
-                            _plantillas_context(request),
+                            context,
                             request=request,
                         )
                     )

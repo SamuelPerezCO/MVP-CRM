@@ -54,6 +54,22 @@ class Client(models.Model):
         return letters or "?"
 
     @property
+    def icon_template(self) -> str:
+        """Brand mark for this client's channel, or ``""`` when there is none
+        to draw.
+
+        Empty rather than a guess: the Clientes table used to build the
+        template path out of the column itself, so a channel this app does
+        not know -- and rows do arrive from outside it, see the README's
+        external writer contract -- raised TemplateDoesNotExist and took the
+        whole CRM section down. The label still renders; only the icon is
+        dropped.
+        """
+        if self.channel not in dict(self.CHANNEL_CHOICES):
+            return ""
+        return f"icons/brands/{self.channel}.svg"
+
+    @property
     def has_whatsapp(self) -> bool:
         """Whether to offer the green 'Iniciar conversación' link on this row."""
         return self.channel == "whatsapp"
@@ -223,6 +239,20 @@ class MessageTemplate(models.Model):
         "estado", max_length=10, choices=STATUS_CHOICES, default="pendiente"
     )
     rejection_reason = models.TextField("motivo de rechazo", blank=True)
+
+    #: The id Meta assigned when the plantilla was submitted for approval.
+    #: Blank means it was never submitted (no META_WABA_ID at save time, or
+    #: the submission failed) -- the status sync matches by (name, language)
+    #: anyway, so a template created in Meta's own console still reconciles.
+    provider_template_id = models.CharField(
+        "id en el proveedor", max_length=64, blank=True
+    )
+    #: When the approval state was last read back from the provider. Null
+    #: until the first sync; the Plantillas page shows it so "Pendiente"
+    #: reads as "pending as of <when>", not as a guess.
+    status_synced_at = models.DateTimeField(
+        "estado sincronizado", null=True, blank=True
+    )
 
     created_by = models.CharField("creado por", max_length=80, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

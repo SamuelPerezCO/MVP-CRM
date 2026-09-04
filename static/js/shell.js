@@ -254,12 +254,6 @@
   document.addEventListener("htmx:afterRequest", function (event) {
     var el = event.target.closest && event.target.closest("[data-close-on-success]");
     if (!el || !event.detail.successful) return;
-    // A 2xx can still carry a validation error (the Usuarios dialogs answer
-    // «Ese usuario ya existe» that way, with the message swapped into the
-    // dialog out-of-band). The X-Form-Error header keeps the dialog open so
-    // the person fixes one field instead of retyping four.
-    var xhr = event.detail.xhr;
-    if (xhr && xhr.getResponseHeader && xhr.getResponseHeader("X-Form-Error")) return;
     var dialog = el.closest("dialog");
     if (dialog && dialog.open) dialog.close();
     if (el.tagName === "FORM") {
@@ -755,5 +749,127 @@
     open.open = false;
     var summary = open.querySelector("summary");
     if (summary) summary.focus();
+  });
+
+  /* -------------------------------------------------------------------------
+   * Enviar plantilla ([data-template-send-form]): the Inbox dialog that sends
+   * a plantilla as a real WhatsApp template message.
+   *
+   * The dialog arrives by HTMX (fetched fresh on every click, into
+   * #tpl-send-slot), so opening it is a swap concern: any swapped-in
+   * <dialog data-open-on-swap> is shown modally. Inside, the <select> picks
+   * which plantilla's fieldset is live -- hidden AND disabled together, so
+   * the other fieldsets' required inputs neither block nor submit -- and the
+   * preview re-renders {{n}} from the inputs as they are typed.
+   * ---------------------------------------------------------------------- */
+
+  document.addEventListener("htmx:afterSwap", function (event) {
+    var target = event.detail.target;
+    if (!target || !target.querySelector) return;
+    var dialog = target.querySelector("dialog[data-open-on-swap]");
+    if (dialog && !dialog.open) {
+      dialog.showModal();
+      syncTemplateSend(dialog);
+    }
+  });
+
+  function syncTemplateSend(scope) {
+    var form = scope.querySelector ? scope.querySelector("[data-template-send-form]") : null;
+    if (!form && scope.matches && scope.matches("[data-template-send-form]")) form = scope;
+    if (!form) return;
+    var pick = form.querySelector("[data-template-pick]");
+    if (!pick) return;
+    form.querySelectorAll("[data-template-fields]").forEach(function (fieldset) {
+      var live = fieldset.dataset.templateFields === pick.value;
+      fieldset.hidden = !live;
+      fieldset.disabled = !live;
+      if (live) syncTemplatePreviewText(fieldset);
+    });
+  }
+
+  // Mirrors core.plantillas.render_with: every {{n}} takes the value typed
+  // for n, or stays as {{n}} so a blank is visible before Enviar.
+  function syncTemplatePreviewText(fieldset) {
+    var preview = fieldset.querySelector("[data-template-preview]");
+    if (!preview) return;
+    var values = {};
+    fieldset.querySelectorAll("[data-template-var]").forEach(function (input) {
+      values[input.dataset.templateVar] = input.value;
+    });
+    preview.textContent = (fieldset.dataset.templateBody || "").replace(
+      /\{\{([1-9]\d*)\}\}/g,
+      function (whole, number) { return values[number] || whole; }
+    );
+  }
+
+  document.addEventListener("change", function (event) {
+    if (event.target.matches && event.target.matches("[data-template-pick]")) {
+      syncTemplateSend(event.target.closest("[data-template-send-form]"));
+    }
+  });
+
+  document.addEventListener("input", function (event) {
+    var input = event.target.closest && event.target.closest("[data-template-var]");
+    if (input) syncTemplatePreviewText(input.closest("[data-template-fields]"));
+  });
+
+  // A rejected submit re-renders #tpl-send-body (422 + HX-Retarget, see the
+  // beforeSwap rule below); the fresh markup needs its live fieldset picked.
+  document.addEventListener("htmx:afterSwap", function (event) {
+    if (event.detail.target && event.detail.target.id === "tpl-send-body") {
+      syncTemplateSend(event.detail.target.closest("[data-template-send-form]"));
+    }
+  });
+
+  /* -------------------------------------------------------------------------
+   * Respuestas rápidas admin ([data-quickreply-form]): the create/edit dialog
+   * on Configuración de mensajería.
+   *
+   * Three jobs, all delegated so they survive the panel being re-rendered:
+   * a rejected submit has to land back *inside* the open dialog, the atajo
+   * has to be typed in the shape the server stores, and a chosen photo has
+   * to be visible before it is uploaded.
+   * ---------------------------------------------------------------------- */
+
+  // A rejected save answers 422 (see core.views._respuestas_errors_response)
+  // with the dialog's fields. htmx drops 4xx bodies by default, so opt these
+  // in -- but leave isError alone: `successful` stays false, which is what
+  // keeps [data-close-on-success] from treating a rejection as a save.
+  document.addEventListener("htmx:beforeSwap", function (event) {
+    if (event.detail.xhr.status === 422) event.detail.shouldSwap = true;
+  });
+
+  // Mirrors core.respuestas.SHORTCUT_RE / normalize_shortcut. The server
+  // re-does all of this; here it just means nobody types a "/" or a capital
+  // and then gets told off for it.
+  document.addEventListener("input", function (event) {
+    var field = event.target.closest("[data-quickreply-shortcut]");
+    if (!field) return;
+    var cleaned = field.value.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+    if (cleaned === field.value) return;
+    var caret = field.selectionStart - (field.value.length - cleaned.length);
+    field.value = cleaned;
+    field.setSelectionRange(caret, caret);
+  });
+
+  document.addEventListener("change", function (event) {
+    var input = event.target.closest("[data-quickreply-photo]");
+    if (!input) return;
+    var preview = input.parentElement.querySelector("[data-quickreply-preview]");
+    if (!preview) return;
+    // Revoke the previous object URL before replacing it: without this every
+    // re-pick leaks the last file for the life of the document.
+    if (preview.dataset.objectUrl) URL.revokeObjectURL(preview.dataset.objectUrl);
+    var file = input.files && input.files[0];
+    if (!file) {
+      delete preview.dataset.objectUrl;
+      preview.removeAttribute("src");
+      preview.hidden = true;
+      return;
+    }
+    var url = URL.createObjectURL(file);
+    preview.dataset.objectUrl = url;
+    preview.src = url;
+    preview.hidden = false;
   });
 })();
