@@ -95,9 +95,20 @@ pantalla de gestión de usuarios ni registro:
 APP_AGENTS=Admin:cambia-esta-clave:Admin,Samuel:1234:Samuel
 ```
 
-Entradas separadas por coma, cada una `usuario:contraseña:Nombre` (el nombre
-visible es opcional y por defecto es el usuario). Las contraseñas no pueden
-llevar `:` ni `,`, que son los separadores.
+Entradas separadas por coma, cada una `usuario:hash:Nombre` (el nombre visible
+es opcional y por defecto es el usuario). El campo del medio es un **hash**, no
+la contraseña en claro:
+
+```
+python manage.py hashear_clave Samuel
+```
+
+pide la contraseña por terminal (no queda en el historial del shell) e imprime
+la entrada lista para pegar. Una contraseña en claro ahí sigue funcionando —
+un redespliegue nunca puede dejar al equipo fuera — pero `manage.py check`
+avisa de cada agente que siga así (`core.W001`): quien pueda leer el entorno
+(el panel de Vercel, un log de CI, un `.env` compartido) tiene un login válido.
+Ni el hash ni la contraseña pueden llevar `:` ni `,`, que son los separadores.
 
 Al iniciar sesión se abre una sesión real de `django.contrib.auth` contra un
 `User` espejo de ese agente ([core/agents.py](core/agents.py)), creado bajo

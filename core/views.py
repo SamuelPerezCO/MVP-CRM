@@ -31,6 +31,7 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth import login as auth_login, logout as auth_logout
+from django.contrib.auth import update_session_auth_hash
 from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Count, Q
@@ -1696,6 +1697,12 @@ def usuario_form(request, user_id: int | None = None):
         return _forbidden_fragment(request)
     User = get_user_model()
     user = get_object_or_404(User, pk=user_id) if user_id else None
+    if user is not None and (user.is_staff or user.is_superuser):
+        # A /admin account is not this page's to hand out -- see
+        # core.agents._is_app_user.
+        return _user_saved_response(
+            request, f"{user.username} es una cuenta de Django admin; no se gestiona aquí."
+        )
     if user is not None and agents.is_env_agent(user):
         return _user_saved_response(
             request, f"{user.username} se configura en el entorno (APP_AGENTS), no aquí."
@@ -1716,10 +1723,12 @@ def usuario_form(request, user_id: int | None = None):
                     # a team where nobody can manage anyone.
                     master = state["master"] or user.pk == request.user.pk
                     saved = agents.update_user(user, state["display_name"], master, state["password"])
+                    if state["password"] and saved.pk == request.user.pk:
+                        # Changing your own password rotates the session auth
+                        # hash; without this the very next request logs you out.
+                        update_session_auth_hash(request, saved)
                     notice = f"Usuario actualizado: {saved.get_full_name() or saved.username}."
-            except agents.UsernameTaken as exc:
-                errors["username"] = str(exc)
-            except ValueError as exc:
+            except (agents.UsernameTaken, agents.LastMaster, ValueError) as exc:
                 errors["username"] = str(exc)
             else:
                 return _user_saved_response(request, notice)
@@ -1745,7 +1754,7 @@ def usuario_active(request, user_id: int):
         )
     try:
         agents.set_user_active(user, active)
-    except ValueError as exc:
+    except (agents.LastMaster, ValueError) as exc:
         return HttpResponse(_user_table_fragment(request, str(exc)))
     label = "restaurado" if active else "desactivado"
     return HttpResponse(
