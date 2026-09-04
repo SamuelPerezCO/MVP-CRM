@@ -167,6 +167,24 @@ Cuando lleguen credenciales reales de Twilio o Meta:
 
 El webhook verifica la firma antes de tocar el payload (401 si es inválida), es idempotente por `provider_message_id` (los reintentos del proveedor no duplican mensajes) y siempre responde 200 tras autenticar, registrando errores en el log en lugar de provocar tormentas de reintentos. El envío de texto libre está bloqueado fuera de la ventana de 24 horas ([messaging/services.py](messaging/services.py)) — fuera de ella solo cabe `send_template`, igual que en la plataforma real.
 
+## Lo que cuesta cada plantilla
+
+Escribir a un cliente fuera de la ventana de 24 horas se hace con una plantilla, y Meta cobra cada envío según la categoría de la plantilla y el mercado del destinatario. El CRM lleva esa cuenta.
+
+[messaging/meta_rates.py](messaging/meta_rates.py) trae la tarifa publicada por Meta — la vigente y la ya anunciada — y [messaging/pricing.py](messaging/pricing.py) elige la tarjeta por fecha, así que el precio cambia solo el día que entra en vigor una nueva. El mercado sale del indicativo del teléfono, con las dos trampas que cuestan dinero resueltas: gana el prefijo más largo (+507 empieza por +50, y +51 es Perú), y +1 no es un solo mercado (República Dominicana, Jamaica y Puerto Rico lo comparten con EE. UU. y Canadá pero facturan como resto de Latinoamérica).
+
+El precio que el CRM calcula antes de enviar es una estimación. Meta dice lo que cobró de verdad en el recibo de entrega, y el CRM la corrige con eso: un envío que resultó gratis baja a cero, y una plantilla que Meta recategorizó se vuelve a tarifar con **su** categoría, usando la tarjeta vigente el día del envío y no la de hoy.
+
+Para contrastar contra la contabilidad de Meta:
+
+```bash
+python manage.py meta_spend --month 2026-09    # por defecto, el mes en curso
+```
+
+Lee las analíticas de facturación de la cuenta de WhatsApp y las compara con lo que el CRM tiene guardado, señalando dónde difieren. Necesita `MESSAGING_PROVIDER=meta`, `META_WABA_ID` y un token con permiso de lectura sobre la cuenta.
+
+Si tu cuenta paga otras tarifas (un contrato con un BSP, un precio promocional) o factura en otra moneda, `MESSAGING_TEMPLATE_RATES` se superpone fila por fila sobre la tarjeta de Meta; ver [.env.example](.env.example).
+
 ## Escribir en la base de datos desde fuera (n8n u otra automatización)
 
 Esta base de datos es compartida: además de esta app, una automatización
