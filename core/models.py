@@ -487,3 +487,38 @@ class CalendarEvent(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+
+class StoredFile(models.Model):
+    """One uploaded file, kept in the database instead of on disk.
+
+    Vercel's functions have no writable filesystem, so ``MEDIA_ROOT`` is not
+    an option in production. The project's first answer to that is Vercel
+    Blob (``core.storage.VercelBlobStorage``); this model backs the fallback
+    for a deployment that has no Blob store connected, where the database is
+    the only writable thing the app has. See ``core.storage.DatabaseStorage``.
+
+    ``name`` is the storage key ("respuestas/foto.png") and stays exactly what
+    the caller asked for, so ``exists()`` can answer about a deterministic
+    name -- the Meta webhook depends on that to stay idempotent across
+    retries. ``token`` is what appears in the URL instead: the keys are
+    guessable ("plantillas/logo.png"), and these files are served without
+    authentication because WhatsApp itself has to fetch them, so the public
+    handle is random rather than the name.
+    """
+
+    name = models.CharField("nombre", max_length=255, unique=True)
+    #: Random public handle; see the class docstring for why it is not `name`.
+    token = models.CharField("token", max_length=32, unique=True)
+    content = models.BinaryField("contenido")
+    content_type = models.CharField("tipo", max_length=100, blank=True)
+    size = models.PositiveIntegerField("tamaño", default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "archivo almacenado"
+        verbose_name_plural = "archivos almacenados"
+        ordering = ["-uploaded_at"]
+
+    def __str__(self) -> str:
+        return self.name

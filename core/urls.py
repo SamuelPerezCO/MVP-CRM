@@ -234,6 +234,15 @@ urlpatterns = [
         views.plantilla_editor,
         name="plantilla_editor",
     ),
+    # Files held in the database by core.storage.DatabaseStorage. Not under
+    # /media/, which in DEBUG is already served from MEDIA_ROOT by config.urls
+    # -- a route there would shadow it, since "respuestas/foto.png" matches
+    # <token>/<filename> just as well as a real token does.
+    path(
+        "archivos/<str:token>/<str:filename>",
+        views.stored_file,
+        name="stored_file",
+    ),
     # Every sidebar icon points here; <key> matches a NavItem.key from nav.py.
     path("s/<slug:key>/", views.section, name="section"),
 ]

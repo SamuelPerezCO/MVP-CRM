@@ -21,7 +21,14 @@ SESSION_KEY = 'app_authenticated'
 # /privacidad/ and /eliminacion-de-datos/ are public on purpose: Meta's app
 # review reads them without an account, and so must any customer.
 EXEMPT_PATHS = {'/login/', '/privacidad/', '/eliminacion-de-datos/'}
-EXEMPT_PREFIXES = ('/webhooks/', '/static/', '/media/', '/admin/')
+EXEMPT_PREFIXES = (
+    '/webhooks/', '/static/', '/media/', '/admin/',
+    # Database-held uploads. Open for the same reason /media/ is:
+    # WhatsApp fetches image URLs from Meta's servers, and a login
+    # redirect there means the customer never gets the photo. The
+    # random token in the path is what protects these, not the session.
+    '/archivos/',
+)
 
 
 class LoginRequiredMiddleware:

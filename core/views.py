@@ -2711,3 +2711,31 @@ def privacy(request):
 def data_deletion(request):
     """How to ask us to delete your data. Public by design."""
     return render(request, 'legal/eliminacion-de-datos.html', _legal_context())
+
+
+def stored_file(request, token, filename):
+    """Serve a file kept in the database (``core.storage.DatabaseStorage``).
+
+    Deliberately unauthenticated, and exempt from the login gate: WhatsApp
+    fetches these URLs from Meta's own servers when the app sends an image,
+    so a redirect to /login/ here means the customer never receives the photo.
+    What stands in for a login is the token -- 32 random hex characters, the
+    only way to address a row -- so the URLs are unguessable rather than open.
+
+    ``filename`` is cosmetic (it gives a saved link a sensible name) and is not
+    matched against anything: the token alone identifies the file.
+    """
+    from core.models import StoredFile
+
+    row = StoredFile.objects.filter(token=token).first()
+    if row is None:
+        raise Http404("archivo no encontrado")
+
+    response = HttpResponse(
+        bytes(row.content), content_type=row.content_type or "application/octet-stream"
+    )
+    response["Content-Length"] = str(row.size)
+    # Immutable: a token addresses one set of bytes for its lifetime, so this
+    # keeps Meta and the browser from re-fetching the same photo every time.
+    response["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response

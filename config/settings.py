@@ -280,6 +280,21 @@ if os.environ.get('BLOB_READ_WRITE_TOKEN') and not TESTING:
         'default': {'BACKEND': 'core.storage.VercelBlobStorage'},
         'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
     }
+elif os.environ.get('VERCEL') and not TESTING:
+    # On Vercel with no Blob store connected. The filesystem is read-only, so
+    # FileSystemStorage would raise OSError(30) on the first byte written --
+    # every image upload 500s, which is exactly what shipped. The database is
+    # the only writable thing left, so uploads go there instead.
+    #
+    # This is the fallback, not the preference: the branch above wins whenever
+    # a Blob store is connected, since a CDN serves files better than a row
+    # store does. Connecting one later needs no code change -- only files
+    # written while this branch was live stay in the database, and they keep
+    # working, because their URLs are served from it either way.
+    STORAGES = {
+        'default': {'BACKEND': 'core.storage.DatabaseStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
 
 
 # Email
