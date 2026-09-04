@@ -1,18 +1,23 @@
 """Tests for core.storage.VercelBlobStorage -- the Blob API is mocked; what
 is under test is the Storage contract the rest of the app relies on
-(deterministic names, exists()-based idempotency, url() resolution)."""
+(deterministic names, exists()-based idempotency, url() resolution).
+
+TestCase rather than SimpleTestCase: a Blob miss now consults StoredFile
+before giving up, so that a deployment which connects a Blob store keeps
+serving whatever was written before one existed. That is a real query, and
+SimpleTestCase forbids database access."""
 
 from unittest.mock import patch
 
 from django.core.files.base import ContentFile
-from django.test import SimpleTestCase
+from django.test import TestCase
 
 from .storage import VercelBlobStorage
 
 BLOB_URL = "https://store.public.blob.vercel-storage.com/whatsapp/m1.webp"
 
 
-class VercelBlobStorageTests(SimpleTestCase):
+class VercelBlobStorageTests(TestCase):
     def setUp(self):
         self.storage = VercelBlobStorage()
 
