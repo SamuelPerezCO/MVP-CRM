@@ -92,7 +92,7 @@ conversación en el Inbox. La lista vive en el entorno, no en la base de datos
 pantalla de gestión de usuarios ni registro:
 
 ```
-APP_AGENTS=Admin:cambia-esta-clave:Admin,Samuel:1234:Samuel
+APP_AGENTS=Admin:pbkdf2_sha256$1500000$SALT$HASH=:Admin,Samuel:pbkdf2_sha256$1500000$SALT$HASH=:Samuel
 ```
 
 Entradas separadas por coma, cada una `usuario:hash:Nombre` (el nombre visible
