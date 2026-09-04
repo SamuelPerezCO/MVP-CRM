@@ -1,0 +1,63 @@
+{% comment %}
+  Configuración de mensajería column 3 -- Mensajes de bienvenida.
+
+  One switch and one text box over MessagingSettings. The message is sent by
+  messaging.services.send_welcome, from the inbound webhook path, the first
+  time a person ever writes -- never again, guarded by Client.welcomed_at.
+
+  The form posts to bienvenida_save, which answers with this same panel
+  re-rendered, so the switch and the notice always show stored truth.
+
+  Context: msg_settings, errors, saved_notice
+{% endcomment %}
+
+<div class="plantillas respuestas">
+  <header class="plantillas__head respuestas__head">
+    <div class="respuestas__intro">
+      <h1 class="respuestas__title">Mensajes de bienvenida</h1>
+      <p class="respuestas__hint">
+        Se envía solo, la primera vez que alguien te escribe. Una sola vez por
+        cliente: quien vuelve meses después no recibe otro saludo.
+      </p>
+    </div>
+  </header>
+
+  {% if saved_notice %}
+    <p class="tag-error usuarios__notice" role="status">{{ saved_notice }}</p>
+  {% endif %}
+
+  <form class="automation" hx-post="{% url 'bienvenida_save' %}"
+        hx-target="#mensajeria-panel" hx-swap="innerHTML">
+    {% csrf_token %}
+
+    <label class="automation__switch">
+      <input type="checkbox" name="welcome_enabled" value="1"
+             {% if msg_settings.welcome_enabled %}checked{% endif %}>
+      <span>
+        <strong>Enviar bienvenida automática</strong>
+        <span class="automation__sub">Mientras esté apagado no se envía nada.</span>
+      </span>
+    </label>
+    {% if errors.welcome_enabled %}
+      <p class="ffield__error">{{ errors.welcome_enabled }}</p>
+    {% endif %}
+
+    <div class="ffield ffield--area{% if errors.welcome_body %} ffield--error{% endif %}">
+      <textarea class="ffield__input" name="welcome_body" id="welcome-body" rows="4"
+                maxlength="1024" placeholder=" ">{{ msg_settings.welcome_body }}</textarea>
+      <label class="ffield__label" for="welcome-body">Mensaje</label>
+    </div>
+    <p class="ffield__hint">
+      Texto plano, hasta 1024 caracteres. Va dentro de la ventana de 24 horas
+      que el propio cliente acaba de abrir al escribirte, así que no necesita
+      plantilla aprobada.
+    </p>
+    {% if errors.welcome_body %}
+      <p class="ffield__error">{{ errors.welcome_body }}</p>
+    {% endif %}
+
+    <div class="automation__actions">
+      <button type="submit" class="btn-primary">Guardar</button>
+    </div>
+  </form>
+</div>

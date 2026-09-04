@@ -58,7 +58,7 @@
     </div>
   </div>
 
-  <p class="ffield__label ffield__label--static newchat__label">Plantilla</p>
+  <p class="field-label newchat__label">Plantilla</p>
   {% include "partials/inbox/template_list.html" with reload_url=new_chat_url %}
 
   {% comment %}
@@ -72,7 +72,7 @@
   {% endcomment %}
   {% if template_variables %}
     <div class="newchat__vars">
-      <p class="ffield__label ffield__label--static">Datos de la plantilla</p>
+      <p class="field-label">Datos de la plantilla</p>
       {% for variable in template_variables %}
         <div class="ffield">
           <input class="ffield__input" type="text" placeholder=" " autocomplete="off"

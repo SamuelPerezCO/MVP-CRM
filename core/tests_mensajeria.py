@@ -50,13 +50,14 @@ class MensajeriaScreenTests(TestCase):
         )
 
     def test_view_query_param_selects_the_panel(self):
-        # Respuestas rápidas used to be the placeholder example; it is a real
-        # page now, so a still-unbuilt view stands in for the fallback check.
+        # Respuestas rápidas, then Widget de WhatsApp, were the placeholder
+        # example here; both are real pages now. Reglas de mensajería is the
+        # stand-in until it is built too.
         response = self.client.get(
-            reverse("section", args=["mensajeria"]), {"view": "widget-whatsapp"}
+            reverse("section", args=["mensajeria"]), {"view": "reglas-mensajeria"}
         )
-        self.assertEqual(response.context["active_view"], "widget-whatsapp")
-        self.assertContains(response, "Widget de WhatsApp — próximamente")
+        self.assertEqual(response.context["active_view"], "reglas-mensajeria")
+        self.assertContains(response, "Reglas de mensajería — próximamente")
 
         real = self.client.get(
             reverse("section", args=["mensajeria"]), {"view": "respuestas-rapidas"}

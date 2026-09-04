@@ -152,6 +152,21 @@
   color: var(--muted);
 }
 
+/* A heading for a group of fields -- NOT a modifier of .ffield__label.
+   It used to be written as `ffield__label ffield__label--static`, which
+   looked reasonable and broke: .ffield__label is absolutely positioned, the
+   override lived in mensajeria.css, and that file loads BEFORE this one, so
+   the absolute positioning won and the text flew to the corner of whatever
+   was positioned nearest. A separate class cannot lose that argument. */
+.field-label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
 /* Selects always have a value, so a floated label would always overlap —
    but native <select> text is vertically centered in the box regardless of
    asymmetric padding, so the floating-label trick above can't be reused

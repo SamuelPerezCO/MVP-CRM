@@ -439,6 +439,99 @@ def _apply_message_event(event: InboundEvent) -> None:
         update_fields=["last_message_at", "last_inbound_at", "unread_count", "status"]
     )
 
+    # The automations, last and each on its own: the message is already
+    # stored, so a failure here costs the greeting or the assignment, never
+    # the customer's message. Both are no-ops until switched on.
+    try:
+        auto_assign(conversation)
+    except Exception:
+        logger.exception("auto-assign failed for conversation %s", conversation.pk)
+    try:
+        send_welcome(conversation)
+    except Exception:
+        logger.exception("welcome failed for conversation %s", conversation.pk)
+
+
+# --- Automations -------------------------------------------------------------
+#
+# Both run from the inbound path above and both start switched off. They are
+# separate functions rather than inline branches so the Inbox's own paths --
+# and the tests -- can call them directly.
+
+
+def auto_assign(conversation: Conversation):
+    """Give an unassigned conversation to the next agent in the rotation.
+
+    Returns the user it went to, or ``None`` when the feature is off, the
+    conversation already has an owner, or nobody is configured to receive it.
+
+    The cursor advances inside a transaction with the settings row locked, so
+    two conversations arriving at the same moment take different turns rather
+    than both reading the same position. That lock is the whole reason this
+    is not a stateless ``count % len(agents)``.
+    """
+    from core.agents import agent_users
+    from core.models import MessagingSettings
+
+    if conversation.assigned_to_id is not None:
+        return None
+
+    with transaction.atomic():
+        settings_row = MessagingSettings.objects.select_for_update().filter(pk=1).first()
+        if settings_row is None or not settings_row.assign_enabled:
+            return None
+
+        agents = agent_users()
+        if not agents:
+            # Switched on with nobody to assign to: leave it in the common
+            # tray rather than inventing an owner.
+            return None
+
+        agent = agents[settings_row.assign_cursor % len(agents)]
+        settings_row.assign_cursor = (settings_row.assign_cursor + 1) % len(agents)
+        settings_row.save(update_fields=["assign_cursor", "updated_at"])
+
+    conversation.assigned_to = agent
+    conversation.save(update_fields=["assigned_to"])
+    logger.info("auto-assigned conversation %s to %s", conversation.pk, agent.username)
+    return agent
+
+
+def send_welcome(conversation: Conversation):
+    """Send the welcome message the first time this person ever writes.
+
+    Returns the Message, or ``None`` when the feature is off, there is no
+    text to send, or this contact has already been greeted.
+
+    "Already greeted" is decided by a conditional UPDATE on
+    ``Client.welcomed_at`` rather than by reading it first: the read-then-write
+    version greets twice when two messages land together, which is exactly
+    what a customer sending "hola" and their question in quick succession
+    looks like. Whoever wins the UPDATE sends; everyone else returns.
+    """
+    from core.models import Client, MessagingSettings
+
+    settings_row = MessagingSettings.objects.filter(pk=1).first()
+    if settings_row is None or not settings_row.welcome_enabled:
+        return None
+    body = (settings_row.welcome_body or "").strip()
+    if not body:
+        return None
+
+    claimed = Client.objects.filter(
+        pk=conversation.contact_id, welcomed_at__isnull=True
+    ).update(welcomed_at=timezone.now())
+    if not claimed:
+        return None
+
+    try:
+        return send_message(conversation, body)
+    except (SendWindowClosed, SendFailed):
+        # Hand the turn back: the greeting did not go out, so the next
+        # message from this person should still get one.
+        Client.objects.filter(pk=conversation.contact_id).update(welcomed_at=None)
+        raise
+
 
 def _apply_outbound_event(event: InboundEvent) -> None:
     """A message we sent through a channel other than this app's own Inbox --

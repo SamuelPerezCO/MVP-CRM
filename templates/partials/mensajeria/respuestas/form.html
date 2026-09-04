@@ -44,7 +44,7 @@
   {% endif %}
 
   <div class="reply-form__image{% if errors.image %} reply-form__image--error{% endif %}">
-    <label class="ffield__label ffield__label--static" for="reply-image">Imagen (opcional)</label>
+    <label class="field-label" for="reply-image">Imagen (opcional)</label>
     {% if reply and reply.has_image %}
       <div class="reply-form__current">
         <a class="reply-thumb reply-thumb--lg" href="{{ reply.image.url }}" target="_blank" rel="noopener">

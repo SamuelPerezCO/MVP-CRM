@@ -35,6 +35,13 @@ class Client(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    #: When the automatic welcome was sent to this person, or NULL if never.
+    #: A timestamp rather than a boolean so it is also an audit trail, and the
+    #: column is what makes the welcome fire exactly once: the send is guarded
+    #: by an UPDATE ... WHERE welcomed_at IS NULL, so a webhook retry or two
+    #: messages arriving together cannot produce two greetings.
+    welcomed_at = models.DateTimeField("bienvenida enviada", null=True, blank=True)
+
     class Meta:
         verbose_name = "cliente"
         verbose_name_plural = "clientes"
@@ -320,6 +327,90 @@ class QuickReply(models.Model):
     @property
     def has_image(self) -> bool:
         return bool(self.image)
+
+
+class MessagingSettings(models.Model):
+    """The account's messaging automations, as one row.
+
+    A singleton (:meth:`load` keeps it that way) rather than three models,
+    because these are three switches on one thing -- what the CRM does on its
+    own when a customer writes -- and a screen that reads them all wants one
+    query, not three. The alternative, a key/value settings table, buys
+    flexibility this app has no use for and costs every reader a lookup by
+    string.
+
+    Nothing here changes how a message is *stored*; each field only decides
+    whether the app acts by itself, and each defaults to "no". An account
+    that never opens these screens behaves exactly as before.
+    """
+
+    #: Round-robin position for auto-assignment: the index into
+    #: core.agents.agent_users() the next conversation starts looking from.
+    #: Stored rather than derived so the rotation survives a restart, and so
+    #: two conversations arriving together cannot both pick the same agent
+    #: (the read and the bump happen in one transaction).
+    ASSIGN_ROUND_ROBIN = "round_robin"
+    ASSIGN_CHOICES = [(ASSIGN_ROUND_ROBIN, "Por turnos entre los agentes activos")]
+
+    WIDGET_POSITIONS = [
+        ("right", "Abajo a la derecha"),
+        ("left", "Abajo a la izquierda"),
+    ]
+
+    # --- Mensajes de bienvenida ---------------------------------------------
+    welcome_enabled = models.BooleanField("bienvenida activa", default=False)
+    welcome_body = models.TextField("mensaje de bienvenida", blank=True)
+
+    # --- Asignación automática ----------------------------------------------
+    assign_enabled = models.BooleanField("asignación automática activa", default=False)
+    assign_strategy = models.CharField(
+        "estrategia", max_length=20, choices=ASSIGN_CHOICES, default=ASSIGN_ROUND_ROBIN
+    )
+    assign_cursor = models.PositiveIntegerField("turno actual", default=0)
+
+    # --- Widget de WhatsApp --------------------------------------------------
+    widget_phone = models.CharField("teléfono del widget", max_length=20, blank=True)
+    widget_greeting = models.CharField(
+        "saludo del widget", max_length=140, blank=True,
+        default="Hola, quiero más información.",
+    )
+    widget_label = models.CharField(
+        "texto del botón", max_length=40, blank=True, default="Escríbenos",
+    )
+    widget_position = models.CharField(
+        "posición", max_length=10, choices=WIDGET_POSITIONS, default="right"
+    )
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "configuración de mensajería"
+        verbose_name_plural = "configuración de mensajería"
+
+    def __str__(self) -> str:
+        return "Configuración de mensajería"
+
+    @classmethod
+    def load(cls) -> "MessagingSettings":
+        """The one row, created on first use.
+
+        ``pk=1`` is pinned deliberately: get_or_create on an unconstrained
+        table would race two requests into two rows, and every reader after
+        that would see whichever one it happened to fetch.
+        """
+        row, _ = cls.objects.get_or_create(pk=1)
+        return row
+
+    @property
+    def widget_url(self) -> str:
+        """The wa.me link the widget button opens, greeting pre-filled."""
+        from urllib.parse import quote
+
+        digits = "".join(c for c in self.widget_phone if c.isdigit())
+        if not digits:
+            return ""
+        base = f"https://wa.me/{digits}"
+        return f"{base}?text={quote(self.widget_greeting)}" if self.widget_greeting else base
 
 
 class CalendarEvent(models.Model):

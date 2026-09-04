@@ -312,6 +312,31 @@ class TemplateCommentLeakTests(TestCase):
                 self.assertNotIn("{#", html)
                 self.assertNotIn("#}", html)
 
+    def test_no_template_uses_the_floating_label_as_a_standalone_heading(self):
+        """``.ffield__label`` is absolutely positioned -- it only makes sense
+        inside a ``.ffield``, floating over its input.
+
+        Used on a bare <p> as a group heading it escapes to the corner of the
+        nearest positioned ancestor, which is how a "Turno actual" label ended
+        up drawn over the sidebar. ``.field-label`` is the standalone one.
+        A modifier class was tried and lost on CSS load order; this is the
+        check that would have caught either mistake.
+        """
+        offenders = []
+        for path in sorted(pathlib.Path(settings.BASE_DIR / "templates").rglob("*.html")):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if "ffield__label" not in line:
+                    continue
+                # Legitimate use is a <label> inside a .ffield; a <p> or a
+                # "--static" modifier is the broken standalone form.
+                if line.lstrip().startswith("<p") or "ffield__label--static" in line:
+                    offenders.append(f"{path.name}:{number}: {line.strip()[:66]}")
+        self.assertEqual(
+            offenders, [],
+            "These use the floating .ffield__label as a standalone heading; "
+            "use .field-label instead:\n  " + "\n  ".join(offenders),
+        )
+
     def test_no_template_opens_a_comment_it_never_closes_on_that_line(self):
         """Django's {# #} comment does NOT span lines -- an unclosed one is
         printed to the page verbatim.

@@ -187,15 +187,8 @@
 /* --- Form: image block ------------------------------------------------------ */
 
 .reply-form__image { margin-block-start: 14px; }
-.reply-form__image--error .ffield__label--static { color: var(--error-text); }
+.reply-form__image--error .field-label { color: var(--error-text); }
 
-.ffield__label--static {
-  position: static;
-  display: block;
-  margin: 0 0 6px;
-  font-size: 11px;
-  color: var(--muted);
-}
 
 .reply-form__current {
   display: flex;
@@ -241,3 +234,107 @@
   font-size: 11px;
   line-height: 1.35;
 }
+
+/* ==========================================================================
+   Automations — Mensajes de bienvenida, Asignación automática, Widget.
+   Three screens, one shape: a switch, some fields, a Guardar. Built on the
+   shared .ffield system (plantillas.css) and the .switch from the Respuestas
+   rápidas table above.
+   ========================================================================== */
+
+.automation { max-width: 620px; }
+
+.automation__switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.automation__switch:has(input:checked) { border-color: var(--accent); background: #f2f7fe; }
+.automation__switch input { margin-block-start: 2px; accent-color: var(--accent); }
+.automation__switch strong { display: block; font-size: 13px; }
+
+.automation__sub {
+  display: block;
+  margin-block-start: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.automation__label { margin-block-start: 20px; }
+.automation__actions { display: flex; justify-content: flex-end; margin-block-start: 20px; }
+
+/* --- The rotation ---------------------------------------------------------- */
+
+.automation__rota {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.automation__rota-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* Whose turn is next -- the one thing the page exists to answer. */
+.automation__rota-item.is-next { border-color: var(--accent); background: #f2f7fe; }
+.automation__rota-item .conv-row__avatar { width: 26px; height: 26px; font-size: 10.5px; }
+
+/* --- Widget preview + snippet ---------------------------------------------- */
+
+.widget-preview {
+  position: relative;
+  height: 96px;
+  margin-block-start: 8px;
+  border: 1px dashed var(--sidebar-border);
+  border-radius: 10px;
+  background: var(--hover-bg);
+}
+
+.widget-preview .widget-btn { position: absolute; inset-block-end: 14px; }
+.widget-preview--right .widget-btn { inset-inline-end: 14px; }
+.widget-preview--left  .widget-btn { inset-inline-start: 14px; }
+
+.widget-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 17px;
+  border-radius: 999px;
+  background: var(--wa-green, #25d366);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 22%);
+}
+
+.widget-btn .icon { width: 18px; height: 18px; }
+
+.widget-snippet {
+  margin: 8px 0 0;
+  padding: 14px 16px;
+  max-width: 100%;
+  overflow-x: auto;          /* long lines scroll here, never the page */
+  border-radius: 10px;
+  background: #1e2430;
+  color: #dfe6f0;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.widget-snippet code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }

@@ -1,0 +1,105 @@
+{% comment %}
+  Configuración de mensajería column 3 -- Widget de WhatsApp.
+
+  Unlike the other two automations this one runs on the CUSTOMER's site, not
+  here: there is nothing to switch on, only a snippet to copy. The form saves
+  the configuration; the block underneath renders the snippet from what is
+  stored, so what you copy is always what you saved.
+
+  The snippet is deliberately dependency-free -- an anchor and a <style> tag,
+  no script -- because it gets pasted into sites this project has no control
+  over, and a <script> there is a support burden and a security question the
+  business does not need to answer to open a chat.
+
+  Context: msg_settings, widget_positions, errors, saved_notice
+{% endcomment %}
+
+<div class="plantillas respuestas">
+  <header class="plantillas__head respuestas__head">
+    <div class="respuestas__intro">
+      <h1 class="respuestas__title">Widget de WhatsApp</h1>
+      <p class="respuestas__hint">
+        Un botón para tu sitio web que abre WhatsApp con el mensaje ya escrito.
+        Quien lo pulse te escribe primero, así que su ventana de 24 horas queda
+        abierta y puedes responderle libremente.
+      </p>
+    </div>
+  </header>
+
+  {% if saved_notice %}
+    <p class="tag-error usuarios__notice" role="status">{{ saved_notice }}</p>
+  {% endif %}
+
+  <form class="automation" hx-post="{% url 'widget_save' %}"
+        hx-target="#mensajeria-panel" hx-swap="innerHTML">
+    {% csrf_token %}
+
+    <div class="client-form__row">
+      <div class="ffield{% if errors.widget_phone %} ffield--error{% endif %}">
+        <input class="ffield__input" type="tel" name="widget_phone" id="widget-phone"
+               placeholder=" " autocomplete="off" value="{{ msg_settings.widget_phone }}">
+        <label class="ffield__label" for="widget-phone">Teléfono que recibe</label>
+      </div>
+      <div class="ffield ffield--select">
+        <select class="ffield__input" name="widget_position" id="widget-position">
+          {% for key, label in widget_positions %}
+            <option value="{{ key }}" {% if msg_settings.widget_position == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <label class="ffield__label" for="widget-position">Posición</label>
+      </div>
+    </div>
+    {% if errors.widget_phone %}<p class="ffield__error">{{ errors.widget_phone }}</p>{% endif %}
+
+    <div class="client-form__row">
+      <div class="ffield">
+        <input class="ffield__input" type="text" name="widget_label" id="widget-label"
+               maxlength="40" placeholder=" " value="{{ msg_settings.widget_label }}">
+        <label class="ffield__label" for="widget-label">Texto del botón</label>
+      </div>
+      <div class="ffield">
+        <input class="ffield__input" type="text" name="widget_greeting" id="widget-greeting"
+               maxlength="140" placeholder=" " value="{{ msg_settings.widget_greeting }}">
+        <label class="ffield__label" for="widget-greeting">Mensaje que trae escrito</label>
+      </div>
+    </div>
+
+    <div class="automation__actions">
+      <button type="submit" class="btn-primary">Guardar</button>
+    </div>
+  </form>
+
+  {% if msg_settings.widget_url %}
+    <p class="field-label automation__label">Vista previa</p>
+    <div class="widget-preview widget-preview--{{ msg_settings.widget_position }}">
+      <a class="widget-btn" href="{{ msg_settings.widget_url }}" target="_blank" rel="noopener">
+        {% include "icons/brands/whatsapp.svg" %}<span>{{ msg_settings.widget_label }}</span>
+      </a>
+    </div>
+
+    <p class="field-label automation__label">
+      Código para tu sitio
+    </p>
+    <p class="ffield__hint">
+      Pégalo antes de <code>&lt;/body&gt;</code>. No usa JavaScript ni carga nada
+      externo, así que funciona en cualquier página y no ralentiza la tuya.
+    </p>
+    <pre class="widget-snippet"><code>&lt;a href="{{ msg_settings.widget_url }}"
+   target="_blank" rel="noopener"
+   style="position:fixed;bottom:20px;{% if msg_settings.widget_position == 'left' %}left{% else %}right{% endif %}:20px;
+          display:inline-flex;align-items:center;gap:8px;
+          padding:12px 18px;border-radius:999px;
+          background:#25d366;color:#fff;font:600 15px/1 system-ui,sans-serif;
+          text-decoration:none;box-shadow:0 4px 16px rgb(0 0 0 / 25%);z-index:9999"&gt;
+  &lt;svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"&gt;
+    &lt;path d="M2.99 16.34a2 2 0 0 1 .1 1.17l-1.07 3.29a1 1 0 0 0 1.24 1.17l3.41-1a2 2 0 0 1 1.1.09 10 10 0 1 0-4.78-4.72"/&gt;
+  &lt;/svg&gt;
+  {{ msg_settings.widget_label }}
+&lt;/a&gt;</code></pre>
+  {% else %}
+    <p class="tpl-pick__empty">
+      Escribe el teléfono que debe recibir los mensajes y guarda: aquí aparecerán
+      la vista previa y el código para pegar en tu sitio.
+    </p>
+  {% endif %}
+</div>

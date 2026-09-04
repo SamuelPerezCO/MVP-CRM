@@ -216,6 +216,11 @@ urlpatterns = [
         views.plantillas_sync,
         name="plantillas_sync",
     ),
+    # The three automation screens. Each saves its own fields and answers
+    # with its own panel re-rendered (core.views).
+    path("mensajeria/bienvenida/", views.bienvenida_save, name="bienvenida_save"),
+    path("mensajeria/asignacion/", views.asignacion_save, name="asignacion_save"),
+    path("mensajeria/widget/", views.widget_save, name="widget_save"),
     # The chooser modal's first card: pick a ready-made template (placeholder).
     path(
         "mensajeria/plantillas/galeria/",

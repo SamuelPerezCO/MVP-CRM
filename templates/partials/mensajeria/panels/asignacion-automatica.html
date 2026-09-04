@@ -1,0 +1,75 @@
+{% comment %}
+  Configuración de mensajería column 3 -- Asignación automática.
+
+  One switch over MessagingSettings. messaging.services.auto_assign hands each
+  new conversation to the next agent in core.agents.agent_users(), advancing a
+  stored cursor under a row lock so simultaneous arrivals take different turns.
+
+  The agent list is shown rather than described: switching this on with nobody
+  configured would look active and quietly leave everything unassigned, so the
+  view refuses that and the page says why.
+
+  Context: msg_settings, assign_agents, errors, saved_notice
+{% endcomment %}
+
+<div class="plantillas respuestas">
+  <header class="plantillas__head respuestas__head">
+    <div class="respuestas__intro">
+      <h1 class="respuestas__title">Asignación automática</h1>
+      <p class="respuestas__hint">
+        Reparte por turnos las conversaciones nuevas entre los agentes activos.
+        Una conversación que ya tiene responsable no se toca.
+      </p>
+    </div>
+  </header>
+
+  {% if saved_notice %}
+    <p class="tag-error usuarios__notice" role="status">{{ saved_notice }}</p>
+  {% endif %}
+
+  <form class="automation" hx-post="{% url 'asignacion_save' %}"
+        hx-target="#mensajeria-panel" hx-swap="innerHTML">
+    {% csrf_token %}
+
+    <label class="automation__switch">
+      <input type="checkbox" name="assign_enabled" value="1"
+             {% if msg_settings.assign_enabled %}checked{% endif %}>
+      <span>
+        <strong>Asignar automáticamente</strong>
+        <span class="automation__sub">Apagado, todo llega a «Sin asignar».</span>
+      </span>
+    </label>
+    {% if errors.assign_enabled %}
+      <p class="ffield__error">{{ errors.assign_enabled }}</p>
+    {% endif %}
+
+    <p class="field-label automation__label">
+      Turno actual ({{ assign_agents|length }} agente{{ assign_agents|length|pluralize }})
+    </p>
+    {% if assign_agents %}
+      <ol class="automation__rota">
+        {% for agent in assign_agents %}
+          <li class="automation__rota-item{% if msg_settings.assign_enabled and forloop.counter0 == msg_settings.assign_cursor %} is-next{% endif %}">
+            <span class="conv-row__avatar" aria-hidden="true">
+              {{ agent.get_full_name|default:agent.username|slice:":2"|upper }}
+            </span>
+            <span>{{ agent.get_full_name|default:agent.username }}</span>
+            {% if msg_settings.assign_enabled and forloop.counter0 == msg_settings.assign_cursor %}
+              <span class="quickreplies__badge">Le toca</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <p class="tpl-pick__empty">
+        Todavía no hay agentes. Créalos en
+        <a href="{% url 'section' 'crm' %}?view=usuarios">CRM › Equipo › Usuarios</a>
+        o añádelos a <code>APP_AGENTS</code>.
+      </p>
+    {% endif %}
+
+    <div class="automation__actions">
+      <button type="submit" class="btn-primary">Guardar</button>
+    </div>
+  </form>
+</div>

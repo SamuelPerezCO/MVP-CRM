@@ -64,7 +64,14 @@ from . import (
     xlsx,
 )
 from .middleware import SESSION_KEY
-from .models import CalendarEvent, Client, ClientList, MessageTemplate, QuickReply
+from .models import (
+    CalendarEvent,
+    Client,
+    ClientList,
+    MessageTemplate,
+    MessagingSettings,
+    QuickReply,
+)
 from .nav import (
     DEFAULT_SECTION,
     NAV_BY_KEY,
@@ -638,9 +645,23 @@ def _respuestas_context(request) -> dict:
 
 #: Configuración de mensajería view key -> callable(request) -> dict. Views
 #: without an entry need no data.
+def _automations_context(request) -> dict:
+    """Shared by the three automation screens: the one settings row, plus the
+    agents auto-assignment would actually rotate through (so the page can say
+    "nobody configured" instead of silently doing nothing)."""
+    return {
+        "msg_settings": MessagingSettings.load(),
+        "assign_agents": agents.agent_users(),
+        "widget_positions": MessagingSettings.WIDGET_POSITIONS,
+    }
+
+
 MENSAJERIA_PANEL_CONTEXT = {
     "plantillas-whatsapp": _plantillas_context,
     "respuestas-rapidas": _respuestas_context,
+    "mensajes-bienvenida": _automations_context,
+    "asignacion-automatica": _automations_context,
+    "widget-whatsapp": _automations_context,
 }
 
 
@@ -2256,6 +2277,103 @@ def plantillas_sync(request):
     return HttpResponse(
         render_to_string("partials/mensajeria/template_table.html", context, request=request)
     )
+
+
+# --- Automations: bienvenida, asignación automática, widget ------------------
+#
+# Three screens over one settings row (core.models.MessagingSettings). Each
+# POSTs its own fields and answers with its own panel re-rendered, so saving
+# one never silently rewrites another's. Every one starts switched off.
+
+
+def _automations_response(request, view_key: str, notice=None, errors=None):
+    context = _automations_context(request)
+    context.update({"saved_notice": notice, "errors": errors or {}, "active_view": view_key,
+                    "msg_view": mensajeria.VIEW_BY_KEY[view_key]})
+    return HttpResponse(
+        render_to_string(mensajeria.panel_template(view_key), context, request=request)
+    )
+
+
+def bienvenida_save(request):
+    """Save the welcome message. Enabling it with no text is refused rather
+    than stored: a switch that is on and does nothing is worse than off."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    row = MessagingSettings.load()
+    body = (request.POST.get("welcome_body") or "").strip()
+    enabled = request.POST.get("welcome_enabled") == "1"
+
+    if enabled and not body:
+        return _automations_response(
+            request, "mensajes-bienvenida",
+            errors={"welcome_body": "Escribe el mensaje antes de activarlo."},
+        )
+    if len(body) > 1024:
+        return _automations_response(
+            request, "mensajes-bienvenida",
+            errors={"welcome_body": "Máximo 1024 caracteres."},
+        )
+
+    row.welcome_body, row.welcome_enabled = body, enabled
+    row.save(update_fields=["welcome_body", "welcome_enabled", "updated_at"])
+    return _automations_response(
+        request, "mensajes-bienvenida",
+        notice="Bienvenida activada." if enabled else "Bienvenida desactivada.",
+    )
+
+
+def asignacion_save(request):
+    """Turn round-robin assignment on or off.
+
+    Enabling it with no agents configured is refused: it would look active
+    and quietly leave every conversation unassigned.
+    """
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    row = MessagingSettings.load()
+    enabled = request.POST.get("assign_enabled") == "1"
+
+    if enabled and not agents.agent_users():
+        return _automations_response(
+            request, "asignacion-automatica",
+            errors={"assign_enabled": "No hay agentes a quienes asignar. Crea uno en CRM › Equipo › Usuarios."},
+        )
+
+    row.assign_enabled = enabled
+    if not enabled:
+        row.assign_cursor = 0   # start the rotation clean next time it is on
+    row.save(update_fields=["assign_enabled", "assign_cursor", "updated_at"])
+    return _automations_response(
+        request, "asignacion-automatica",
+        notice="Asignación automática activada." if enabled else "Asignación automática desactivada.",
+    )
+
+
+def widget_save(request):
+    """Save the WhatsApp widget's configuration. The phone is normalized the
+    same way a client's is, so the wa.me link cannot be built from a number
+    the CRM would store differently."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    row = MessagingSettings.load()
+    phone = clientes.normalize_phone(request.POST.get("widget_phone") or "")
+    errors = {}
+    if phone and not 7 <= len(phone) - 1 <= 15:
+        errors["widget_phone"] = "Escribe el número con indicativo, p. ej. +57 300 123 4567."
+    position = request.POST.get("widget_position") or "right"
+    if position not in dict(MessagingSettings.WIDGET_POSITIONS):
+        errors["widget_position"] = "Posición desconocida."
+    if errors:
+        return _automations_response(request, "widget-whatsapp", errors=errors)
+
+    row.widget_phone = phone
+    row.widget_greeting = (request.POST.get("widget_greeting") or "").strip()[:140]
+    row.widget_label = (request.POST.get("widget_label") or "").strip()[:40] or "Escríbenos"
+    row.widget_position = position
+    row.save(update_fields=["widget_phone", "widget_greeting", "widget_label",
+                            "widget_position", "updated_at"])
+    return _automations_response(request, "widget-whatsapp", notice="Widget guardado.")
 
 
 def _mensajeria_page(request, panel_template: str, panel_context: dict) -> HttpResponse:
