@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -22,7 +23,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # True under `manage.py test` (and pytest). core.middleware.LoginRequiredMiddleware
 # reads this so the test client -- which never logs in -- isn't locked out.
-TESTING = 'test' in sys.argv
+# `manage.py test ...` (argv[1]) or a pytest run. Matching 'test' anywhere in
+# argv, as this used to, also fired on any command that merely took 'test' as
+# an argument -- and a process that believes it is testing quietly switches to
+# SQLite, the fake provider and no login gate.
+TESTING = (
+    (len(sys.argv) > 1 and sys.argv[1] == 'test')
+    or 'PYTEST_CURRENT_TEST' in os.environ
+    or 'pytest' in sys.modules
+)
 
 # Load BASE_DIR/.env into os.environ before anything below reads it, so a
 # plain `python manage.py ...` picks up local credentials with no `export`
@@ -256,10 +265,28 @@ MAILERS = {
 # above), even when a developer's own .env is set to a real provider -- tests
 # must not depend on a live sidecar/Twilio/Meta connection to pass.
 
-MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER', 'fake')
+MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER', '')
+
+# No silent default. 'fake' used to be the fallback, which closed the loop the
+# wrong way: registry.webhook_enabled stops the simulator *receiving* on a real
+# deployment, but a deploy that forgot this variable would still be *sending*
+# through it -- ticks moving in the UI, nothing reaching a phone. Local
+# development sets MESSAGING_PROVIDER=fake explicitly (see .env.example).
+if not MESSAGING_PROVIDER:
+    raise ImproperlyConfigured(
+        "MESSAGING_PROVIDER is not set. Choose 'twilio', 'meta' or 'baileys' "
+        "for a real WhatsApp line, or 'fake' for local development only "
+        "(see .env.example)."
+    )
 
 # Fake provider: the shared secret dev webhooks must send in X-Fake-Signature.
-MESSAGING_FAKE_SECRET = os.environ.get('MESSAGING_FAKE_SECRET', 'dev-secret')
+# Shared webhook secrets. Neither has a real default: a value committed to
+# this file is a value an attacker already has, and both providers reject
+# every request while their secret is empty. Under `manage.py test` they get
+# a fixed value, so the signature path is still exercised end to end.
+MESSAGING_FAKE_SECRET = (
+    'testing-fake-secret' if TESTING else os.environ.get('MESSAGING_FAKE_SECRET', '')
+)
 
 # The fake provider's webhook writes conversations straight into whatever
 # database is active, and the secret above defaults to a value published in
@@ -289,4 +316,9 @@ META_VERIFY_TOKEN = os.environ.get('META_VERIFY_TOKEN', '')
 # see whatsapp-sidecar/. QR-code pairing, no Meta Developers app needed; good
 # for demos, not for production -- see whatsapp-sidecar/README.md).
 BAILEYS_SIDECAR_URL = os.environ.get('BAILEYS_SIDECAR_URL', 'http://localhost:4000')
-BAILEYS_SIDECAR_SECRET = os.environ.get('BAILEYS_SIDECAR_SECRET', 'dev-sidecar-secret')
+# This one matters most: baileys is a real provider, so its webhook slug
+# answers on every deployment, not just where it is the active one.
+BAILEYS_SIDECAR_SECRET = (
+    'testing-sidecar-secret' if TESTING
+    else os.environ.get('BAILEYS_SIDECAR_SECRET', '')
+)

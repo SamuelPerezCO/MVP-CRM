@@ -182,10 +182,30 @@ class Conversation(models.Model):
         The window opens (and re-opens) with every *inbound* message. A
         conversation the customer has never written to -- or not in 24h --
         gets ``False``: only a template send may (re)start it.
+
+        ``last_inbound_at`` is denormalized bookkeeping this app maintains in
+        ``services``, but rows also arrive from outside it (see the external
+        writer contract in the README). A writer that inserts the message and
+        forgets the UPDATE would otherwise leave the composer disabled
+        forever, with nothing in the UI able to reopen it -- so a NULL falls
+        back to asking the messages table. That costs one query, and only for
+        the conversation actually being opened: the column still answers on
+        its own whenever it is set, which is what keeps the list query flat.
         """
-        if self.last_inbound_at is None:
+        last_inbound = self.last_inbound_at
+        if last_inbound is None and self.pk is not None:
+            last_inbound = (
+                self.messages.filter(direction=Message.INBOUND)
+                .order_by("-timestamp")
+                .values_list("timestamp", flat=True)
+                .first()
+            )
+        if last_inbound is None:
             return False
-        return timezone.now() - self.last_inbound_at < SERVICE_WINDOW
+        return timezone.now() - last_inbound < SERVICE_WINDOW
+
+    #: Shown when ``channel`` holds something this app has no brand mark for.
+    UNKNOWN_CHANNEL_ICON = "icons/message-circle.svg"
 
     @property
     def icon_template(self) -> str:
@@ -193,7 +213,16 @@ class Conversation(models.Model):
 
         The two TikTok surfaces share one brand mark; everything else has a
         file named after its key (same files core.inbox.CANALES points at).
+
+        An unrecognised value gets the generic mark instead of a path built
+        from it. This used to interpolate the column straight into a template
+        name, so a single row written with a channel like 'wa' or 'WhatsApp'
+        raised TemplateDoesNotExist and took down the whole Inbox -- the list,
+        the open thread and the poll -- for everyone, with no way to fix it
+        short of editing the database.
         """
+        if self.channel not in dict(self.CHANNEL_CHOICES):
+            return self.UNKNOWN_CHANNEL_ICON
         name = "tiktok" if self.channel.startswith("tiktok") else self.channel
         return f"icons/brands/{name}.svg"
 
@@ -319,11 +348,22 @@ class Message(models.Model):
 
     @property
     def status_icon_template(self) -> str:
-        """Tick/clock/alert icon for the outbound status indicator."""
+        """Tick/clock/alert icon for the outbound status indicator.
+
+        Total on purpose. This was a bare dict subscript, so one row carrying
+        a status from someone else's vocabulary ('accepted', 'error', '') --
+        which is exactly what an external writer inserts (see the README's
+        contract) -- raised KeyError and 500'd that entire conversation:
+        the full page, the swap and the five-second poll alike.
+
+        The fallback is the alert icon rather than a tick: an unrecognised
+        state is not a delivery anyone confirmed, and drawing a tick would
+        claim one.
+        """
         return {
             MessageStatus.QUEUED.value: "icons/clock.svg",
             MessageStatus.SENT.value: "icons/check.svg",
             MessageStatus.DELIVERED.value: "icons/check-check.svg",
             MessageStatus.READ.value: "icons/check-check.svg",
             MessageStatus.FAILED.value: "icons/alert-circle.svg",
-        }[self.status]
+        }.get(self.status, "icons/alert-circle.svg")

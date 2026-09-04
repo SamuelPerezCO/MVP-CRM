@@ -75,8 +75,15 @@ class FakeProvider(MessagingProvider):
         Deliberately simpler than the real providers' HMACs, but real enough
         that the endpoint's reject-before-parse branch gets exercised.
         """
+        secret = settings.MESSAGING_FAKE_SECRET
+        if not secret:
+            logger.error(
+                "MESSAGING_FAKE_SECRET is not set -- rejecting the fake "
+                "webhook. An empty secret would make the endpoint open."
+            )
+            return False
         supplied = request.headers.get("X-Fake-Signature", "")
-        return constant_time_compare(supplied, settings.MESSAGING_FAKE_SECRET)
+        return constant_time_compare(supplied, secret)
 
     def parse_webhook(self, request) -> list[InboundEvent]:
         """Payload shape: ``{"events": [{...InboundEvent fields...}]}``.

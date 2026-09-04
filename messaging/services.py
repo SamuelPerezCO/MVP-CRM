@@ -295,24 +295,60 @@ def _apply_status_event(event: InboundEvent) -> None:
     message.save(update_fields=["status"])
 
 
+def canonical_phone(phone: str) -> str:
+    """A phone number in the one shape this app stores: ``+`` then digits.
+
+    WhatsApp reports a ``wa_id`` with no ``+`` (``573001112233``) and people
+    type numbers with spaces and dashes, so the same customer reaches the
+    database under several spellings. Everything downstream compares phones
+    as plain strings -- ``_upsert_contact``'s lookup, the wa.me link, the
+    country flag -- so one customer with two spellings is two contacts, two
+    conversation threads and a send to a number the provider rejects.
+
+    Returns ``""`` for input with no digits at all, which callers treat as
+    "nothing to match on".
+    """
+    digits = "".join(character for character in phone if character.isdigit())
+    return f"+{digits}" if digits else ""
+
+
 def _upsert_contact(phone: str, contact_name: str, channel: str) -> Client:
     """Find the Client for a phone number, creating one on first contact.
 
     ``phone`` is whichever side of the event is the customer -- ``from_number``
     for an inbound message, ``to_number`` for one of ours sent outside the
-    Inbox (see :func:`_apply_outbound_event`)."""
-    contact = Client.objects.filter(phone=phone).first()
+    Inbox (see :func:`_apply_outbound_event`).
+
+    The lookup accepts the number as given *and* as stored: rows also arrive
+    from outside this app (see the README's external writer contract), and a
+    writer that stored the raw ``wa_id`` would otherwise get a duplicate
+    contact every time the app itself saw the same customer. New contacts are
+    always written canonically, so the ambiguity does not spread.
+    """
+    canonical = canonical_phone(phone)
+    # Both spellings, one query. Order the candidates so an exact hit wins
+    # when a database somehow holds both.
+    candidates = [value for value in (phone, canonical, canonical.lstrip("+")) if value]
+    contact = next(
+        (
+            found
+            for value in candidates
+            for found in Client.objects.filter(phone=value)[:1]
+        ),
+        None,
+    )
     if contact is not None:
         return contact
 
-    name = contact_name.strip() or phone
+    stored = canonical or phone
+    name = contact_name.strip() or stored
     return Client.objects.create(
         first_name=name[:80],
-        phone=phone,
+        phone=stored,
         channel=_client_channel(channel),
         # +57 numbers get the Colombian flag in the CRM table; other prefixes
         # are left blank rather than guessed.
-        country="CO" if phone.startswith("+57") else "",
+        country="CO" if stored.startswith("+57") else "",
     )
 
 

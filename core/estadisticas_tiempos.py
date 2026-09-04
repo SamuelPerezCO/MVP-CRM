@@ -172,6 +172,14 @@ def _collect(lower, upper, platform: str) -> tuple[list, list]:
             prev_outbound = None
             continue
 
+        if direction != Message.OUTBOUND:
+            # Anything else is a row this app did not write (an external
+            # writer's 'INBOUND', say -- see the README's contract). Skipping
+            # it beats the old behaviour, where every non-inbound value fell
+            # through and was scored as an agent reply, inventing response
+            # times nobody achieved.
+            continue
+
         if waiting_since is not None:
             gap = (timestamp - waiting_since).total_seconds()
             responses.append((gap, sent_by_id, conversation_id))

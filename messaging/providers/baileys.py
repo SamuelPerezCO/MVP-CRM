@@ -101,8 +101,20 @@ class BaileysProvider(MessagingProvider):
     # --- Webhook ---------------------------------------------------------
 
     def verify_signature(self, request) -> bool:
+        secret = settings.BAILEYS_SIDECAR_SECRET
+        if not secret:
+            # Fail closed, like the Meta provider. baileys is a *real*
+            # provider, so registry.webhook_enabled lets its slug answer on
+            # every deployment -- an empty or shipped-default secret is
+            # therefore an open write endpoint into the database, not a
+            # convenience.
+            logger.error(
+                "BAILEYS_SIDECAR_SECRET is not set -- rejecting the sidecar "
+                "webhook. Without it anyone could post messages into the CRM."
+            )
+            return False
         supplied = request.headers.get("X-Sidecar-Secret", "")
-        return hmac.compare_digest(supplied, settings.BAILEYS_SIDECAR_SECRET)
+        return hmac.compare_digest(supplied, secret)
 
     def parse_webhook(self, request) -> list[InboundEvent]:
         """Payload shape: ``{"events": [{...InboundEvent fields...}]}`` --

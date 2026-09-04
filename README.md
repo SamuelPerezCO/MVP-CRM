@@ -171,6 +171,100 @@ Cuando lleguen credenciales reales de Twilio o Meta:
 
 El webhook verifica la firma antes de tocar el payload (401 si es inválida), es idempotente por `provider_message_id` (los reintentos del proveedor no duplican mensajes) y siempre responde 200 tras autenticar, registrando errores en el log en lugar de provocar tormentas de reintentos. El envío de texto libre está bloqueado fuera de la ventana de 24 horas ([messaging/services.py](messaging/services.py)) — fuera de ella solo cabe `send_template`, igual que en la plataforma real.
 
+## Escribir en la base de datos desde fuera (n8n u otra automatización)
+
+Esta base de datos es compartida: además de esta app, una automatización
+inserta clientes, conversaciones y mensajes directamente en las tablas, sin
+pasar por `messaging/services.py`. Eso funciona, pero hay que respetar el
+contrato de abajo, porque **Django rellena sus valores por defecto en Python,
+no en la base**: un `INSERT` externo no recibe ninguno. Las columnas de texto
+opcionales son `NOT NULL` con `''` como valor vacío — nunca insertes `NULL`
+en ellas.
+
+La app ya no se cae con un valor desconocido (hay tests en
+[messaging/tests_external_writer.py](messaging/tests_external_writer.py)),
+pero *tolerar* no es *mostrar bien*: una conversación con un canal que no
+existe sale con un icono genérico, y un mensaje con un estado que no existe
+sale con el icono de alerta. El contrato es lo que hace que se vean bien.
+
+### Reglas generales
+
+- Todas las columnas de fecha son `timestamptz`; la app corre con `USE_TZ=True` y `TIME_ZONE='UTC'`. Manda siempre **UTC con offset** (`2026-09-04T15:04:05+00:00`). Una fecha sin zona se reinterpreta en la zona de tu sesión y desplaza la ventana de 24 h y todos los informes.
+- Los valores de tipo enum van en **minúsculas, exactos y sin espacios**.
+- Teléfonos: `+` + indicativo + dígitos, sin espacios ni guiones (`+573001112233`). El `wa_id` de WhatsApp (`573001112233`) hay que prefijarlo con `+`.
+
+### `core_client`
+
+| columna | valor |
+|---|---|
+| `first_name` | texto ≤80. El nombre del perfil, o el teléfono si no hay |
+| `last_name`, `email`, `country` | `''` si no se conocen (`country` acepta ISO-3166 alfa-2 en mayúsculas, ej. `CO`) |
+| `phone` | E.164 exacto, ≤20 |
+| `channel` | `''` \| `whatsapp` \| `messenger` \| `instagram` \| `facebook` \| `tiktok` |
+| `created_at` | `now()` |
+
+Busca antes de insertar: `SELECT id FROM core_client WHERE phone = $1;`
+
+### `messaging_conversation`
+
+| columna | valor |
+|---|---|
+| `contact_id` | el `core_client.id` anterior |
+| `channel` | `whatsapp` \| `messenger` \| `instagram-dm` \| `facebook` \| `instagram` \| `tiktok-dm` \| `tiktok-coment` |
+| `status` | `open` \| `pending` \| `resolved` |
+| `assigned_to_id` | `NULL` = «Sin asignar» |
+| `last_message_at` | fecha del mensaje más reciente del hilo |
+| `last_inbound_at` | fecha del **entrante** más reciente; sin esto el compositor queda cerrado |
+| `unread_count` | entero ≥ 0 (hay CHECK); empieza en `0` |
+| `created_at` | `now()` |
+
+Reutiliza el hilo abierto antes de crear otro:
+
+```sql
+SELECT id FROM messaging_conversation
+WHERE contact_id = $1 AND channel = $2 AND status <> 'resolved'
+ORDER BY last_message_at DESC NULLS LAST
+LIMIT 1;
+```
+
+### `messaging_message`
+
+| columna | valor |
+|---|---|
+| `conversation_id` | una conversación **de ese mismo contacto** |
+| `direction` | exactamente `inbound` o `outbound` |
+| `body` | texto, `''` si no hay. Para media sin pie: `[imagen]` / `[video]` / `[audio]` / `[documento]` / `[sticker]` |
+| `media_url` | `''` o una URL https, **≤200 caracteres** |
+| `media_type` | `''` \| `image` \| `video` \| `audio` \| `document` \| `sticker` |
+| `status` | `queued` \| `sent` \| `delivered` \| `read` \| `failed`. Para algo ya entregado: `delivered` |
+| `provider_message_id` | el id real del proveedor (`wamid....`), ≤255, ÚNICO. Si de verdad no lo hay, `NULL` — nunca `''` (el segundo `''` viola el índice único) |
+| `timestamp` | fecha del proveedor, UTC con offset |
+| `sent_by_id` | `NULL`. Ojo: `NULL` en un saliente significa «automático» para el informe de Tiempos de Respuesta |
+
+### Después de cada mensaje, en la misma transacción
+
+Entrante:
+
+```sql
+UPDATE messaging_conversation
+   SET last_message_at = $ts,
+       last_inbound_at = $ts,
+       unread_count    = unread_count + 1,
+       status          = CASE WHEN status = 'resolved' THEN 'open' ELSE status END
+ WHERE id = $conversation_id;
+```
+
+Saliente (no toques `last_inbound_at`, `unread_count` ni `status`):
+
+```sql
+UPDATE messaging_conversation
+   SET last_message_at = $ts
+ WHERE id = $conversation_id;
+```
+
+Envuelve cliente → conversación → mensaje → `UPDATE` en una sola transacción,
+para que un fallo no deje un mensaje sin su contabilidad.
+
 ## Deploy en Vercel
 
 El proyecto usa el soporte nativo de Vercel para Django (detecta `manage.py` y el `WSGI_APPLICATION` de [config/settings.py](config/settings.py) automáticamente): conecta el repo en vercel.com o corre `vercel deploy` y no hace falta build script.
@@ -179,6 +273,7 @@ En el dashboard del proyecto (Settings → Environment Variables) define, como m
 
 - `SECRET_KEY` — cualquier string largo y aleatorio (sin esto usa un valor de desarrollo inseguro).
 - `DEBUG=False`
+- `MESSAGING_PROVIDER` — **obligatorio**, y en producción nunca `fake`: `twilio`, `meta` o `baileys`, con las credenciales del proveedor elegido. Sin esta variable el despliegue falla al arrancar, a propósito.
 - `DATABASE_URL` — Postgres (por ejemplo Vercel Postgres o Neon, desde la pestaña Storage). SQLite no sirve en producción porque las funciones serverless no tienen disco persistente.
 - `ALLOWED_HOSTS` — opcional; el dominio del deploy y el alias de producción se confían automáticamente vía `VERCEL_URL` y `VERCEL_PROJECT_PRODUCTION_URL`, agrega aquí solo dominios propios (custom domains).
 
