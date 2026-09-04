@@ -239,6 +239,54 @@ class ClienteDetailTests(TestCase):
         self.assertIn(f'hx-get="{self.url}"', html)
 
 
+class WriteFirstFromTheRowTests(TestCase):
+    """The CRM row's shortcut into the Inbox's Nuevo chat modal.
+
+    A client who has never written has no thread and no open 24h window, so a
+    plantilla is the only message WhatsApp will deliver. That flow already
+    exists in the Inbox; these pin the CRM's link into it.
+    """
+
+    def crm(self):
+        return self.client.get(reverse("section", args=["crm"])).content.decode()
+
+    def test_the_row_links_into_the_nuevo_chat_modal_for_that_client(self):
+        row = make(channel="whatsapp")
+        self.assertIn(
+            f'{reverse("section", args=["inbox"])}?nuevo={row.pk}', self.crm()
+        )
+
+    def test_a_client_typed_in_by_hand_gets_it_too(self):
+        # No channel yet -- nobody has written, which is exactly who the
+        # plantilla path is for. This is the case that must not be excluded.
+        row = make(channel="")
+        self.assertIn(
+            f'{reverse("section", args=["inbox"])}?nuevo={row.pk}', self.crm()
+        )
+
+    def test_a_non_whatsapp_client_does_not_get_it(self):
+        # Plantillas are a WhatsApp mechanism; offering the link on an
+        # Instagram row would promise a send that cannot happen.
+        row = make(channel="instagram")
+        self.assertNotIn(
+            f'{reverse("section", args=["inbox"])}?nuevo={row.pk}', self.crm()
+        )
+
+    def test_the_link_replaces_the_screen_rather_than_the_client_modal(self):
+        # .row-actions points every request at #client-modal-body; this one
+        # has to override that or the Inbox would render inside the dialog.
+        make(channel="whatsapp")
+        self.assertIn('hx-target="#content"', self.crm())
+
+    def test_the_inbox_opens_the_modal_on_the_client_the_link_named(self):
+        row = make(channel="whatsapp")
+        html = self.client.get(
+            reverse("section", args=["inbox"]), {"nuevo": row.pk}
+        ).content.decode()
+        self.assertIn("data-dialog-autoshow", html)
+        self.assertIn(f'{reverse("inbox_new_chat")}?cliente={row.pk}', html)
+
+
 class ClienteDeleteTests(TestCase):
     def setUp(self):
         self.client_row = make()
