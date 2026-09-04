@@ -4,7 +4,7 @@
   No page title, per the reference: the toolbar alone sits right-aligned at
   the top. Only #template-table below is replaced when a tab is picked.
 
-  Context: tabs, active_tab, columns, templates
+  Context: tabs, active_tab, columns, templates, plantillas_notice (optional)
 {% endcomment %}
 
 <div class="plantillas">
@@ -20,6 +20,16 @@
 
       <button type="button" class="icon-btn" aria-label="Filtrar">
         {% include "icons/list-filter.svg" %}
+      </button>
+
+      {# Pulls approval verdicts from Meta; answers with #template-table. #}
+      {# The CSRF header comes from <body> (base.html), not from here.   #}
+      <button type="button" class="btn-ghost plantillas__sync"
+              hx-post="{% url 'plantillas_sync' %}"
+              hx-target="#template-table"
+              hx-swap="innerHTML">
+        {% include "icons/history.svg" %}
+        <span>Sincronizar con WhatsApp</span>
       </button>
 
       {# Opens the chooser modal included at the bottom of this panel. #}

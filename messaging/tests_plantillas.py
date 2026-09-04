@@ -1,0 +1,327 @@
+"""Tests for the plantilla catalogue: submitting one to the provider
+(services.submit_template), reading approval verdicts back
+(services.sync_template_verdicts), and the Meta Graph calls behind both --
+mocked at ``requests``, since Meta reviews templates on its own clock and
+there is no webhook for the verdict.
+
+Sending a plantilla is a separate path with its own tests; this file is only
+about the catalogue Meta keeps and how the CRM stays in step with it."""
+
+from unittest.mock import Mock, patch
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+
+from core.models import MessageTemplate
+from messaging import services
+from messaging.providers.base import MessagingProvider
+from messaging.providers.fake import FakeProvider
+from messaging.providers.meta import MetaProvider
+from messaging.providers.types import TemplateSpec, TemplateStatus, TemplateVerdict
+
+
+def plantilla(name="pedido_listo", body="Hola {{1}}, tu pedido {{2}} está listo.",
+              samples=("Ana", "#4512"), status="aceptada", **kwargs):
+    return MessageTemplate.objects.create(
+        name=name, body=body, body_sample_values=list(samples), status=status, **kwargs
+    )
+
+
+def graph_response(payload, status=200):
+    response = Mock()
+    response.status_code = status
+    response.json.return_value = payload
+    response.text = str(payload)
+    response.raise_for_status.return_value = None
+    return response
+
+
+class SubmitTemplateTests(TestCase):
+    def test_a_provider_without_a_catalogue_is_a_no_op(self):
+        entry = plantilla(status="pendiente")
+        self.assertFalse(services.submit_template(entry))
+        entry.refresh_from_db()
+        self.assertEqual(entry.provider_template_id, "")
+
+    def test_a_returned_id_is_recorded_and_status_reset_to_pendiente(self):
+        entry = plantilla(status="aceptada")
+        with patch.object(FakeProvider, "create_template", return_value="12345"):
+            self.assertTrue(services.submit_template(entry))
+        entry.refresh_from_db()
+        self.assertEqual(entry.provider_template_id, "12345")
+        self.assertEqual(entry.status, "pendiente")
+
+    def test_a_provider_error_becomes_a_submission_failure(self):
+        entry = plantilla()
+        with patch.object(FakeProvider, "create_template", side_effect=RuntimeError("nope")):
+            with self.assertRaises(services.TemplateSubmissionFailed) as caught:
+                services.submit_template(entry)
+        self.assertIn("nope", str(caught.exception))
+        # The row is untouched -- the editor's work survives the hiccup.
+        entry.refresh_from_db()
+        self.assertEqual(entry.provider_template_id, "")
+
+    def test_the_spec_handed_over_mirrors_the_row(self):
+        entry = plantilla(
+            header_type="text", header_text="Tu pedido", footer="Gracias",
+            buttons=[{"type": "quick_reply", "text": "Ok"}], category="utility",
+        )
+        with patch.object(FakeProvider, "create_template", return_value="1") as create:
+            services.submit_template(entry)
+        spec = create.call_args.args[0]
+        self.assertIsInstance(spec, TemplateSpec)
+        self.assertEqual(spec.name, "pedido_listo")
+        self.assertEqual(spec.category, "utility")
+        self.assertEqual(spec.header_text, "Tu pedido")
+        self.assertEqual(spec.body_sample_values, ["Ana", "#4512"])
+        self.assertEqual(spec.buttons, [{"type": "quick_reply", "text": "Ok"}])
+        self.assertIsNone(spec.header_media)
+
+
+class SyncTemplateVerdictsTests(TestCase):
+    def verdicts(self, *entries):
+        return patch.object(FakeProvider, "template_verdicts", return_value=list(entries))
+
+    def test_a_provider_without_a_catalogue_changes_nothing(self):
+        plantilla(status="pendiente")
+        self.assertEqual(services.sync_template_verdicts(), 0)
+
+    def test_an_approval_lands_on_the_matching_row(self):
+        entry = plantilla(status="pendiente")
+        with self.verdicts(TemplateVerdict("pedido_listo", "es", TemplateStatus.APPROVED,
+                                           provider_template_id="777")):
+            self.assertEqual(services.sync_template_verdicts(), 1)
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, "aceptada")
+        self.assertEqual(entry.provider_template_id, "777")
+        self.assertIsNotNone(entry.status_synced_at)
+
+    def test_a_rejection_brings_its_reason(self):
+        entry = plantilla(status="pendiente")
+        with self.verdicts(TemplateVerdict("pedido_listo", "es", TemplateStatus.REJECTED,
+                                           rejection_reason="INVALID_FORMAT")):
+            services.sync_template_verdicts()
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, "rechazada")
+        self.assertEqual(entry.rejection_reason, "INVALID_FORMAT")
+
+    def test_matching_is_per_language(self):
+        es = plantilla(status="pendiente", language="es")
+        en = plantilla(status="pendiente", language="en")
+        with self.verdicts(TemplateVerdict("pedido_listo", "en", TemplateStatus.APPROVED)):
+            services.sync_template_verdicts()
+        es.refresh_from_db(); en.refresh_from_db()
+        self.assertEqual(es.status, "pendiente")
+        self.assertEqual(en.status, "aceptada")
+
+    def test_rows_the_provider_does_not_know_are_left_alone(self):
+        # Absence is not a verdict.
+        entry = plantilla(name="solo_local", status="aceptada")
+        with self.verdicts(TemplateVerdict("otra", "es", TemplateStatus.REJECTED)):
+            self.assertEqual(services.sync_template_verdicts(), 0)
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, "aceptada")
+        self.assertIsNone(entry.status_synced_at)
+
+    def test_an_unchanged_row_still_gets_its_sync_time(self):
+        entry = plantilla(status="aceptada")
+        with self.verdicts(TemplateVerdict("pedido_listo", "es", TemplateStatus.APPROVED)):
+            self.assertEqual(services.sync_template_verdicts(), 0)
+        entry.refresh_from_db()
+        self.assertIsNotNone(entry.status_synced_at)
+
+
+class ProviderDefaultsTests(TestCase):
+    def test_the_base_class_has_no_catalogue(self):
+        fake = FakeProvider()
+        self.assertIsNone(fake.create_template(TemplateSpec("x", "es", "marketing", "hola")))
+        self.assertEqual(fake.template_verdicts(), [])
+        self.assertIs(type(fake).template_verdicts, MessagingProvider.template_verdicts)
+
+
+@override_settings(
+    META_ACCESS_TOKEN="test-token",
+    META_WABA_ID="10203040",
+    META_APP_ID="55667788",
+    MESSAGING_PROVIDER="meta",
+)
+class MetaTemplateCatalogueTests(TestCase):
+    """MetaProvider.create_template / template_verdicts: the Graph payloads
+    and the normalization of what comes back."""
+
+    def setUp(self):
+        self.provider = MetaProvider()
+
+    def spec(self, **overrides):
+        base = dict(
+            name="pedido_listo", language="es", category="utility",
+            body="Hola {{1}}, tu pedido {{2}} está listo.",
+            body_sample_values=["Ana", "#4512"],
+        )
+        base.update(overrides)
+        return TemplateSpec(**base)
+
+    # --- create_template ----------------------------------------------------
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_create_posts_to_the_waba_and_returns_the_id(self, mock_post):
+        mock_post.return_value = graph_response({"id": "9001", "status": "PENDING"})
+
+        template_id = self.provider.create_template(self.spec())
+
+        self.assertEqual(template_id, "9001")
+        url = mock_post.call_args.args[0]
+        self.assertIn("/10203040/message_templates", url)
+        headers = mock_post.call_args.kwargs["headers"]
+        self.assertEqual(headers["Authorization"], "Bearer test-token")
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_create_builds_body_with_examples_and_uppercase_category(self, mock_post):
+        mock_post.return_value = graph_response({"id": "1"})
+
+        self.provider.create_template(self.spec())
+
+        sent = mock_post.call_args.kwargs["json"]
+        self.assertEqual(sent["name"], "pedido_listo")
+        self.assertEqual(sent["language"], "es")
+        self.assertEqual(sent["category"], "UTILITY")
+        body = [c for c in sent["components"] if c["type"] == "BODY"][0]
+        self.assertEqual(body["text"], "Hola {{1}}, tu pedido {{2}} está listo.")
+        self.assertEqual(body["example"], {"body_text": [["Ana", "#4512"]]})
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_create_maps_text_header_footer_and_every_button_kind(self, mock_post):
+        mock_post.return_value = graph_response({"id": "1"})
+
+        self.provider.create_template(self.spec(
+            header_type="text", header_text="Tu pedido", footer="Gracias por comprar",
+            buttons=[
+                {"type": "quick_reply", "text": "Sí"},
+                {"type": "url", "text": "Ver", "url": "https://tienda.example/p/1"},
+                {"type": "phone", "text": "Llamar", "phone": "+573001112233"},
+            ],
+        ))
+
+        components = {c["type"]: c for c in mock_post.call_args.kwargs["json"]["components"]}
+        self.assertEqual(components["HEADER"], {"type": "HEADER", "format": "TEXT", "text": "Tu pedido"})
+        self.assertEqual(components["FOOTER"]["text"], "Gracias por comprar")
+        self.assertEqual(components["BUTTONS"]["buttons"], [
+            {"type": "QUICK_REPLY", "text": "Sí"},
+            {"type": "URL", "text": "Ver", "url": "https://tienda.example/p/1"},
+            {"type": "PHONE_NUMBER", "text": "Llamar", "phone_number": "+573001112233"},
+        ])
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_create_without_variables_ships_no_example(self, mock_post):
+        mock_post.return_value = graph_response({"id": "1"})
+        self.provider.create_template(self.spec(body="Gracias.", body_sample_values=[]))
+        body = mock_post.call_args.kwargs["json"]["components"][0]
+        self.assertNotIn("example", body)
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_a_media_header_goes_through_the_resumable_upload_first(self, mock_post):
+        # Three POSTs in order: open an upload session, push the bytes, then
+        # the template itself carrying the handle.
+        mock_post.side_effect = [
+            graph_response({"id": "upload:SESSION"}),
+            graph_response({"h": "4:HANDLE"}),
+            graph_response({"id": "9002"}),
+        ]
+        media = SimpleUploadedFile("muestra.png", b"\x89PNGbytes", content_type="image/png")
+
+        template_id = self.provider.create_template(self.spec(header_type="image", header_media=media))
+
+        self.assertEqual(template_id, "9002")
+        session_call, upload_call, create_call = mock_post.call_args_list
+        self.assertIn("/55667788/uploads", session_call.args[0])
+        self.assertEqual(session_call.kwargs["params"]["file_length"], len(b"\x89PNGbytes"))
+        self.assertEqual(session_call.kwargs["params"]["file_type"], "image/png")
+        self.assertIn("/upload:SESSION", upload_call.args[0])
+        self.assertEqual(upload_call.kwargs["data"], b"\x89PNGbytes")
+        self.assertEqual(upload_call.kwargs["headers"]["Authorization"], "OAuth test-token")
+        self.assertEqual(upload_call.kwargs["headers"]["file_offset"], "0")
+        header = create_call.kwargs["json"]["components"][0]
+        self.assertEqual(header, {"type": "HEADER", "format": "IMAGE",
+                                  "example": {"header_handle": ["4:HANDLE"]}})
+
+    @override_settings(META_APP_ID="")
+    def test_a_media_header_without_an_app_id_fails_loudly(self):
+        media = SimpleUploadedFile("muestra.png", b"x", content_type="image/png")
+        with self.assertRaises(RuntimeError):
+            self.provider.create_template(self.spec(header_type="image", header_media=media))
+
+    @override_settings(META_WABA_ID="")
+    def test_create_without_a_waba_id_fails_loudly(self):
+        with self.assertRaises(RuntimeError):
+            self.provider.create_template(self.spec())
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_create_surfaces_graph_errors(self, mock_post):
+        import requests
+
+        response = graph_response({"error": {"message": "name taken"}}, status=400)
+        response.raise_for_status.side_effect = requests.HTTPError("400")
+        mock_post.return_value = response
+        with self.assertRaises(requests.HTTPError):
+            self.provider.create_template(self.spec())
+
+    # --- template_verdicts --------------------------------------------------
+
+    @patch("messaging.providers.meta.requests.get")
+    def test_verdicts_normalize_meta_statuses(self, mock_get):
+        mock_get.return_value = graph_response({"data": [
+            {"id": "1", "name": "a", "language": "es", "status": "APPROVED"},
+            {"id": "2", "name": "b", "language": "es", "status": "PENDING"},
+            {"id": "3", "name": "c", "language": "es", "status": "REJECTED",
+             "rejected_reason": "INVALID_FORMAT"},
+            {"id": "4", "name": "d", "language": "es", "status": "PAUSED"},
+            {"id": "5", "name": "e", "language": "es", "status": "IN_APPEAL"},
+            {"id": "6", "name": "f", "language": "es", "status": "SOMETHING_NEW"},
+        ]})
+
+        verdicts = {v.name: v for v in self.provider.template_verdicts()}
+
+        self.assertEqual(verdicts["a"].status, TemplateStatus.APPROVED)
+        self.assertEqual(verdicts["b"].status, TemplateStatus.PENDING)
+        self.assertEqual(verdicts["c"].status, TemplateStatus.REJECTED)
+        self.assertEqual(verdicts["c"].rejection_reason, "INVALID_FORMAT")
+        # Paused: rejected for our purposes, with the Meta state as the why.
+        self.assertEqual(verdicts["d"].status, TemplateStatus.REJECTED)
+        self.assertEqual(verdicts["d"].rejection_reason, "PAUSED")
+        self.assertEqual(verdicts["e"].status, TemplateStatus.PENDING)
+        self.assertNotIn("f", verdicts)  # unknown: skipped, never guessed
+        self.assertEqual(verdicts["a"].provider_template_id, "1")
+
+    @patch("messaging.providers.meta.requests.get")
+    def test_verdicts_drop_metas_none_reason(self, mock_get):
+        mock_get.return_value = graph_response({"data": [
+            {"id": "1", "name": "a", "language": "es", "status": "APPROVED",
+             "rejected_reason": "NONE"},
+        ]})
+        self.assertEqual(self.provider.template_verdicts()[0].rejection_reason, "")
+
+    @patch("messaging.providers.meta.requests.get")
+    def test_verdicts_follow_paging(self, mock_get):
+        mock_get.side_effect = [
+            graph_response({
+                "data": [{"id": "1", "name": "a", "language": "es", "status": "APPROVED"}],
+                "paging": {"next": "https://graph.facebook.com/next-page"},
+            }),
+            graph_response({
+                "data": [{"id": "2", "name": "b", "language": "es", "status": "APPROVED"}],
+            }),
+        ]
+        names = [v.name for v in self.provider.template_verdicts()]
+        self.assertEqual(names, ["a", "b"])
+        second_call = mock_get.call_args_list[1]
+        self.assertEqual(second_call.args[0], "https://graph.facebook.com/next-page")
+        self.assertIsNone(second_call.kwargs["params"])
+
+    @patch("messaging.providers.meta.requests.get")
+    def test_verdicts_ask_for_the_fields_the_sync_needs(self, mock_get):
+        mock_get.return_value = graph_response({"data": []})
+        self.provider.template_verdicts()
+        params = mock_get.call_args.kwargs["params"]
+        for field in ["name", "language", "status", "rejected_reason", "id"]:
+            self.assertIn(field, params["fields"])
+        self.assertIn("/10203040/message_templates", mock_get.call_args.args[0])

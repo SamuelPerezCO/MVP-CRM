@@ -240,6 +240,20 @@ class MessageTemplate(models.Model):
     )
     rejection_reason = models.TextField("motivo de rechazo", blank=True)
 
+    #: The id Meta assigned when the plantilla was submitted for approval.
+    #: Blank means it was never submitted (no META_WABA_ID at save time, or
+    #: the submission failed) -- the status sync matches by (name, language)
+    #: anyway, so a template created in Meta's own console still reconciles.
+    provider_template_id = models.CharField(
+        "id en el proveedor", max_length=64, blank=True
+    )
+    #: When the approval state was last read back from the provider. Null
+    #: until the first sync; the Plantillas page shows it so "Pendiente"
+    #: reads as "pending as of <when>", not as a guess.
+    status_synced_at = models.DateTimeField(
+        "estado sincronizado", null=True, blank=True
+    )
+
     created_by = models.CharField("creado por", max_length=80, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
