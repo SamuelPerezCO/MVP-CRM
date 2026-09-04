@@ -24,6 +24,8 @@ from django.template.loader import get_template, render_to_string
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 
+import json
+
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -791,34 +793,48 @@ def inbox_send(request, conversation_id: int):
     )
 
 
-def inbox_quick_replies(request):
-    """The Respuestas rápidas popover: the account's usable plantillas,
-    ready to drop into the composer.
+def inbox_quick_replies(request, conversation_id: int):
+    """The Respuestas rápidas popover: the account's usable plantillas, each
+    one click away from landing in *this* conversation.
 
-    Fetched lazily the first time the picker opens (see chat_thread.html) --
-    the list is account-wide, so no conversation id. Offered: every active
-    plantilla that isn't rechazada. Pendientes are included -- the MVP has
-    no real Meta approval pipeline, so a freshly created plantilla would
-    otherwise never show up -- but they carry a "Pendiente" badge, since a
-    real WhatsApp send outside the 24h window would need the approval.
+    Fetched lazily the first time the picker opens (see chat_thread.html).
+    Offered: every active plantilla that isn't rechazada. Pendientes are
+    included -- the MVP has no real Meta approval pipeline, so a freshly
+    created plantilla would otherwise never show up -- but they carry a
+    "Pendiente" badge, since a real WhatsApp send outside the 24h window
+    would need the approval.
 
     Each entry ships its body already rendered (samples substituted for
-    {{n}} -- core.plantillas.render_body); clicking it fills the composer,
-    where the agent can adjust before Enviar.
+    {{n}} -- core.plantillas.render_body) and posts it straight to
+    :func:`inbox_send`, so picking a quick reply puts it in the thread. The
+    exception is a body still carrying an unfilled {{n}} (no sample for that
+    variable): sending that would show the customer a literal "{{2}}", so
+    those entries fill the composer instead and wait for the agent --
+    ``needs_input`` is what the template branches on.
     """
+    conversation = get_object_or_404(Conversation, pk=conversation_id)
     templates = (
         MessageTemplate.objects.filter(is_active=True)
         .exclude(status="rechazada")
         .order_by("name")
     )
-    entries = [
-        {"template": template, "body": plantillas.render_body(template)}
-        for template in templates
-    ]
+    entries = []
+    for template in templates:
+        body = plantillas.render_body(template)
+        entries.append(
+            {
+                "template": template,
+                "body": body,
+                "needs_input": bool(plantillas.VARIABLE_RE.search(body)),
+                # hx-vals is parsed as JSON, so the body travels pre-encoded;
+                # the template's autoescaping makes it attribute-safe.
+                "body_json": json.dumps(body, ensure_ascii=False),
+            }
+        )
     return HttpResponse(
         render_to_string(
             "partials/inbox/quick_replies.html",
-            {"entries": entries},
+            {"entries": entries, "conversation": conversation},
             request=request,
         )
     )

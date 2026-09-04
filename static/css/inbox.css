@@ -753,6 +753,13 @@
   font-weight: 700;
 }
 
+/* This entry can't be sent as-is -- it still has a {{n}} to fill, so the
+   click loads the composer instead of sending. */
+.quickreplies__badge--fill {
+  background: #e7eefb;
+  color: #2b4f8f;
+}
+
 .quickreplies__preview {
   font-size: 12px;
   line-height: 1.4;

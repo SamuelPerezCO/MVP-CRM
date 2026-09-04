@@ -58,14 +58,18 @@
         The plantillas picker. details/summary gives the open/close for free;
         the panel's contents load once, on first open (hx-trigger="toggle
         once" -- the toggle event fires on the details element itself).
-        Picking an entry fills the composer input -- see the quickreplies
-        block in shell.js -- so Enviar stays the only thing that sends.
+        Picking an entry sends it into this chat -- the entries carry their
+        own hx-post to inbox_send, and hx-headers here is what supplies them
+        the CSRF token (they are buttons, not this form's submit). An entry
+        whose body still has a blank to fill falls back to loading the
+        composer instead; see quick_replies.html and shell.js.
       {% endcomment %}
       <details class="quickreplies" data-quickreplies
-               hx-get="{% url 'inbox_quick_replies' %}"
+               hx-get="{% url 'inbox_quick_replies' active_conversation.pk %}"
                hx-trigger="toggle once"
                hx-target="find [data-quickreplies-pop]"
-               hx-swap="innerHTML">
+               hx-swap="innerHTML"
+               hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
         <summary class="composer__quick">
           {% include "icons/zap.svg" %}
           <span>Respuestas rápidas</span>
