@@ -1,5 +1,8 @@
 """Tests for the sidebar shell: routing, active state, and HTMX fragments."""
 
+import pathlib
+
+from django.conf import settings
 from django.test import TestCase
 from django.urls import reverse
 
@@ -308,6 +311,27 @@ class TemplateCommentLeakTests(TestCase):
                 html = self.client.get(reverse("section", args=[item.key])).content.decode()
                 self.assertNotIn("{#", html)
                 self.assertNotIn("#}", html)
+
+    def test_no_template_opens_a_comment_it_never_closes_on_that_line(self):
+        """Django's {# #} comment does NOT span lines -- an unclosed one is
+        printed to the page verbatim.
+
+        Checked against the source rather than a rendered page because the
+        test above cannot see this: the leak that prompted it sat inside
+        {% for client in clients %}, and that loop has no rows to run with an
+        empty database, so the comment never rendered and the page looked
+        clean. Multi-line prose belongs in {% comment %}.
+        """
+        offenders = []
+        for path in sorted(pathlib.Path(settings.BASE_DIR / "templates").rglob("*.html")):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if "{#" in line and "#}" not in line.split("{#", 1)[1]:
+                    offenders.append(f"{path.name}:{number}: {line.strip()[:70]}")
+        self.assertEqual(
+            offenders, [],
+            "These open {# without closing it on the same line, so Django "
+            "renders them as page text:\n  " + "\n  ".join(offenders),
+        )
 
     def test_welcome_screen_does_not_leak_either(self):
         html = self.client.get(reverse("home")).content.decode()
