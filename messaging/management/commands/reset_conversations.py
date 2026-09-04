@@ -45,6 +45,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
 
+from core.agents import configured_agents
 from core.models import CalendarEvent, Client
 from messaging.models import Conversation, ConversationTag, Message
 
@@ -157,15 +158,29 @@ class Command(BaseCommand):
         the cascade will take. Calendar events do not cascade
         (``CalendarEvent.contact`` is SET_NULL) and are matched by their seed
         title *and* description, so a user's own "Reunión semanal del equipo"
-        survives. The demo user goes last: ``assigned_to``/``sent_by`` are
-        SET_NULL, so nothing real is lost with it.
+        survives. The demo user goes last, and only when
+        ``asesor`` is not a real login in APP_AGENTS: every FK to it is
+        SET_NULL, so deleting a name somebody actually uses would quietly
+        erase their authorship everywhere instead of failing.
         """
         contacts = Client.objects.filter(phone__startswith=DEMO_PHONE_PREFIX)
         conversations = Conversation.objects.filter(contact__in=contacts)
         events = CalendarEvent.objects.filter(
             title__in=DEMO_EVENT_TITLES, description=DEMO_EVENT_DESCRIPTION
         )
+        # ...unless somebody adopted the name as a real login. APP_AGENTS is
+        # the source of truth for who can sign in, and deleting that row would
+        # silently NULL their attribution on every conversation and message
+        # they ever touched (all the FKs are SET_NULL), with no undo.
         demo_users = get_user_model().objects.filter(username=DEMO_USERNAME)
+        if any(agent.username == DEMO_USERNAME for agent in configured_agents()):
+            demo_users = demo_users.none()
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  (el usuario {DEMO_USERNAME!r} está en APP_AGENTS: es un "
+                    f"agente real, no se toca)"
+                )
+            )
 
         counts = {
             "mensajes": Message.objects.filter(conversation__in=conversations).count(),
