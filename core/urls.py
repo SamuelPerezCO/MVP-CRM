@@ -33,6 +33,14 @@ urlpatterns = [
         views.inbox_send,
         name="inbox_send",
     ),
+    # A plantilla into an existing chat -- the closed composer's picker.
+    path(
+        "inbox/chat/<int:conversation_id>/plantilla/",
+        views.inbox_send_template,
+        name="inbox_send_template",
+    ),
+    # "Nuevo Chat": GET the modal body, POST to start a conversation.
+    path("inbox/nuevo/", views.inbox_new_chat, name="inbox_new_chat"),
     # The chat header's agent dropdown posts here on every change.
     path(
         "inbox/chat/<int:conversation_id>/asignar/",
@@ -92,10 +100,10 @@ urlpatterns = [
     # The client table region (rows + pager), fetched on its own when paging
     # and when the toolbar's search box changes.
     path("crm/clientes/tabla/", views.clientes_table, name="clientes_table"),
-    # The whole client base as an .xlsx download (CRM > Exportaciones).
-    path("crm/clientes/exportar/", views.clientes_export, name="clientes_export"),
     # Clientes CRUD. Each one answers with a fragment for the shared modal in
     # the Clientes panel; the saves additionally swap the table in out-of-band.
+    # The whole client base as an .xlsx download (CRM > Exportaciones).
+    path("crm/clientes/exportar/", views.clientes_export, name="clientes_export"),
     path("crm/clientes/nuevo/", views.cliente_form, name="cliente_create"),
     path(
         "crm/clientes/<int:client_id>/editar/",
@@ -178,6 +186,24 @@ urlpatterns = [
         "mensajeria/plantillas/tab/<slug:tab_key>/",
         views.plantillas_table,
         name="plantillas_table",
+    ),
+    # Respuestas rápidas CRUD (Configuración de mensajería). Each answers with
+    # a fragment for the panel's shared modal; saves also swap the table.
+    path("mensajeria/respuestas/nueva/", views.respuesta_form, name="respuesta_create"),
+    path(
+        "mensajeria/respuestas/<int:reply_id>/editar/",
+        views.respuesta_form,
+        name="respuesta_update",
+    ),
+    path(
+        "mensajeria/respuestas/<int:reply_id>/eliminar/",
+        views.respuesta_delete,
+        name="respuesta_delete",
+    ),
+    path(
+        "mensajeria/respuestas/<int:reply_id>/activa/",
+        views.respuesta_toggle,
+        name="respuesta_toggle",
     ),
     # The chooser modal's first card: pick a ready-made template (placeholder).
     path(

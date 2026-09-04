@@ -1,0 +1,37 @@
+{% comment %}
+  The delete confirmation for one quick reply -- the body of the shared
+  modal, fetched by the trash button (and "Eliminar" inside the edit form).
+
+  Nothing cascades here (no message references a QuickReply -- sends copy
+  the text into the Message row), so the warning is just that the text and
+  its image go away.
+
+  Context: reply
+{% endcomment %}
+
+<h2 class="modal__title modal__title--start" id="reply-modal-title">
+  Eliminar «{{ reply.title }}»
+</h2>
+
+<p class="client-delete__text">
+  Desaparece del selector del chat. Los mensajes que ya enviaste con ella
+  no cambian{% if reply.has_image %}, y la imagen sigue viéndose en esas
+  conversaciones{% endif %}. Esta acción no se puede deshacer.
+</p>
+
+{% if reply.body %}
+  <p class="client-delete__who">
+    <span class="reply-delete__text">{{ reply.body|truncatechars:160 }}</span>
+  </p>
+{% endif %}
+
+<div class="client-form__actions">
+  <span class="client-form__spacer"></span>
+  <button type="button" class="btn-ghost" data-dialog-close>Cancelar</button>
+  <form hx-post="{% url 'respuesta_delete' reply.pk %}"
+        hx-target="#reply-modal-body"
+        hx-swap="innerHTML">
+    {% csrf_token %}
+    <button type="submit" class="btn-danger">Eliminar respuesta</button>
+  </form>
+</div>

@@ -87,6 +87,11 @@
 </dl>
 
 <div class="client-form__actions">
+  {# Straight into the Inbox with this client preselected in Nuevo chat. #}
+  <a class="btn-ghost client-detail__chat"
+     href="{% url 'section' 'inbox' %}?nuevo={{ client.pk }}">
+    {% include "icons/message-circle.svg" %}<span>Nuevo chat</span>
+  </a>
   <span class="client-form__spacer"></span>
   <button type="button" class="btn-ghost" data-dialog-close>Cerrar</button>
   <button type="button" class="btn-primary"

@@ -1,0 +1,89 @@
+{% comment %}
+  The Crear/Editar respuesta rápida form -- the body of the shared modal on
+  the Respuestas rápidas panel. With ``reply`` it edits, without it creates.
+
+  Multipart (hx-encoding) because of the image. The form targets the modal
+  body: a rejected save lands back here with per-field errors and what was
+  typed, a successful one answers with saved.html.
+
+  Context: form, errors, reply (or None), title_max, body_max
+{% endcomment %}
+
+<h2 class="modal__title modal__title--start" id="reply-modal-title">
+  {% if reply %}Editar respuesta rápida{% else %}Crear respuesta rápida{% endif %}
+</h2>
+
+<form class="client-form reply-form"
+      hx-post="{% if reply %}{% url 'respuesta_update' reply.pk %}{% else %}{% url 'respuesta_create' %}{% endif %}"
+      hx-encoding="multipart/form-data"
+      hx-target="#reply-modal-body"
+      hx-swap="innerHTML">
+  {% csrf_token %}
+
+  <div class="ffield{% if errors.title %} ffield--error{% endif %}">
+    <input class="ffield__input" type="text" name="title" id="reply-title"
+           maxlength="{{ title_max }}" placeholder=" " autocomplete="off" required
+           value="{{ form.title }}"
+           {% if errors.title %}aria-invalid="true" aria-describedby="reply-error-title"{% endif %}>
+    <label class="ffield__label" for="reply-title">Título</label>
+  </div>
+  <p class="ffield__hint">Es lo que se ve en el selector del chat, no lo que recibe el cliente.</p>
+  {% if errors.title %}
+    <p class="ffield__error" id="reply-error-title">{{ errors.title }}</p>
+  {% endif %}
+
+  <div class="ffield ffield--area{% if errors.body %} ffield--error{% endif %}">
+    <textarea class="ffield__input" name="body" id="reply-body" rows="4"
+              maxlength="{{ body_max }}" placeholder=" "
+              {% if errors.body %}aria-invalid="true" aria-describedby="reply-error-body"{% endif %}>{{ form.body }}</textarea>
+    <label class="ffield__label" for="reply-body">Texto</label>
+  </div>
+  <p class="ffield__hint">Con imagen, este texto va como pie de foto. Puede quedar vacío.</p>
+  {% if errors.body %}
+    <p class="ffield__error" id="reply-error-body">{{ errors.body }}</p>
+  {% endif %}
+
+  <div class="reply-form__image{% if errors.image %} reply-form__image--error{% endif %}">
+    <label class="ffield__label ffield__label--static" for="reply-image">Imagen (opcional)</label>
+    {% if reply and reply.has_image %}
+      <div class="reply-form__current">
+        <a class="reply-thumb reply-thumb--lg" href="{{ reply.image.url }}" target="_blank" rel="noopener">
+          <img src="{{ reply.image.url }}" alt="Imagen actual de {{ reply.title }}">
+        </a>
+        <label class="reply-form__remove">
+          <input type="checkbox" name="remove_image" value="1"
+                 {% if form.remove_image %}checked{% endif %}>
+          <span>Quitar la imagen actual</span>
+        </label>
+      </div>
+    {% endif %}
+    <input class="reply-form__file" type="file" name="image" id="reply-image"
+           accept="image/jpeg,image/png,image/webp"
+           {% if errors.image %}aria-invalid="true" aria-describedby="reply-error-image"{% endif %}>
+    <p class="ffield__hint">JPG, PNG o WebP, hasta 5 MB. WhatsApp la entrega como foto.</p>
+    {% if errors.image %}
+      <p class="ffield__error" id="reply-error-image">{{ errors.image }}</p>
+    {% endif %}
+  </div>
+
+  <label class="reply-form__active">
+    <input type="checkbox" name="is_active" value="1" {% if form.is_active %}checked{% endif %}>
+    <span>Visible en el selector del chat</span>
+  </label>
+
+  <div class="client-form__actions">
+    {% if reply %}
+      <button type="button" class="btn-danger-ghost"
+              hx-get="{% url 'respuesta_delete' reply.pk %}"
+              hx-target="#reply-modal-body"
+              hx-swap="innerHTML">
+        Eliminar
+      </button>
+    {% endif %}
+    <span class="client-form__spacer"></span>
+    <button type="button" class="btn-ghost" data-dialog-close>Cancelar</button>
+    <button type="submit" class="btn-primary">
+      {% if reply %}Guardar cambios{% else %}Crear respuesta{% endif %}
+    </button>
+  </div>
+</form>

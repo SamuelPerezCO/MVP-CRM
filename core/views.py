@@ -57,10 +57,11 @@ from . import (
     inbox,
     mensajeria,
     plantillas,
+    respuestas,
     xlsx,
 )
 from .middleware import SESSION_KEY
-from .models import CalendarEvent, Client, ClientList, MessageTemplate
+from .models import CalendarEvent, Client, ClientList, MessageTemplate, QuickReply
 from .nav import (
     DEFAULT_SECTION,
     NAV_BY_KEY,
@@ -101,14 +102,18 @@ def _thread_context(conversation) -> dict:
     Shared by the full-page render (``?chat=``), the HTMX chat swap and the
     thread poll, so all three always agree on what a thread looks like.
     """
+    window_open = conversation.is_within_24h_window
     return {
         "active_conversation": conversation,
         "active_conversation_id": conversation.pk,
         "chat_messages": conversation.messages.all(),
-        "window_open": conversation.is_within_24h_window,
+        "window_open": window_open,
         # Options for the header's assignment dropdown -- everyone configured
         # in APP_AGENTS, whether or not they have logged in yet.
         "assign_options": agents.assignment_options(conversation),
+        # A closed window swaps the composer for the plantilla picker, which
+        # needs the list; an open one renders nothing from it.
+        "template_options": [] if window_open else _template_options(),
     }
 
 
@@ -170,6 +175,15 @@ def _inbox_context(request) -> dict:
         if conversation is not None:
             _mark_read(conversation)
             context.update(_thread_context(conversation))
+
+    # ?nuevo=<client id> opens the Nuevo chat modal on that client -- the CRM
+    # client card links here. The id is only carried through; the modal
+    # body itself is fetched (see nav_panel.html), so an unknown id just
+    # opens an unselected picker.
+    try:
+        context["new_chat_client_id"] = int(request.GET.get("nuevo", ""))
+    except ValueError:
+        context["new_chat_client_id"] = None
 
     return context
 
@@ -575,10 +589,21 @@ def _plantillas_context(request) -> dict:
     }
 
 
+def _respuestas_context(request) -> dict:
+    """Data for the Respuestas rápidas panel: every quick reply, active ones
+    first, with who wrote it."""
+    return {
+        "replies": QuickReply.objects.select_related("created_by").order_by(
+            "-is_active", "title"
+        ),
+    }
+
+
 #: Configuración de mensajería view key -> callable(request) -> dict. Views
 #: without an entry need no data.
 MENSAJERIA_PANEL_CONTEXT = {
     "plantillas-whatsapp": _plantillas_context,
+    "respuestas-rapidas": _respuestas_context,
 }
 
 
@@ -827,10 +852,23 @@ def inbox_send(request, conversation_id: int):
     )
 
     body = (request.POST.get("body") or "").strip()
+    image_url = ""
+    # A quick reply arrives by id, not by text: the server resolves what it
+    # says and whether it carries an image, so the picker can't be made to
+    # send anything the reply doesn't hold.
+    reply_id = request.POST.get("quick_reply")
+    if reply_id:
+        reply = QuickReply.objects.filter(pk=reply_id, is_active=True).first()
+        if reply is not None:
+            body = reply.body
+            image_url = respuestas.image_url(reply)
+
     send_error = None
-    if body:
+    if body or image_url:
         try:
-            messaging_services.send_message(conversation, body, request.user)
+            messaging_services.send_message(
+                conversation, body, request.user, image_url=image_url
+            )
         except messaging_services.SendWindowClosed:
             send_error = (
                 "La ventana de 24 horas se cerró. Envía una plantilla "
@@ -847,49 +885,154 @@ def inbox_send(request, conversation_id: int):
 
 
 def inbox_quick_replies(request, conversation_id: int):
-    """The Respuestas rápidas popover: the account's usable plantillas, each
-    one click away from landing in *this* conversation.
+    """The Respuestas rápidas popover: the account's quick replies, each one
+    click away from landing in *this* conversation.
 
     Fetched lazily the first time the picker opens (see chat_thread.html).
-    Offered: every active plantilla that isn't rechazada. Pendientes are
-    included -- the MVP has no real Meta approval pipeline, so a freshly
-    created plantilla would otherwise never show up -- but they carry a
-    "Pendiente" badge, since a real WhatsApp send outside the 24h window
-    would need the approval.
-
-    Each entry ships its body already rendered (samples substituted for
-    {{n}} -- core.plantillas.render_body) and posts it straight to
-    :func:`inbox_send`, so picking a quick reply puts it in the thread. The
-    exception is a body still carrying an unfilled {{n}} (no sample for that
-    variable): sending that would show the customer a literal "{{2}}", so
-    those entries fill the composer instead and wait for the agent --
-    ``needs_input`` is what the template branches on.
+    Lists every active :class:`core.models.QuickReply` -- the team's own
+    canned answers, managed in Configuración de mensajería > Respuestas
+    rápidas. Each entry posts its id to :func:`inbox_send`, which resolves
+    the text and the image server-side. (The picker used to list WhatsApp
+    plantillas; those now belong to the Enviar plantilla flow, the only
+    thing allowed outside the 24h window.)
     """
     conversation = get_object_or_404(Conversation, pk=conversation_id)
+    replies = QuickReply.objects.filter(is_active=True).order_by("title")
+    return HttpResponse(
+        render_to_string(
+            "partials/inbox/quick_replies.html",
+            {"replies": replies, "conversation": conversation},
+            request=request,
+        )
+    )
+
+
+# --- Nuevo chat / plantillas ------------------------------------------------
+#
+# WhatsApp's rule: a business may only *start* a conversation (or reopen one
+# the customer left more than 24h ago) with a pre-approved plantilla. Two
+# doors, one picker:
+#
+# * "Nuevo Chat" in the Inbox nav -- pick a client, pick a plantilla, send.
+#   The thread appears in the list and opens on the right.
+# * A closed composer -- the same plantilla picker sits where the composer
+#   would be, posting into that conversation.
+
+
+def _template_options():
+    """The plantillas the picker offers: active, not rejected, body rendered
+    with its samples. Pendientes are included with a badge (the MVP has no
+    approval pipeline -- see inbox_quick_replies' history) but flagged; a
+    real Meta send of an unapproved template is rejected by the API."""
     templates = (
         MessageTemplate.objects.filter(is_active=True)
         .exclude(status="rechazada")
         .order_by("name")
     )
-    entries = []
-    for template in templates:
-        body = plantillas.render_body(template)
-        entries.append(
-            {
-                "template": template,
-                "body": body,
-                "needs_input": bool(plantillas.VARIABLE_RE.search(body)),
-                # hx-vals is parsed as JSON, so the body travels pre-encoded;
-                # the template's autoescaping makes it attribute-safe.
-                "body_json": json.dumps(body, ensure_ascii=False),
-            }
-        )
+    return [
+        {"template": template, "body": plantillas.render_body(template)}
+        for template in templates
+    ]
+
+
+def _new_chat_response(request, client=None, error=None):
+    """The Nuevo chat modal body: a searchable client list and the
+    plantilla picker."""
     return HttpResponse(
         render_to_string(
-            "partials/inbox/quick_replies.html",
-            {"entries": entries, "conversation": conversation},
+            "partials/inbox/new_chat.html",
+            {
+                "clients": Client.objects.order_by("first_name", "last_name"),
+                "selected_client": client,
+                "template_options": _template_options(),
+                "new_chat_error": error,
+            },
             request=request,
         )
+    )
+
+
+def inbox_new_chat(request):
+    """Start a conversation from our side.
+
+    GET renders the modal body (``?cliente=`` preselects one). POST takes
+    ``cliente`` + ``plantilla``, sends the plantilla through
+    messaging.services.send_template into the client's open WhatsApp thread
+    (or a new one) and answers with the opened chat -- the same fragment a
+    row click produces -- plus the refreshed list out-of-band, and the
+    dismiss marker that closes the modal.
+    """
+    if request.method == "GET":
+        client = Client.objects.filter(pk=request.GET.get("cliente") or 0).first()
+        return _new_chat_response(request, client)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["GET", "POST"])
+
+    client = Client.objects.filter(pk=request.POST.get("cliente") or 0).first()
+    template = (
+        MessageTemplate.objects.filter(
+            pk=request.POST.get("plantilla") or 0, is_active=True
+        )
+        .exclude(status="rechazada")
+        .first()
+    )
+    if client is None:
+        return _new_chat_response(request, None, "Elige a quién escribirle.")
+    if template is None:
+        return _new_chat_response(request, client, "Elige una plantilla para abrir la conversación.")
+
+    conversation = messaging_services.start_conversation(client, "whatsapp")
+    try:
+        messaging_services.send_template(conversation, template, request.user)
+    except messaging_services.SendFailed:
+        return _new_chat_response(
+            request, client, "No se pudo enviar la plantilla. Inténtalo de nuevo."
+        )
+
+    _mark_read(conversation)
+    context = _thread_context(conversation)
+    context.update(
+        {
+            "active_filter": inbox.DEFAULT_FILTER,
+            "conversations": inbox.get_conversations(inbox.DEFAULT_FILTER, request.user),
+        }
+    )
+    return HttpResponse(
+        render_to_string("partials/inbox/new_chat_opened.html", context, request=request)
+    )
+
+
+def inbox_send_template(request, conversation_id: int):
+    """Send a plantilla into an existing conversation -- the closed
+    composer's picker posts here. Answers with the refreshed thread, like
+    inbox_send, and the composer itself swaps out-of-band: the reply that
+    just went out doesn't reopen the window (only the customer can), but the
+    thread now shows what was sent."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    conversation = get_object_or_404(
+        Conversation.objects.select_related("contact"), pk=conversation_id
+    )
+    template = (
+        MessageTemplate.objects.filter(
+            pk=request.POST.get("plantilla") or 0, is_active=True
+        )
+        .exclude(status="rechazada")
+        .first()
+    )
+    send_error = None
+    if template is None:
+        send_error = "Elige una plantilla."
+    else:
+        try:
+            messaging_services.send_template(conversation, template, request.user)
+        except messaging_services.SendFailed:
+            send_error = "No se pudo enviar la plantilla. Inténtalo de nuevo."
+
+    context = _thread_context(conversation)
+    context["send_error"] = send_error
+    return HttpResponse(
+        render_to_string("partials/inbox/chat_messages.html", context, request=request)
     )
 
 
@@ -1624,6 +1767,105 @@ def plantillas_table(request, tab_key: str):
                 "columns": mensajeria.TABLE_COLUMNS,
                 "templates": mensajeria.get_templates(tab_key),
             },
+            request=request,
+        )
+    )
+
+
+# --- Respuestas rápidas CRUD ------------------------------------------------
+#
+# Same shape as the Clientes CRUD: one shared modal on the panel
+# (#reply-modal-body), each button fetching the body it needs, a successful
+# save answering with a fragment that closes the modal and swaps the table
+# in out-of-band, a rejected one re-rendering the form with its errors.
+
+
+def _reply_form_response(request, state, errors, reply=None):
+    return HttpResponse(
+        render_to_string(
+            "partials/mensajeria/respuestas/form.html",
+            {
+                "form": state,
+                "errors": errors,
+                "reply": reply,
+                "title_max": respuestas.TITLE_MAX,
+                "body_max": respuestas.BODY_MAX,
+            },
+            request=request,
+        )
+    )
+
+
+def _reply_saved_response(request, message: str):
+    context = _respuestas_context(request)
+    context["reply_notice"] = message
+    return HttpResponse(
+        render_to_string(
+            "partials/mensajeria/respuestas/saved.html", context, request=request
+        )
+    )
+
+
+def respuesta_form(request, reply_id: int | None = None):
+    """The Crear/Editar respuesta rápida dialog: GET renders, POST saves.
+
+    Multipart, because of the image: the form posts with hx-encoding and the
+    upload arrives in request.FILES.
+    """
+    reply = get_object_or_404(QuickReply, pk=reply_id) if reply_id else None
+
+    if request.method == "POST":
+        state = respuestas.form_state(request.POST)
+        upload = request.FILES.get("image")
+        errors = respuestas.validate(state, upload, reply)
+        if not errors:
+            saved = respuestas.apply(state, upload, reply, request.user)
+            return _reply_saved_response(
+                request,
+                f"Respuesta actualizada: {saved.title}."
+                if reply
+                else f"Respuesta creada: {saved.title}.",
+            )
+        return _reply_form_response(request, state, errors, reply)
+
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    return _reply_form_response(request, respuestas.form_state(reply=reply), {}, reply)
+
+
+def respuesta_delete(request, reply_id: int):
+    """GET asks; POST deletes the reply.
+
+    The stored image file stays: messages already sent with it point at that
+    URL (``Message.media_url``), and deleting the bytes would break real
+    history. See core.respuestas.apply for the same reasoning.
+    """
+    reply = get_object_or_404(QuickReply, pk=reply_id)
+    if request.method == "POST":
+        title = reply.title
+        reply.delete()
+        return _reply_saved_response(request, f"Respuesta eliminada: {title}.")
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    return HttpResponse(
+        render_to_string(
+            "partials/mensajeria/respuestas/delete.html", {"reply": reply}, request=request
+        )
+    )
+
+
+def respuesta_toggle(request, reply_id: int):
+    """Flip a reply's active switch from the table -- hidden from the picker
+    without losing the text."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    reply = get_object_or_404(QuickReply, pk=reply_id)
+    reply.is_active = request.POST.get("active") == "1"
+    reply.save(update_fields=["is_active", "updated_at"])
+    return HttpResponse(
+        render_to_string(
+            "partials/mensajeria/respuestas/table.html",
+            _respuestas_context(request),
             request=request,
         )
     )

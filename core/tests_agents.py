@@ -202,9 +202,13 @@ class ConversationAssignmentTests(TestCase):
         self.conversation.refresh_from_db()
         self.assertEqual(self.conversation.assigned_to, self.admin)
 
-    def test_a_user_who_is_not_a_configured_agent_is_rejected(self):
-        """The dropdown is a fixed list, so anything else is a crafted POST."""
-        outsider = get_user_model().objects.create_user("intruso", password="x")
+    def test_a_user_who_is_not_an_agent_is_rejected(self):
+        """The dropdown is a fixed list, so anything else is a crafted POST.
+        A row with no usable password (a seed's, /admin's) is not an agent --
+        users created from the Usuarios page have one and ARE."""
+        outsider = get_user_model().objects.create_user("intruso")
+        outsider.set_unusable_password()
+        outsider.save()
         response = self.client.post(self.url(), {"agent": str(outsider.pk)})
         self.assertEqual(response.status_code, 400)
         self.conversation.refresh_from_db()
@@ -261,7 +265,8 @@ class ConversationAssignmentTests(TestCase):
     def test_reassigning_away_drops_a_non_agent_from_the_options(self):
         """The old assignee is only listed to keep them visible while they
         hold the chat -- once they don't, they shouldn't linger in the list."""
-        outsider = get_user_model().objects.create_user("asesor", password="x")
+        outsider = get_user_model().objects.create_user("asesor")
+        outsider.set_unusable_password()   # not an agent: no login of its own
         outsider.first_name = "Asesor Demo"
         outsider.save()
         self.conversation.assigned_to = outsider
