@@ -224,6 +224,31 @@
 
 .calendario .fc .fc-timegrid-event .fc-event-main { padding: 3px 5px; }
 
+/* Our own chip body (calendario.js eventContent): time, title, then the
+   client the event is with. The client line is what makes this a CRM
+   calendar rather than a generic one. */
+.calendario .fc .cal-event__body { min-width: 0; overflow: hidden; }
+.calendario .fc .cal-event__time { font-size: 10.5px; opacity: 0.85; }
+.calendario .fc .cal-event__title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calendario .fc .cal-event__client {
+  font-size: 10.5px;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calendario .fc .cal-event__client::before { content: "\1F464\00a0"; font-size: 9px; }
+
+/* Month cells are one line tall: fold the client onto the title line. */
+.calendario .fc .fc-daygrid-event .cal-event__body { display: flex; gap: 4px; align-items: baseline; }
+.calendario .fc .fc-daygrid-event .cal-event__time { flex-shrink: 0; }
+.calendario .fc .fc-daygrid-event .cal-event__client { flex-shrink: 1; }
+
 /* Event colors, keyed by PALETTE COLOR: core.calendario.EventType.css_class
    maps each event type to one of these, so a new type only needs a color
    assignment in Python -- no new CSS. Pairs are the tag palette's. */
