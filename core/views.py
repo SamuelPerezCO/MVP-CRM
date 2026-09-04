@@ -290,6 +290,39 @@ def _exportaciones_context(request) -> dict:
     }
 
 
+def _usuarios_context(request) -> dict:
+    """The team: every agent (env-configured and app-created), plus the
+    deactivated app users so a master can restore one. ``can_manage`` is
+    what shows the create/edit controls -- the page is read-only for
+    everyone else."""
+    User = get_user_model()
+    active = agents.agent_users()
+    active_ids = {user.pk for user in active}
+    inactive = [
+        user for user in User.objects.filter(is_active=False).order_by("first_name", "username")
+        if agents.is_app_user(user)
+    ]
+    # One query for the whole Maestros group instead of is_master() per row.
+    master_ids = set(
+        User.objects.filter(groups__name=agents.MASTER_GROUP).values_list("pk", flat=True)
+    )
+    env_names = {agent.username for agent in agents.configured_agents()}
+    return {
+        "team": [
+            {
+                "user": user,
+                "is_env": user.username in env_names,
+                "is_master": (
+                    user.username in env_names or user.is_superuser or user.pk in master_ids
+                ),
+            }
+            for user in active + inactive
+        ],
+        "can_manage": agents.is_master(request.user),
+        "active_ids": active_ids,
+    }
+
+
 #: CRM view key -> callable(request) -> dict. Panels without an entry need no data.
 PANEL_CONTEXT = {
     "clientes": _clientes_context,
@@ -297,6 +330,7 @@ PANEL_CONTEXT = {
     "lista-clientes": _lista_clientes_context,
     "mi-calendario": _mi_calendario_context,
     "exportaciones": _exportaciones_context,
+    "usuarios": _usuarios_context,
 }
 
 
@@ -1451,6 +1485,147 @@ def clientes_export(request):
     )
     response["Content-Disposition"] = f'attachment; filename="clientes-{stamp}.xlsx"'
     return response
+
+
+# --- Usuarios (CRM > Equipo) ------------------------------------------------
+#
+# Same shared-modal shape as the Clientes CRUD. Every mutation is gated on
+# core.agents.is_master: the response for anyone else is a fragment saying
+# so, with a 403, so a stale button can't do anything.
+
+
+def _forbidden_fragment(request):
+    return HttpResponse(
+        render_to_string("partials/crm/usuarios/forbidden.html", {}, request=request),
+        status=403,
+    )
+
+
+def _user_table_fragment(request, notice=None):
+    context = _usuarios_context(request)
+    context["user_notice"] = notice
+    return render_to_string("partials/crm/usuarios/table.html", context, request=request)
+
+
+def _user_form_response(request, state, errors, user=None):
+    return HttpResponse(
+        render_to_string(
+            "partials/crm/usuarios/form.html",
+            {"form": state, "errors": errors, "edit_user": user},
+            request=request,
+        )
+    )
+
+
+def _user_saved_response(request, notice):
+    context = _usuarios_context(request)
+    context["user_notice"] = notice
+    return HttpResponse(
+        render_to_string("partials/crm/usuarios/saved.html", context, request=request)
+    )
+
+
+def _user_form_state(post=None, user=None) -> dict:
+    if post is not None:
+        return {
+            "username": (post.get("username") or "").strip(),
+            "display_name": (post.get("display_name") or "").strip(),
+            "password": post.get("password") or "",
+            "password2": post.get("password2") or "",
+            "master": post.get("master") == "1",
+        }
+    if user is not None:
+        return {
+            "username": user.username,
+            "display_name": user.get_full_name() or user.username,
+            "password": "",
+            "password2": "",
+            "master": agents.is_master(user),
+        }
+    return {"username": "", "display_name": "", "password": "", "password2": "", "master": False}
+
+
+def _validate_user_form(state: dict, editing) -> dict:
+    errors = {}
+    if not editing:
+        username = state["username"]
+        if not username:
+            errors["username"] = "Escribe el usuario con el que iniciará sesión."
+        elif len(username) > 150 or any(c in username for c in " :,"):
+            errors["username"] = "Sin espacios, dos puntos ni comas; máximo 150 caracteres."
+    password_required = not editing
+    if password_required and not state["password"]:
+        errors["password"] = "Ponle una contraseña."
+    if state["password"]:
+        if len(state["password"]) < 8:
+            errors["password"] = "Mínimo 8 caracteres."
+        elif state["password"] != state["password2"]:
+            errors["password2"] = "Las contraseñas no coinciden."
+    return errors
+
+
+def usuario_form(request, user_id: int | None = None):
+    """Crear/Editar usuario (masters only). Creating needs a password;
+    editing may leave it blank to keep the current one."""
+    if not agents.is_master(request.user):
+        return _forbidden_fragment(request)
+    User = get_user_model()
+    user = get_object_or_404(User, pk=user_id) if user_id else None
+    if user is not None and agents.is_env_agent(user):
+        return _user_saved_response(
+            request, f"{user.username} se configura en el entorno (APP_AGENTS), no aquí."
+        )
+
+    if request.method == "POST":
+        state = _user_form_state(request.POST)
+        errors = _validate_user_form(state, editing=user is not None)
+        if not errors:
+            try:
+                if user is None:
+                    saved = agents.create_user(
+                        state["username"], state["password"], state["display_name"], state["master"]
+                    )
+                    notice = f"Usuario creado: {saved.get_full_name() or saved.username}."
+                else:
+                    # A master can't demote themselves -- that would leave
+                    # a team where nobody can manage anyone.
+                    master = state["master"] or user.pk == request.user.pk
+                    saved = agents.update_user(user, state["display_name"], master, state["password"])
+                    notice = f"Usuario actualizado: {saved.get_full_name() or saved.username}."
+            except agents.UsernameTaken as exc:
+                errors["username"] = str(exc)
+            except ValueError as exc:
+                errors["username"] = str(exc)
+            else:
+                return _user_saved_response(request, notice)
+        return _user_form_response(request, state, errors, user)
+
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    return _user_form_response(request, _user_form_state(user=user), {}, user)
+
+
+def usuario_active(request, user_id: int):
+    """Deactivate (``active=0``) or restore (``active=1``) an app-created
+    user. No hard delete: their history keeps pointing at them."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    if not agents.is_master(request.user):
+        return _forbidden_fragment(request)
+    user = get_object_or_404(get_user_model(), pk=user_id)
+    active = request.POST.get("active") == "1"
+    if user.pk == request.user.pk and not active:
+        return HttpResponse(
+            _user_table_fragment(request, "No puedes desactivar tu propio usuario.")
+        )
+    try:
+        agents.set_user_active(user, active)
+    except ValueError as exc:
+        return HttpResponse(_user_table_fragment(request, str(exc)))
+    label = "restaurado" if active else "desactivado"
+    return HttpResponse(
+        _user_table_fragment(request, f"Usuario {label}: {user.get_full_name() or user.username}.")
+    )
 
 
 def lista_create(request):

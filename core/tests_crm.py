@@ -45,7 +45,7 @@ class CrmScreenTests(TestCase):
 
     def test_heading_and_section_titles_render(self):
         response = self.client.get(reverse("section", args=["crm"]))
-        for text in ("Mi cuenta", "Gestión de clientes", "Calendario"):
+        for text in ("Mi cuenta", "Gestión de clientes", "Calendario", "Equipo"):
             self.assertContains(response, text)
 
     def test_every_nav_view_renders_as_a_link(self):
@@ -55,9 +55,9 @@ class CrmScreenTests(TestCase):
                 self.assertIn(f"?view={view.key}", html)
                 self.assertIn(view.label, html)
 
-    def test_both_sections_start_collapsed(self):
+    def test_all_sections_start_collapsed(self):
         html = self.client.get(reverse("section", args=["crm"])).content.decode()
-        self.assertEqual(html.count('<details class="side-nav__section">'), 2)
+        self.assertEqual(html.count('<details class="side-nav__section">'), 3)
         self.assertNotIn('<details class="side-nav__section" open>', html)
 
     def test_clientes_is_the_default_view(self):

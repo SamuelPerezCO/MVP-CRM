@@ -5,7 +5,7 @@ MVP de un CRM omnicanal para comercios, inspirado en plataformas tipo Treble/Lea
 ## Funcionalidades
 
 - **Inbox** — conversaciones reales filtradas por canal y asignación, con lista, chat en vivo (polling htmx), compositor con la regla de 24 horas de WhatsApp (fuera de la ventana ofrece enviar una plantilla), **Nuevo chat** para escribirle primero a un cliente, respuestas rápidas (texto o imagen) que se envían de un clic y panel de detalles del cliente.
-- **CRM** — clientes con alta, edición, ficha y baja desde la tabla (nombre, teléfono con bandera de país, mail, canal), buscador, exportación a Excel, listas de clientes y calendario con el cliente visible en cada evento.
+- **CRM** — clientes con alta, edición, ficha y baja desde la tabla (nombre, teléfono con bandera de país, mail, canal), buscador, exportación a Excel, listas de clientes, calendario con el cliente visible en cada evento, y el equipo (usuarios) que un usuario maestro administra.
 - **Embudos** — panel de embudos de venta con creación de nuevos embudos.
 - **Automatizaciones** — flujos de chatbots y banner de Academy.
 - **Mi comercio** — catálogo de productos con creación e importación.
@@ -66,6 +66,25 @@ funcione y que cada mensaje enviado registre quién lo escribió.
 En el Inbox, el desplegable junto al estado de la conversación ("Abierta")
 cambia el agente asignado y guarda al instante; "Sin asignar" la devuelve a la
 bandeja común.
+
+### Usuarios creados en la app (usuario maestro)
+
+Los agentes de `APP_AGENTS` son los **maestros**: desde CRM > Equipo >
+Usuarios pueden crear al resto del equipo sin tocar el entorno ni volver a
+desplegar. Un usuario creado ahí es un `User` de Django con contraseña real:
+inicia sesión por el mismo formulario, aparece en el desplegable de
+asignación y en "Tu inbox", y puede marcarse también como maestro. Los
+usuarios se desactivan (nunca se borran): su historial de conversaciones y
+mensajes sigue apuntando a ellos. Los agentes del entorno se muestran en la
+misma tabla pero solo se editan en `APP_AGENTS` ([core/agents.py](core/agents.py)).
+
+El rol maestro vive en el grupo `Maestros` de Django, no en `is_staff`: ese
+flag significa "puede entrar a /admin/", que es otra pregunta — el usuario de
+demo que crea `seed_conversations` lo tiene y no por eso administra el equipo.
+
+Si `APP_AGENTS` no está definida se usa el par antiguo
+`APP_LOGIN_USERNAME`/`APP_LOGIN_PASSWORD` como lista de un solo agente, así que
+un entorno anterior a esto sigue funcionando sin tocar nada.
 
 ## Mensajería: cambiar de proveedor
 

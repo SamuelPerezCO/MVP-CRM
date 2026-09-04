@@ -62,6 +62,14 @@ SECTIONS = [
             View("mi-calendario", "Mi calendario"),
         ],
     ),
+    Section(
+        "equipo",
+        "Equipo",
+        "circle-user",
+        [
+            View("usuarios", "Usuarios"),
+        ],
+    ),
 ]
 
 ALL_VIEWS = [view for section in SECTIONS for view in section.views]
