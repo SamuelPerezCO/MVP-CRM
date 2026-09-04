@@ -32,7 +32,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.core.paginator import Paginator
 from django.db import IntegrityError
-from django.db.models import Count
+from django.db.models import Count, Q
 
 from messaging import services as messaging_services
 from messaging.models import Conversation, Tag
@@ -41,6 +41,7 @@ from . import (
     agents,
     automatizaciones,
     calendario,
+    clientes,
     comercio,
     crm,
     embudos,
@@ -175,12 +176,44 @@ def _inbox_context(request) -> dict:
 CLIENTS_PER_PAGE = 25
 
 
+def _table_param(request, name: str) -> str:
+    """One of the client table's view parameters (``q``, ``page``).
+
+    Read from the query string normally, and from the body on the mutation
+    POSTs -- the dialogs carry the current search and page as hidden fields so
+    a save re-renders the table the agent was actually looking at, rather than
+    bouncing them back to an unfiltered page 1.
+    """
+    return (request.GET.get(name) or request.POST.get(name) or "").strip()
+
+
 def _clientes_context(request) -> dict:
-    """Paginated client list for the CRM's Clientes table."""
-    page = Paginator(Client.objects.all(), CLIENTS_PER_PAGE).get_page(
-        request.GET.get("page")
-    )
-    return {"clients": page, "page_obj": page}
+    """Paginated (and optionally searched) client list for the Clientes table,
+    plus the option lists its create/edit dialog renders from."""
+    query = _table_param(request, "q")
+    clients = Client.objects.all()
+    if query:
+        # Phone matching ignores formatting: "316 768" finds +573167687288.
+        digits = "".join(char for char in query if char.isdigit())
+        matches = (
+            Q(first_name__icontains=query)
+            | Q(last_name__icontains=query)
+            | Q(email__icontains=query)
+        )
+        if digits:
+            matches |= Q(phone__contains=digits)
+        else:
+            matches |= Q(phone__icontains=query)
+        clients = clients.filter(matches)
+
+    page = Paginator(clients, CLIENTS_PER_PAGE).get_page(_table_param(request, "page"))
+    return {
+        "clients": page,
+        "page_obj": page,
+        "client_query": query,
+        "countries": clientes.COUNTRIES,
+        "channels": Client.CHANNEL_CHOICES,
+    }
 
 
 def _lista_clientes_context(request) -> dict:
@@ -1090,6 +1123,128 @@ def clientes_table(request):
     return HttpResponse(
         render_to_string(
             "partials/crm/client_table.html", _clientes_context(request), request=request
+        )
+    )
+
+
+# --- Clientes CRUD ----------------------------------------------------------
+#
+# The four screens all render into one shared modal (#client-modal-body in
+# panels/clientes.html) rather than a dialog per row: at 25 rows a page, three
+# pre-rendered dialogs each would triple the panel's HTML for markup nobody
+# opens. Fetching the one that was asked for keeps the table light.
+#
+# A successful save answers with partials/crm/client_saved.html, which closes
+# the modal and swaps the refreshed table in out-of-band. A rejected one
+# answers with the form again -- errors inline, everything typed still there.
+
+
+def _client_form_response(request, state, errors, client=None):
+    """The create/edit dialog body, rendered for the modal."""
+    return HttpResponse(
+        render_to_string(
+            "partials/crm/client_form.html",
+            {
+                "form": state,
+                "errors": errors,
+                "client": client,
+                "countries": clientes.COUNTRIES,
+                "channels": Client.CHANNEL_CHOICES,
+                "q": _table_param(request, "q"),
+                "page": _table_param(request, "page"),
+            },
+            request=request,
+        )
+    )
+
+
+def _client_saved_response(request, message: str):
+    """What every successful mutation answers with: close the modal, refresh
+    the table under it."""
+    context = _clientes_context(request)
+    context["client_notice"] = message
+    return HttpResponse(
+        render_to_string("partials/crm/client_saved.html", context, request=request)
+    )
+
+
+def cliente_form(request, client_id: int | None = None):
+    """The Crear/Editar cliente dialog: GET renders it, POST saves it.
+
+    One view for both because the only difference is whether there is a row to
+    update -- exactly the shape core.plantillas.plantilla_editor has, and the
+    same error contract: invalid input re-renders the form with per-field
+    messages instead of throwing away what was typed.
+    """
+    client = get_object_or_404(Client, pk=client_id) if client_id else None
+
+    if request.method == "POST":
+        state = clientes.form_state(request.POST)
+        errors = clientes.validate(state, client)
+        if not errors:
+            saved = clientes.apply(state, client)
+            return _client_saved_response(
+                request,
+                f"Cliente actualizado: {saved.full_name}."
+                if client
+                else f"Cliente creado: {saved.full_name}.",
+            )
+        return _client_form_response(request, state, errors, client)
+
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    return _client_form_response(request, clientes.form_state(client=client), {}, client)
+
+
+def cliente_detail(request, client_id: int):
+    """The read-only "Ver" card behind the eye button.
+
+    Shows what the row can't fit: when the client came in, which channels they
+    have threads on and which lists they belong to.
+    """
+    client = get_object_or_404(
+        Client.objects.prefetch_related("conversations", "client_lists"), pk=client_id
+    )
+    return HttpResponse(
+        render_to_string(
+            "partials/crm/client_detail.html",
+            {
+                "client": client,
+                "conversations": client.conversations.all(),
+                "q": _table_param(request, "q"),
+                "page": _table_param(request, "page"),
+            },
+            request=request,
+        )
+    )
+
+
+def cliente_delete(request, client_id: int):
+    """GET asks; POST deletes.
+
+    The confirmation is not decoration: ``Conversation.contact`` cascades, so
+    deleting a client takes their whole message history with them. The GET
+    fragment says how many threads that is before the agent commits.
+    """
+    client = get_object_or_404(Client, pk=client_id)
+
+    if request.method == "POST":
+        name = client.full_name
+        client.delete()
+        return _client_saved_response(request, f"Cliente eliminado: {name}.")
+
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    return HttpResponse(
+        render_to_string(
+            "partials/crm/client_delete.html",
+            {
+                "client": client,
+                "conversation_count": client.conversations.count(),
+                "q": _table_param(request, "q"),
+                "page": _table_param(request, "page"),
+            },
+            request=request,
         )
     )
 

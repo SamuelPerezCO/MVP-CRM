@@ -89,8 +89,23 @@ urlpatterns = [
         views.calendar_prefs,
         name="calendar_prefs",
     ),
-    # The client table region (rows + pager), fetched on its own when paging.
+    # The client table region (rows + pager), fetched on its own when paging
+    # and when the toolbar's search box changes.
     path("crm/clientes/tabla/", views.clientes_table, name="clientes_table"),
+    # Clientes CRUD. Each one answers with a fragment for the shared modal in
+    # the Clientes panel; the saves additionally swap the table in out-of-band.
+    path("crm/clientes/nuevo/", views.cliente_form, name="cliente_create"),
+    path(
+        "crm/clientes/<int:client_id>/editar/",
+        views.cliente_form,
+        name="cliente_update",
+    ),
+    path("crm/clientes/<int:client_id>/", views.cliente_detail, name="cliente_detail"),
+    path(
+        "crm/clientes/<int:client_id>/eliminar/",
+        views.cliente_delete,
+        name="cliente_delete",
+    ),
     # Placeholder target for the "+ Crear lista" button.
     path("crm/listas/nueva/", views.lista_create, name="lista_create"),
     # Embudos column 3, fetched on its own when a secondary-nav page is picked.

@@ -262,6 +262,19 @@
     }
   });
 
+  // The other way a dialog closes: the *response* says so. A fragment
+  // carrying [data-dialog-dismiss] means the server is done with the modal
+  // (the Clientes CRUD answers a successful save with one, alongside the
+  // out-of-band swap that refreshes the table behind it). Response-driven,
+  // because only the server knows whether a submit was accepted -- a
+  // rejected one re-renders the form and the dialog has to stay open.
+  document.addEventListener("htmx:afterSwap", function (event) {
+    var target = event.detail.target;
+    if (!target.querySelector || !target.querySelector("[data-dialog-dismiss]")) return;
+    var dialog = target.closest("dialog");
+    if (dialog && dialog.open) dialog.close();
+  });
+
   // A dialog's card/link can swap away the very panel hosting the dialog --
   // and itself. The dialog is then simply removed (close() never runs on
   // that path), so the browser parks focus on <body> and announces nothing.
