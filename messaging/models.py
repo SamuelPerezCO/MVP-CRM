@@ -375,6 +375,14 @@ class Message(models.Model):
     #: default). Stored per row so the amount stays readable even if the
     #: configured currency changes later. Empty when not billed.
     billed_currency = models.CharField("moneda", max_length=3, blank=True)
+    #: True when this send was priced at the market's *Service* rate rather
+    #: than its own category's -- a utility template delivered inside an open
+    #: 24-hour window. Its own column rather than ``billed_category ==
+    #: "service"`` because the delivery receipt rewrites that field (Meta
+    #: reports such a send under its template category), and the monthly free
+    #: service allowance is counted from these rows: a marker the
+    #: reconciliation can flip would make the count drift.
+    billed_as_service = models.BooleanField("cobrado como servicio", default=False)
 
     # --- What Meta says it cost ------------------------------------------
     #
