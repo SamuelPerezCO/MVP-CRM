@@ -1,11 +1,18 @@
 {% comment %}
-  CRM column 3 -- the Clientes page: title, toolbar and the client table.
+  CRM column 3 -- the Clientes page: title, toolbar, the client table and the
+  modal every CRUD screen renders into.
 
   This is what core.views.crm_panel returns on its own when "Clientes" is picked
   in the secondary nav, and what the full page renders inside #crm-panel on
-  first load. Only #client-table below is replaced when paging.
+  first load. Only #client-table below is replaced when paging, searching or
+  saving -- the toolbar and the modal stay put, which is what lets the modal
+  survive its own save.
 
-  Context: clients (a Paginator page), page_obj
+  #client-modal is a single shared shell: "+ Crear cliente" and each row's
+  ver/editar/eliminar buttons fetch their body into it (see the CRUD block in
+  core.views). One dialog instead of three per row keeps a 25-row page light.
+
+  Context: clients (a Paginator page), page_obj, client_query
 {% endcomment %}
 
 <div class="crm-panel">
@@ -20,27 +27,73 @@
     </h1>
 
     <div class="crm-panel__toolbar">
+      {# Types straight into the table: 300ms of quiet, then #client-table. #}
       <div class="field field--wide">
         <span class="field__icon">{% include "icons/search.svg" %}</span>
-        <input class="field__input" type="search"
+        <input class="field__input" type="search" name="q" id="client-search"
+               value="{{ client_query }}"
                placeholder="Buscar por nombre, teléfono o correo"
-               aria-label="Buscar clientes">
+               aria-label="Buscar clientes"
+               hx-get="{% url 'clientes_table' %}"
+               hx-trigger="input changed delay:300ms, search"
+               hx-target="#client-table"
+               hx-swap="innerHTML">
       </div>
 
       <button type="button" class="icon-btn" aria-label="Filtrar">
         {% include "icons/funnel.svg" %}
       </button>
 
-      <button type="button" class="btn-ghost">
-        <span>Acciones</span>{% include "icons/chevron-down.svg" %}
-      </button>
+      {# Acciones over the whole base; per-row actions live on each row. #}
+      <details class="dropdown crm-actions" data-dropdown>
+        <summary class="btn-ghost">
+          <span>Acciones</span>{% include "icons/chevron-down.svg" %}
+        </summary>
+        <div class="dropdown__panel dropdown__panel--end">
+          <a class="dropdown__item" href="{% url 'clientes_export' %}" download>
+            {% include "icons/download.svg" %}<span>Descargar Excel</span>
+          </a>
+          {# Relative URLs: this panel also mounts under Campañas. #}
+          <a class="dropdown__item"
+             href="?view=exportaciones"
+             hx-get="{% url 'crm_panel' 'exportaciones' %}"
+             hx-target="closest main"
+             hx-swap="innerHTML"
+             hx-push-url="?view=exportaciones">
+            {% include "icons/archive.svg" %}<span>Ver exportaciones</span>
+          </a>
+        </div>
+      </details>
 
-      <button type="button" class="btn-primary">+ Crear cliente</button>
+      {# hx-include carries the live search + page; see client_table.html. #}
+      <button type="button" class="btn-primary"
+              data-dialog-open="client-modal"
+              hx-get="{% url 'cliente_create' %}"
+              hx-target="#client-modal-body"
+              hx-swap="innerHTML"
+              hx-include="#client-search, #client-page">
+        + Crear cliente
+      </button>
     </div>
   </header>
 
-  {# HTMX swap target for pagination -- the toolbar above stays put. #}
+  {# HTMX swap target for search, pagination and every save. #}
   <div id="client-table">
     {% include "partials/crm/client_table.html" %}
   </div>
+
+  {# Announced after a save/delete; the table itself shows the result. #}
+  <p id="client-notice" class="sr-only" role="status"></p>
+
+  {# The one dialog all four CRUD screens render into. #}
+  <dialog class="modal modal--client" id="client-modal"
+          aria-labelledby="client-modal-title"
+          data-dialog-backdrop-close>
+    <button type="button" class="modal__close" data-dialog-close aria-label="Cerrar">
+      {% include "icons/x.svg" %}
+    </button>
+    <div class="modal__body" id="client-modal-body">
+      <p class="table__muted">Cargando…</p>
+    </div>
+  </dialog>
 </div>

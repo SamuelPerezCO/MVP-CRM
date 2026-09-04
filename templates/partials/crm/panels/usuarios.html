@@ -1,17 +1,15 @@
 {% comment %}
-  CRM column 3 -- the Usuarios page: who can log in, managed by masters.
+  CRM column 3 -- the Usuarios page (Equipo): who can log in and be
+  assigned conversations.
 
-  This is what core.views.crm_panel returns when "Usuarios" is picked in the
-  secondary nav (the row only shows to masters, and the view 403s anyone
-  else). Only #user-table below is replaced by the create / edit / password /
-  status / delete actions -- the header and the create dialog stay put, the
-  same shape as the Etiquetas page.
+  Two kinds of rows share the table: agents configured in the environment
+  (APP_AGENTS -- shown, never edited here) and users a master created from
+  this page. Only masters (core.agents.is_master) see the create/edit
+  controls; everyone else gets the list read-only and a line saying why.
 
-  hx-headers on #user-table supplies the CSRF token to the bare hx-post
-  buttons inside the swappable region (activate / deactivate); the dialog
-  forms carry their own token.
+  Same shared-modal shape as the Clientes panel.
 
-  Context: users (see core.usuarios.list_users), role_choices, user_error
+  Context: team -- [{user, is_env, is_master}], can_manage
 {% endcomment %}
 
 <div class="crm-panel">
@@ -19,23 +17,46 @@
   <header class="crm-panel__head">
     <h1 class="crm-panel__title">
       Usuarios
-      <span class="info-dot" role="img"
-            aria-label="Los usuarios del entorno (APP_AGENTS) se gestionan fuera de la app">
+      <span class="info-dot" role="img" aria-label="Información sobre usuarios">
         {% include "icons/info.svg" %}
       </span>
     </h1>
 
     <div class="crm-panel__toolbar">
-      <button type="button" class="btn-primary" data-dialog-open="user-dialog-create">
-        + Crear usuario
-      </button>
+      {% if can_manage %}
+        <button type="button" class="btn-primary"
+                data-dialog-open="user-modal"
+                hx-get="{% url 'usuario_create' %}"
+                hx-target="#user-modal-body"
+                hx-swap="innerHTML">
+          + Crear usuario
+        </button>
+      {% endif %}
     </div>
   </header>
 
-  {# HTMX swap target for every user mutation. #}
+  {% if not can_manage %}
+    <p class="usuarios__readonly">
+      Solo un usuario maestro puede crear o editar usuarios. Pídeselo a quien
+      administra la cuenta.
+    </p>
+  {% endif %}
+
+  {# HTMX swap target for every save and activate/deactivate. #}
   <div id="user-table" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
-    {% include "partials/crm/user_table.html" %}
+    {% include "partials/crm/usuarios/table.html" %}
   </div>
 
-  {% include "partials/crm/user_dialog.html" with managed=None title="Crear usuario" submit_label="Crear usuario" %}
+  <p id="user-notice" class="sr-only" role="status"></p>
+
+  <dialog class="modal modal--client" id="user-modal"
+          aria-labelledby="user-modal-title"
+          data-dialog-backdrop-close>
+    <button type="button" class="modal__close" data-dialog-close aria-label="Cerrar">
+      {% include "icons/x.svg" %}
+    </button>
+    <div class="modal__body" id="user-modal-body">
+      <p class="table__muted">Cargando…</p>
+    </div>
+  </dialog>
 </div>

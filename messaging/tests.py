@@ -2,24 +2,29 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import tempfile
 from datetime import timedelta
 
+import requests
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
 from core.models import Client
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, Mock, patch
 
 from . import services
 from .models import Conversation, ConversationTag, Message, Tag
 from .providers.baileys import BaileysProvider
+from .providers.meta import MetaProvider
 from .providers.registry import get_provider
 from .providers.types import InboundEvent, MessageStatus
 from .services import SendWindowClosed, send_message
@@ -803,3 +808,488 @@ class BaileysProviderTests(TestCase):
         self.assertEqual(
             kwargs["json"]["body"], "Hola Ana, tu pedido #123 va en camino"
         )
+
+
+META_WEBHOOK_URL = "/webhooks/messaging/meta/"
+META_APP_SECRET = "test-app-secret"
+META_VERIFY_TOKEN = "test-verify-token"
+
+
+def meta_signature(payload: str) -> dict:
+    """The X-Hub-Signature-256 Meta would send for this exact body."""
+    digest = hmac.new(
+        META_APP_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    return {"X-Hub-Signature-256": f"sha256={digest}"}
+
+
+def meta_payload(*, messages=None, statuses=None, contacts=None) -> str:
+    """One webhook body in Meta's nested shape."""
+    value = {
+        "messaging_product": "whatsapp",
+        "metadata": {"display_phone_number": "15551957906",
+                     "phone_number_id": "1368700699649920"},
+    }
+    if contacts is not None:
+        value["contacts"] = contacts
+    if messages is not None:
+        value["messages"] = messages
+    if statuses is not None:
+        value["statuses"] = statuses
+    return json.dumps(
+        {
+            "object": "whatsapp_business_account",
+            "entry": [
+                {"id": "1783915395959608",
+                 "changes": [{"field": "messages", "value": value}]}
+            ],
+        }
+    )
+
+
+@override_settings(
+    META_APP_SECRET=META_APP_SECRET,
+    META_VERIFY_TOKEN=META_VERIFY_TOKEN,
+    META_ACCESS_TOKEN="test-token",
+    META_PHONE_NUMBER_ID="1368700699649920",
+)
+class MetaProviderTests(TestCase):
+    """The Meta Cloud API provider: HMAC webhooks, the subscribe handshake,
+    nested payload parsing and Graph sends."""
+
+    def setUp(self):
+        self.provider = MetaProvider()
+
+    def request_for(self, payload: str, headers=None):
+        return self.client.post(
+            META_WEBHOOK_URL,
+            data=payload,
+            content_type="application/json",
+            headers=headers or {},
+        ).wsgi_request
+
+    # --- verify_signature -------------------------------------------------
+
+    def test_verify_signature_accepts_meta_hmac(self):
+        payload = meta_payload(messages=[])
+        request = self.request_for(payload, meta_signature(payload))
+        self.assertTrue(self.provider.verify_signature(request))
+
+    def test_verify_signature_rejects_forged_digest(self):
+        payload = meta_payload(messages=[])
+        request = self.request_for(payload, {"X-Hub-Signature-256": "sha256=deadbeef"})
+        self.assertFalse(self.provider.verify_signature(request))
+
+    def test_verify_signature_rejects_signature_of_a_different_body(self):
+        """The HMAC must cover the body actually received, not any body."""
+        request = self.request_for(
+            meta_payload(messages=[{"id": "wamid.X", "from": "573000000099",
+                                    "type": "text", "text": {"body": "tampered"}}]),
+            meta_signature(meta_payload(messages=[])),
+        )
+        self.assertFalse(self.provider.verify_signature(request))
+
+    def test_verify_signature_rejects_missing_header(self):
+        request = self.request_for(meta_payload(messages=[]))
+        self.assertFalse(self.provider.verify_signature(request))
+
+    @override_settings(META_APP_SECRET="")
+    def test_verify_signature_fails_closed_without_app_secret(self):
+        """An unconfigured secret must reject traffic, not wave it through."""
+        payload = meta_payload(messages=[])
+        digest = hmac.new(b"", payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        request = self.request_for(payload, {"X-Hub-Signature-256": f"sha256={digest}"})
+        self.assertFalse(self.provider.verify_signature(request))
+
+    # --- handshake --------------------------------------------------------
+
+    def test_handshake_echoes_challenge_for_matching_token(self):
+        response = self.client.get(
+            META_WEBHOOK_URL,
+            {"hub.mode": "subscribe", "hub.verify_token": META_VERIFY_TOKEN,
+             "hub.challenge": "1158201444"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content.decode(), "1158201444")
+
+    def test_handshake_rejects_wrong_token(self):
+        response = self.client.get(
+            META_WEBHOOK_URL,
+            {"hub.mode": "subscribe", "hub.verify_token": "guessed",
+             "hub.challenge": "1158201444"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_handshake_rejects_wrong_mode(self):
+        response = self.client.get(
+            META_WEBHOOK_URL,
+            {"hub.mode": "unsubscribe", "hub.verify_token": META_VERIFY_TOKEN,
+             "hub.challenge": "1158201444"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    @override_settings(META_VERIFY_TOKEN="")
+    def test_handshake_fails_closed_without_verify_token(self):
+        response = self.client.get(
+            META_WEBHOOK_URL,
+            {"hub.mode": "subscribe", "hub.verify_token": "",
+             "hub.challenge": "1158201444"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    # --- parse_webhook ----------------------------------------------------
+
+    def test_parse_webhook_inbound_text(self):
+        payload = meta_payload(
+            contacts=[{"wa_id": "573000000099", "profile": {"name": "Cliente Real"}}],
+            messages=[{
+                "id": "wamid.HBgMNTczMDAwMDAwMDk5",
+                "from": "573000000099",
+                "timestamp": "1767225600",
+                "type": "text",
+                "text": {"body": "Hola, ¿tienen envíos a Cali?"},
+            }],
+        )
+        events = self.provider.parse_webhook(self.request_for(payload))
+
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        self.assertIsInstance(event, InboundEvent)
+        self.assertEqual(event.event_type, "message")
+        self.assertEqual(event.provider_message_id, "wamid.HBgMNTczMDAwMDAwMDk5")
+        # Meta sends bare digits; the CRM stores E.164.
+        self.assertEqual(event.from_number, "+573000000099")
+        self.assertEqual(event.to_number, "+15551957906")
+        self.assertEqual(event.body, "Hola, ¿tienen envíos a Cali?")
+        self.assertEqual(event.contact_name, "Cliente Real")
+        self.assertEqual(event.channel, "whatsapp")
+        # unix seconds -> aware UTC datetime
+        self.assertEqual(
+            event.timestamp.isoformat(), "2026-01-01T00:00:00+00:00"
+        )
+
+    def test_parse_webhook_status_receipt(self):
+        payload = meta_payload(statuses=[{
+            "id": "wamid.SENT1",
+            "status": "delivered",
+            "timestamp": "1767225600",
+            "recipient_id": "573000000099",
+        }])
+        events = self.provider.parse_webhook(self.request_for(payload))
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].event_type, "status")
+        self.assertEqual(events[0].status, MessageStatus.DELIVERED)
+        self.assertEqual(events[0].provider_message_id, "wamid.SENT1")
+
+    def test_parse_webhook_flattens_a_batch(self):
+        """One POST can carry several messages and receipts at once."""
+        payload = meta_payload(
+            contacts=[{"wa_id": "573000000099", "profile": {"name": "Ana"}}],
+            messages=[
+                {"id": "wamid.A", "from": "573000000099", "timestamp": "1767225600",
+                 "type": "text", "text": {"body": "primera"}},
+                {"id": "wamid.B", "from": "573000000099", "timestamp": "1767225601",
+                 "type": "text", "text": {"body": "segunda"}},
+            ],
+            statuses=[{"id": "wamid.SENT1", "status": "read",
+                       "recipient_id": "573000000099"}],
+        )
+        events = self.provider.parse_webhook(self.request_for(payload))
+
+        self.assertEqual(len(events), 3)
+        self.assertEqual([e.event_type for e in events],
+                         ["message", "message", "status"])
+        self.assertEqual(events[2].status, MessageStatus.READ)
+
+    def test_parse_webhook_skips_unknown_status_but_keeps_the_batch(self):
+        payload = meta_payload(
+            messages=[{"id": "wamid.A", "from": "573000000099", "type": "text",
+                       "text": {"body": "hola"}}],
+            statuses=[{"id": "wamid.SENT1", "status": "warp-speed"}],
+        )
+        events = self.provider.parse_webhook(self.request_for(payload))
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].event_type, "message")
+
+    def test_parse_webhook_interactive_reply_becomes_its_title(self):
+        payload = meta_payload(messages=[{
+            "id": "wamid.I", "from": "573000000099", "type": "interactive",
+            "interactive": {"type": "button_reply",
+                            "button_reply": {"id": "yes", "title": "Sí, confirmo"}},
+        }])
+        events = self.provider.parse_webhook(self.request_for(payload))
+        self.assertEqual(events[0].body, "Sí, confirmo")
+
+    @staticmethod
+    def mock_media_responses(mock_get, *, mime_type: str, data: bytes):
+        """Wire ``requests.get`` for the two calls behind one media message:
+        the id lookup (JSON with the CDN url) and the streamed download."""
+        lookup = Mock()
+        lookup.raise_for_status.return_value = None
+        lookup.json.return_value = {
+            "url": "https://cdn.example/media",
+            "mime_type": mime_type,
+            "file_size": len(data),
+        }
+        download = MagicMock()  # Magic: the code uses it as a context manager
+        download.raise_for_status.return_value = None
+        download.iter_content.return_value = [data]
+        mock_get.side_effect = [lookup, download]
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="mvp-crm-test-media-"))
+    @patch("messaging.providers.meta.requests.get")
+    def test_parse_webhook_image_is_downloaded_into_local_storage(self, mock_get):
+        """Meta's CDN link is token-gated and expires in minutes, so the
+        webhook must store the bytes and hand the app a durable local URL."""
+        self.mock_media_responses(mock_get, mime_type="image/jpeg", data=b"jpegbytes")
+
+        payload = meta_payload(messages=[{
+            "id": "wamid.IMG", "from": "573000000099", "type": "image",
+            "image": {"id": "media-123", "caption": "mira esto"},
+        }])
+        events = self.provider.parse_webhook(self.request_for(payload))
+
+        self.assertEqual(events[0].body, "mira esto")
+        self.assertEqual(events[0].media_type, "image")
+        self.assertEqual(events[0].media_url, "/media/whatsapp/media-123.jpg")
+        from django.core.files.storage import default_storage
+        with default_storage.open("whatsapp/media-123.jpg") as stored:
+            self.assertEqual(stored.read(), b"jpegbytes")
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="mvp-crm-test-media-"))
+    @patch("messaging.providers.meta.requests.get")
+    def test_parse_webhook_sticker_is_stored_as_webp(self, mock_get):
+        self.mock_media_responses(mock_get, mime_type="image/webp", data=b"webpbytes")
+
+        payload = meta_payload(messages=[{
+            "id": "wamid.STK", "from": "573000000099", "type": "sticker",
+            "sticker": {"id": "sticker-9"},
+        }])
+        events = self.provider.parse_webhook(self.request_for(payload))
+
+        self.assertEqual(events[0].body, "[sticker]")
+        self.assertEqual(events[0].media_type, "sticker")
+        self.assertEqual(events[0].media_url, "/media/whatsapp/sticker-9.webp")
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="mvp-crm-test-media-"))
+    @patch("messaging.providers.meta.requests.get")
+    def test_media_download_is_idempotent_across_webhook_retries(self, mock_get):
+        """A retried webhook must reuse the stored file, not download again."""
+        self.mock_media_responses(mock_get, mime_type="image/webp", data=b"webpbytes")
+        payload = meta_payload(messages=[{
+            "id": "wamid.STK", "from": "573000000099", "type": "sticker",
+            "sticker": {"id": "sticker-9"},
+        }])
+        first = self.provider.parse_webhook(self.request_for(payload))
+
+        # The retry: only the id lookup fires, the stored file answers.
+        lookup = Mock()
+        lookup.raise_for_status.return_value = None
+        lookup.json.return_value = {
+            "url": "https://cdn.example/media", "mime_type": "image/webp",
+        }
+        mock_get.side_effect = [lookup]
+        second = self.provider.parse_webhook(self.request_for(payload))
+
+        self.assertEqual(first[0].media_url, second[0].media_url)
+
+    @patch("messaging.providers.meta.requests.get")
+    def test_media_resolution_failure_does_not_break_the_webhook(self, mock_get):
+        """An image lookup that fails must still land the message."""
+        mock_get.side_effect = requests.RequestException("graph down")
+
+        payload = meta_payload(messages=[{
+            "id": "wamid.IMG", "from": "573000000099", "type": "image",
+            "image": {"id": "media-123"},
+        }])
+        events = self.provider.parse_webhook(self.request_for(payload))
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].media_url, "")
+        self.assertEqual(events[0].media_type, "")  # no media to render
+        self.assertEqual(events[0].body, "[imagen]")  # placeholder, not an empty bubble
+
+    def test_parse_webhook_rejects_unparseable_payload(self):
+        with self.assertRaises(ValueError):
+            self.provider.parse_webhook(self.request_for("not json"))
+
+    def test_parse_webhook_rejects_payload_without_entry(self):
+        with self.assertRaises(ValueError):
+            self.provider.parse_webhook(self.request_for(json.dumps({"object": "x"})))
+
+    # --- endpoint (signature + parse + process) ---------------------------
+
+    def test_end_to_end_via_endpoint(self):
+        payload = meta_payload(
+            contacts=[{"wa_id": "573000000097", "profile": {"name": "Nuevo Cliente"}}],
+            messages=[{
+                "id": "wamid.E2E", "from": "573000000097", "timestamp": "1767225600",
+                "type": "text", "text": {"body": "Buenas, ¿tienen stock?"},
+            }],
+        )
+        response = self.client.post(
+            META_WEBHOOK_URL, data=payload, content_type="application/json",
+            headers=meta_signature(payload),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        contact = Client.objects.get(phone="+573000000097")
+        self.assertEqual(contact.first_name, "Nuevo Cliente")
+        self.assertEqual(
+            contact.conversations.get().messages.get().body, "Buenas, ¿tienen stock?"
+        )
+
+    def test_endpoint_rejects_bad_signature(self):
+        payload = meta_payload(messages=[])
+        response = self.client.post(
+            META_WEBHOOK_URL, data=payload, content_type="application/json",
+            headers={"X-Hub-Signature-256": "sha256=forged"},
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(Message.objects.count(), 0)
+
+    def test_endpoint_is_idempotent_on_retries(self):
+        """Meta re-delivers aggressively; the same wamid must not double up."""
+        payload = meta_payload(messages=[{
+            "id": "wamid.RETRY", "from": "573000000096", "timestamp": "1767225600",
+            "type": "text", "text": {"body": "una sola vez"},
+        }])
+        for _ in range(2):
+            response = self.client.post(
+                META_WEBHOOK_URL, data=payload, content_type="application/json",
+                headers=meta_signature(payload),
+            )
+            self.assertEqual(response.status_code, 200)
+        self.assertEqual(Message.objects.filter(provider_message_id="wamid.RETRY").count(), 1)
+
+    # --- sending (Graph call mocked) --------------------------------------
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_send_text_posts_to_graph_and_returns_wamid(self, mock_post):
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.raise_for_status.return_value = None
+        mock_post.return_value.json.return_value = {"messages": [{"id": "wamid.OUT1"}]}
+
+        message_id = self.provider.send_text("+573000000099", "Hola desde el CRM")
+
+        self.assertEqual(message_id, "wamid.OUT1")
+        url = mock_post.call_args.args[0]
+        self.assertIn("1368700699649920/messages", url)
+        sent = mock_post.call_args.kwargs["json"]
+        self.assertEqual(sent["messaging_product"], "whatsapp")
+        self.assertEqual(sent["to"], "+573000000099")
+        self.assertEqual(sent["text"]["body"], "Hola desde el CRM")
+        headers = mock_post.call_args.kwargs["headers"]
+        self.assertEqual(headers["Authorization"], "Bearer test-token")
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_send_template_builds_positional_parameters_in_order(self, mock_post):
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.raise_for_status.return_value = None
+        mock_post.return_value.json.return_value = {"messages": [{"id": "wamid.T1"}]}
+
+        self.provider.send_template("+573000000099", "order_confirmation",
+                                    {"2": "mañana", "1": "Ana"})
+
+        template = mock_post.call_args.kwargs["json"]["template"]
+        self.assertEqual(template["name"], "order_confirmation")
+        self.assertEqual(template["language"]["code"], "es")
+        self.assertEqual(
+            [p["text"] for p in template["components"][0]["parameters"]],
+            ["Ana", "mañana"],
+        )
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_send_template_builds_named_parameters(self, mock_post):
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.raise_for_status.return_value = None
+        mock_post.return_value.json.return_value = {"messages": [{"id": "wamid.T2"}]}
+
+        self.provider.send_template("+573000000099", "recordatorio",
+                                    {"nombre": "Ana", "_language": "en_US"})
+
+        template = mock_post.call_args.kwargs["json"]["template"]
+        self.assertEqual(template["language"]["code"], "en_US")
+        parameter = template["components"][0]["parameters"][0]
+        self.assertEqual(parameter["parameter_name"], "nombre")
+        self.assertEqual(parameter["text"], "Ana")
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_send_template_does_not_mutate_the_caller_s_params(self, mock_post):
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.raise_for_status.return_value = None
+        mock_post.return_value.json.return_value = {"messages": [{"id": "wamid.T3"}]}
+
+        params = {"nombre": "Ana", "_language": "en_US"}
+        self.provider.send_template("+573000000099", "recordatorio", params)
+
+        self.assertEqual(params, {"nombre": "Ana", "_language": "en_US"})
+
+    @override_settings(META_ACCESS_TOKEN="", META_PHONE_NUMBER_ID="")
+    def test_send_without_credentials_raises_a_clear_error(self):
+        with self.assertRaises(RuntimeError):
+            self.provider.send_text("+573000000099", "hola")
+
+
+class InlineMediaTests(TestCase):
+    """media_type flows event -> Message row and drives inline rendering."""
+
+    def process(self, **overrides) -> Message:
+        event = InboundEvent(
+            event_type="message",
+            provider_message_id="prov-media-1",
+            from_number="+573000000099",
+            **overrides,
+        )
+        services.process_inbound_events([event])
+        return Message.objects.get(provider_message_id="prov-media-1")
+
+    def test_media_type_lands_on_the_message_row(self):
+        message = self.process(
+            body="[sticker]", media_url="/media/whatsapp/s.webp", media_type="sticker"
+        )
+        self.assertEqual(message.media_type, "sticker")
+        self.assertTrue(message.is_inline_image)
+
+    def test_placeholder_body_hides_behind_the_inline_image(self):
+        message = self.process(
+            body="[sticker]", media_url="/media/whatsapp/s.webp", media_type="sticker"
+        )
+        self.assertEqual(message.display_body, "")
+
+    def test_caption_still_shows_under_the_inline_image(self):
+        message = self.process(
+            body="mira esto", media_url="/media/whatsapp/i.jpg", media_type="image"
+        )
+        self.assertEqual(message.display_body, "mira esto")
+
+    def test_documents_keep_the_download_link_and_their_placeholder(self):
+        message = self.process(
+            body="[documento]", media_url="/media/whatsapp/d.pdf", media_type="document"
+        )
+        self.assertFalse(message.is_inline_image)
+        self.assertEqual(message.display_body, "[documento]")
+
+    def test_rows_from_before_the_field_existed_stay_download_links(self):
+        message = self.process(body="[imagen]", media_url="/media/old.jpg")
+        self.assertFalse(message.is_inline_image)
+        self.assertEqual(message.display_body, "[imagen]")
+
+    def test_thread_renders_the_inline_image_tag(self):
+        """End to end through the Inbox view: the bubble carries an <img>."""
+        message = self.process(
+            body="[sticker]", media_url="/media/whatsapp/s.webp", media_type="sticker"
+        )
+        user = get_user_model().objects.create_user("agente", password="x")
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("inbox_thread", args=[message.conversation_id])
+        )
+        self.assertContains(response, '<img src="/media/whatsapp/s.webp"')
+        self.assertNotContains(response, "Archivo adjunto")
+        # The placeholder survives only as the image's alt text, not as a
+        # visible line under the sticker.
+        self.assertContains(response, "[sticker]", count=1)
+        self.assertContains(response, 'alt="[sticker]"')

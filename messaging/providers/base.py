@@ -44,7 +44,26 @@ class MessagingProvider(ABC):
     @abstractmethod
     def send_template(self, to: str, template_name: str, params: dict) -> str:
         """Send a pre-approved template message. The only way to reach someone
-        outside the 24-hour window. Returns the provider's message id."""
+        outside the 24-hour window. Returns the provider's message id.
+
+        ``params`` fills the template's placeholders. Two reserved keys ride
+        in it for providers that have no template mechanism of their own and
+        must fall back to plain text: ``_language`` (the language code) and
+        ``_rendered`` (the body with its sample values already substituted --
+        what the CRM shows in the thread). A provider with real template
+        support ignores ``_rendered``; one without it sends exactly that
+        string, so the customer reads the message rather than its name.
+        """
+
+    def send_image(self, to: str, image_url: str, caption: str = "") -> str:
+        """Send an image by public URL with an optional caption. Same window
+        rule as ``send_text``. Returns the provider's message id.
+
+        Not abstract: a provider that cannot ship media falls back to the
+        caption as a text (the customer still gets the words), so a quick
+        reply with a picture never fails outright on a text-only backend.
+        """
+        return self.send_text(to, caption or image_url)
 
     @abstractmethod
     def parse_webhook(self, request) -> list[InboundEvent]:

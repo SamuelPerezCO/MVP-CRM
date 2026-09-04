@@ -217,6 +217,27 @@ def body_variables(body: str) -> list[int]:
     return numbers
 
 
+def render_body(template) -> str:
+    """A template's body with each {{n}} replaced by its sample value --
+    element i of body_sample_values always pairs with {{i+1}} (see the
+    editor's save path below).
+
+    This is what the Inbox's Respuestas rápidas picker drops into the
+    composer: the samples make the text sendable as-is, and anything without
+    a sample keeps its {{n}} so the agent sees there is a blank to fill
+    rather than silently sending a hole.
+    """
+    samples = template.body_sample_values or []
+
+    def substitute(match) -> str:
+        index = int(match.group(1)) - 1
+        if 0 <= index < len(samples) and samples[index]:
+            return samples[index]
+        return match.group(0)
+
+    return VARIABLE_RE.sub(substitute, template.body)
+
+
 def form_state(post=None) -> dict:
     """The editor's field values: defaults on a fresh GET, the posted values
     (normalized) when re-rendering after errors. Keys mirror the input names.

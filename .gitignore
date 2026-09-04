@@ -16,8 +16,12 @@ db.sqlite3
 /staticfiles/
 /media/
 
-# Local environment / credentials (.env.example documents the variables)
+# Local environment / credentials (.env.example documents the variables).
+# The glob matters: an editor's .env.bak or .env.local holds the same live
+# DATABASE_URL, and this repository is public.
 .env
+.env.*
+!.env.example
 
 # Now its own repo (github.com/SamuelPerezCO/whatsapp-sidecar), deployed to
 # Render independently of this app -- kept as a local checkout for

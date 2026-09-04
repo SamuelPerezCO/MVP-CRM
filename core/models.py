@@ -242,6 +242,56 @@ class MessageTemplate(models.Model):
     def __str__(self) -> str:
         return self.name
 
+class QuickReply(models.Model):
+    """A canned answer the composer's Respuestas rápidas picker sends in one
+    click -- the account's own, kept apart from WhatsApp plantillas.
+
+    A plantilla (:class:`MessageTemplate`) is Meta's concept: approved text
+    with numbered variables, the only thing allowed outside the 24h window.
+    A quick reply is the team's: free text written once ("Nuestro horario es
+    de 9 a 6"), optionally with an image (a price list, the store front),
+    sent inside the window like any typed message. The picker used to list
+    plantillas because nothing else existed; now it lists these, and
+    plantillas keep their real job in the "Enviar plantilla" flow.
+
+    ``image`` goes through default storage (Vercel Blob in production), so
+    the URL the provider is handed is public -- Meta fetches it by link.
+    """
+
+    title = models.CharField("título", max_length=80)
+    body = models.TextField("texto", blank=True)
+    # FileField, not ImageField: the latter needs Pillow, which this project
+    # doesn't ship (MessageTemplate.header_media makes the same call). The
+    # form restricts uploads to image types instead.
+    image = models.FileField("imagen", upload_to="respuestas/", blank=True)
+
+    #: Off means hidden from the picker without deleting the text.
+    is_active = models.BooleanField("activa", default=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="quick_replies_created",
+        verbose_name="creada por",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "respuesta rápida"
+        verbose_name_plural = "respuestas rápidas"
+        ordering = ["title"]
+
+    def __str__(self) -> str:
+        return self.title
+
+    @property
+    def has_image(self) -> bool:
+        return bool(self.image)
+
+
 class CalendarEvent(models.Model):
     """One entry in the CRM's Mi calendario.
 

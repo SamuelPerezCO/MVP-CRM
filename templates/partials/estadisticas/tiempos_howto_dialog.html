@@ -1,0 +1,71 @@
+{% comment %}
+  "¿Cómo funciona?" -- opened by the pill beside the Tiempos de Respuesta
+  title via data-dialog-open. Same shell and stance as
+  volumen_howto_dialog.html: explanatory copy only.
+
+  Keep it in step with core.estadisticas_tiempos -- these are that module's
+  definitions in prose.
+
+  Context: (none)
+{% endcomment %}
+
+<dialog class="modal modal--prose" id="tiempos-howto-dialog"
+        aria-labelledby="tiempos-howto-title"
+        aria-modal="true"
+        data-dialog-backdrop-close>
+  <button type="button" class="modal__close" data-dialog-close aria-label="Cerrar">
+    {% include "icons/x.svg" %}
+  </button>
+
+  <div class="modal__body">
+    <h2 class="modal__title" id="tiempos-howto-title">¿Cómo se calculan estas métricas?</h2>
+    <p class="modal__subtitle">Tiempos de Respuesta</p>
+
+    <dl class="prose-list">
+      <dt>Qué es una respuesta</dt>
+      <dd>
+        El primer mensaje que salió de tu cuenta después de uno o más
+        mensajes del cliente. El tiempo se mide desde el <strong>primer</strong>
+        mensaje sin responder de esa racha: desde que el cliente empezó a
+        esperar, no desde su último mensaje.
+      </dd>
+
+      <dt>Tiempo promedio</dt>
+      <dd>
+        El promedio de todas las respuestas medidas en el período, con los
+        filtros de agente y plataforma aplicados. Cuenta igual una respuesta
+        de un asesor que una de una automatización.
+      </dd>
+
+      <dt>Post-MIA</dt>
+      <dd>
+        Cuando una automatización respondió primero y después escribió una
+        persona (sin que el cliente escribiera en medio), eso es una
+        <strong>escalación</strong>: el tiempo post-MIA es lo que tardó esa
+        persona en intervenir después del mensaje automático.
+      </dd>
+
+      <dt>Los filtros</dt>
+      <dd>
+        Toda la pantalla obedece a los tres filtros de arriba. Con un agente
+        elegido solo cuentan las respuestas enviadas por esa persona; con una
+        plataforma, solo las conversaciones de ese canal. El período incluye
+        ambas fechas y por defecto son los últimos 30 días.
+      </dd>
+
+      <dt>La distribución</dt>
+      <dd>
+        Cada respuesta medida cae en un rango según lo que tardó (menos de 5
+        minutos, de 5 a 15, y así hasta más de 24 horas). Las barras muestran
+        el porcentaje del total que cayó en cada rango.
+      </dd>
+
+      <dt>Actualización</dt>
+      <dd>
+        Los cálculos se guardan unos minutos para no repetir la consulta en
+        cada carga, así que los mensajes de los últimos minutos pueden tardar
+        un poco en aparecer.
+      </dd>
+    </dl>
+  </div>
+</dialog>

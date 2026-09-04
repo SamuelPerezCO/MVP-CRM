@@ -295,14 +295,138 @@
   }
 
   /**
-   * Mount a line chart into `el` and return a small controller.
+   * Build the option object for a categorical bar chart -- the distribution
+   * charts' shape: plain-string categories (time bands, not dates) and
+   * percentage values on the one y-axis.
    *
-   * The controller owns three things the caller would otherwise get wrong:
-   * resize (charts in a swapped panel mount at width 0), the
-   * prefers-color-scheme listener (dark mode swaps every series' step), and
-   * disposal.
+   * spec: {
+   *   categories: ["< 5 min", ...],
+   *   series: [{ key, label, light, dark, values: [] }, ...],
+   *   percent: true                          // "42%" in tooltip and axis
+   * }
    */
-  function line(el, spec) {
+  function barOption(spec, palette) {
+    var suffix = spec.percent ? "%" : "";
+
+    function formatValue(value) {
+      return formatNumber(value == null ? 0 : value) + suffix;
+    }
+
+    var series = spec.series.map(function (entry) {
+      var color = palette.dark ? entry.dark : entry.light;
+      return {
+        name: entry.label,
+        type: "bar",
+        barMaxWidth: 46,
+        itemStyle: { color: color, borderRadius: [4, 4, 0, 0] },
+        emphasis: { focus: "series" },
+        data: entry.values,
+      };
+    });
+
+    return {
+      textStyle: {
+        fontFamily: '"Inter", "Segoe UI", system-ui, -apple-system, sans-serif',
+        color: palette.theme.ink,
+      },
+      animationDuration: 420,
+      color: series.map(function (s) { return s.itemStyle.color; }),
+
+      legend: {
+        top: 0,
+        left: 0,
+        icon: "roundRect",
+        itemWidth: 11,
+        itemHeight: 11,
+        itemGap: 18,
+        textStyle: { color: palette.theme.ink, fontSize: 12.5 },
+        inactiveColor: palette.theme.muted,
+      },
+
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        backgroundColor: palette.theme.surface,
+        borderColor: palette.theme.border,
+        borderWidth: 1,
+        padding: [8, 11],
+        extraCssText: "box-shadow: 0 6px 20px rgb(18 38 63 / 12%);",
+        textStyle: { color: palette.theme.ink, fontSize: 12.5 },
+        formatter: function (rows) {
+          if (!rows.length) return "";
+          var head =
+            '<div style="font-weight:700;margin-bottom:4px">' +
+            escapeHtml(rows[0].axisValue) + "</div>";
+          return head + rows.map(function (row) {
+            return (
+              '<div style="display:flex;align-items:center;gap:7px">' +
+              row.marker +
+              '<span style="flex:1">' + escapeHtml(row.seriesName) + "</span>" +
+              '<span style="font-weight:700">' +
+              escapeHtml(formatValue(row.value)) +
+              "</span></div>"
+            );
+          }).join("");
+        },
+      },
+
+      grid: { top: 42, left: 6, right: 12, bottom: 42, containLabel: true },
+
+      xAxis: {
+        type: "category",
+        data: spec.categories,
+        axisLine: { lineStyle: { color: palette.theme.axis } },
+        axisTick: { show: false },
+        axisLabel: {
+          color: palette.theme.muted,
+          fontSize: 11.5,
+          hideOverlap: true,
+          interval: 0,           // every band labelled -- there are only a few
+        },
+      },
+
+      // Deliberately singular -- see the header note.
+      yAxis: {
+        type: "value",
+        minInterval: 1,
+        max: spec.percent ? 100 : null,
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: {
+          color: palette.theme.muted,
+          fontSize: 11.5,
+          formatter: formatValue,
+        },
+        splitLine: { lineStyle: { color: palette.theme.grid } },
+      },
+
+      toolbox: {
+        right: 8,
+        bottom: 0,
+        itemSize: 14,
+        itemGap: 10,
+        iconStyle: { borderColor: palette.theme.muted },
+        emphasis: { iconStyle: { borderColor: palette.theme.ink } },
+        feature: {
+          saveAsImage: {
+            title: "Descargar imagen",
+            name: spec.exportName || "grafico",
+            backgroundColor: palette.theme.surface,
+          },
+        },
+      },
+
+      series: series,
+    };
+  }
+
+  /**
+   * Shared mounting for both chart kinds: init, redraw on resize and
+   * color-scheme change, and a controller with update/resize/destroy.
+   * Charts in a swapped panel mount at width 0, which is why resize is not
+   * left to the caller.
+   */
+  function mount(el, spec, buildOption) {
     var chart = window.echarts.init(el, null, { renderer: "canvas" });
     var current = spec;
 
@@ -313,8 +437,8 @@
 
     function draw() {
       // notMerge: series come and go between periods, and a merge would
-      // leave a vanished channel's line on the canvas.
-      chart.setOption(lineOption(current, palette(), el.clientWidth), true);
+      // leave a vanished series' marks on the canvas.
+      chart.setOption(buildOption(current, palette(), el.clientWidth), true);
     }
 
     draw();
@@ -349,8 +473,19 @@
     };
   }
 
+  /** Mount a multi-series daily line chart into `el`. */
+  function line(el, spec) {
+    return mount(el, spec, lineOption);
+  }
+
+  /** Mount a categorical bar chart into `el`. */
+  function bar(el, spec) {
+    return mount(el, spec, barOption);
+  }
+
   window.StatsChart = {
     line: line,
+    bar: bar,
     formatNumber: formatNumber,
     shortDate: shortDate,
   };

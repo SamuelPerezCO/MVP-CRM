@@ -142,3 +142,142 @@
   background: var(--page-gray);
   padding: 16px;
 }
+
+/* ==========================================================================
+   Ranking panels (Etiquetas, Temas de conversación) — summary tiles (the
+   shared .kpi blocks from stats-detail.css) over a ranking table: one row
+   per item with its count and a bar scaled against the busiest one. The
+   count cell is the accessible value; the bar is decoration.
+   ========================================================================== */
+
+/* .stats-page stacks with no gap (unlike .stats-detail), so the tile row
+   spaces itself off what follows. */
+.stats-page__kpis { margin-block-end: 20px; }
+
+/* So does a filter row, when the panel has one (Temas, Ventas...). */
+.stats-page__filters { margin-block-end: 18px; }
+
+/* A page title can carry the same Alpha pill as its nav row (Atribuciones). */
+.stats-page__title .nav-badge {
+  vertical-align: middle;
+  margin-inline-start: 6px;
+}
+
+/* A KPI tile whose value is a name, not a number (Atribuciones' "Canal
+   principal") -- smaller, so WhatsApp-length labels stay on one line. */
+.kpi__value--text {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+/* Ventas: the sale-tag convention made visible, next to the period select.
+   Pills wrap; the label never does. */
+.sale-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.sale-tags__label {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Scoped under the table class to outweigh `.table thead th`'s text-align. */
+.rank-table .rank-table__num {
+  text-align: end;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Wide enough for the bars to differentiate, never wider than the first
+   column needs it to be. */
+.rank-table__bar-col { width: 45%; }
+
+.rank-bar {
+  display: block;
+  height: 8px;
+  min-width: 120px;
+  border-radius: 999px;
+  background: var(--page-gray);
+  overflow: hidden;
+}
+
+/* Accent by default (Temas); Etiquetas overrides per row with the tag's own
+   dark ink token (--tag-<color>-fg, tags.css) — the soft -bg pastels would
+   wash out on the grey track. */
+.rank-bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+/* Archived tag rows retire their bar along with their pill. */
+.tag-row--archived .rank-bar__fill { opacity: 0.45; }
+
+/* ==========================================================================
+   Embudos panel — the conversation funnel. Thicker bars than the ranking
+   tables: here the bar IS the content, not a sparkline next to a count.
+   Left-aligned fills on full-width tracks, so shrinking stages read as the
+   funnel silhouette on their own. Tones reuse the KPI palette
+   (stats-detail.css) so "Con venta" here and the Ventas tiles agree.
+   ========================================================================== */
+
+.funnel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 760px;
+}
+
+.funnel__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-block-end: 6px;
+}
+
+.funnel__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.funnel__label .info-dot .icon { width: 14px; height: 14px; }
+
+.funnel__nums {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.funnel__nums strong { font-size: 15px; color: var(--text); }
+
+.funnel__track {
+  height: 22px;
+  border-radius: 7px;
+  background: var(--page-gray);
+  overflow: hidden;
+}
+
+.funnel__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  /* A stage with sales that round to 0% still shows a sliver, not nothing. */
+  min-inline-size: 6px;
+}
+
+.funnel__fill--blue   { background: #2f80ed; }
+.funnel__fill--teal   { background: #0f9b8e; }
+.funnel__fill--green  { background: #1DA851; }
+.funnel__fill--purple { background: #7c5cd6; }

@@ -1,0 +1,80 @@
+{% comment %}
+  The Crear/Editar usuario form -- the body of the shared modal. With
+  ``edit_user`` it edits (username fixed, password optional), without it
+  creates (both required).
+
+  Context: form, errors, edit_user (or None)
+{% endcomment %}
+
+<h2 class="modal__title modal__title--start" id="user-modal-title">
+  {% if edit_user %}Editar usuario{% else %}Crear usuario{% endif %}
+</h2>
+
+<form class="client-form"
+      hx-post="{% if edit_user %}{% url 'usuario_update' edit_user.pk %}{% else %}{% url 'usuario_create' %}{% endif %}"
+      hx-target="#user-modal-body"
+      hx-swap="innerHTML">
+  {% csrf_token %}
+
+  <div class="client-form__row">
+    <div class="ffield{% if errors.username %} ffield--error{% endif %}">
+      <input class="ffield__input" type="text" name="username" id="user-username"
+             maxlength="150" placeholder=" " autocomplete="off" autocapitalize="off"
+             value="{{ form.username }}" {% if edit_user %}readonly{% else %}required{% endif %}
+             {% if errors.username %}aria-invalid="true" aria-describedby="user-error-username"{% endif %}>
+      <label class="ffield__label" for="user-username">Usuario</label>
+    </div>
+    <div class="ffield">
+      <input class="ffield__input" type="text" name="display_name" id="user-display"
+             maxlength="150" placeholder=" " autocomplete="off"
+             value="{{ form.display_name }}">
+      <label class="ffield__label" for="user-display">Nombre visible</label>
+    </div>
+  </div>
+  {% if errors.username %}
+    <p class="ffield__error" id="user-error-username">{{ errors.username }}</p>
+  {% endif %}
+
+  <div class="client-form__row">
+    <div class="ffield{% if errors.password %} ffield--error{% endif %}">
+      <input class="ffield__input" type="password" name="password" id="user-password"
+             placeholder=" " autocomplete="new-password" {% if not edit_user %}required{% endif %}
+             {% if errors.password %}aria-invalid="true" aria-describedby="user-error-password"{% endif %}>
+      <label class="ffield__label" for="user-password">
+        {% if edit_user %}Nueva contraseña{% else %}Contraseña{% endif %}
+      </label>
+    </div>
+    <div class="ffield{% if errors.password2 %} ffield--error{% endif %}">
+      <input class="ffield__input" type="password" name="password2" id="user-password2"
+             placeholder=" " autocomplete="new-password" {% if not edit_user %}required{% endif %}
+             {% if errors.password2 %}aria-invalid="true" aria-describedby="user-error-password2"{% endif %}>
+      <label class="ffield__label" for="user-password2">Repetir contraseña</label>
+    </div>
+  </div>
+  <p class="ffield__hint">
+    {% if edit_user %}Déjalas vacías para conservar la actual. {% endif %}Mínimo 8 caracteres.
+  </p>
+  {% if errors.password %}
+    <p class="ffield__error" id="user-error-password">{{ errors.password }}</p>
+  {% endif %}
+  {% if errors.password2 %}
+    <p class="ffield__error" id="user-error-password2">{{ errors.password2 }}</p>
+  {% endif %}
+
+  <label class="reply-form__active">
+    <input type="checkbox" name="master" value="1" {% if form.master %}checked{% endif %}
+           {% if edit_user and edit_user == request.user %}disabled{% endif %}>
+    <span>Usuario maestro (puede crear y editar usuarios)</span>
+  </label>
+  {% if edit_user and edit_user == request.user %}
+    <p class="ffield__hint">No puedes quitarte a ti mismo el rol de maestro.</p>
+  {% endif %}
+
+  <div class="client-form__actions">
+    <span class="client-form__spacer"></span>
+    <button type="button" class="btn-ghost" data-dialog-close>Cancelar</button>
+    <button type="submit" class="btn-primary">
+      {% if edit_user %}Guardar cambios{% else %}Crear usuario{% endif %}
+    </button>
+  </div>
+</form>

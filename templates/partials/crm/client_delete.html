@@ -1,0 +1,48 @@
+{% comment %}
+  The delete confirmation -- the body of the shared client modal, fetched by
+  the trash button on a row (and by "Eliminar" inside the edit form).
+
+  It spells out the cascade rather than asking a vague "¿Seguro?":
+  Conversation.contact is on_delete=CASCADE, so removing a client removes
+  every thread and message they ever sent. The count comes from the view, so
+  the warning is about this client, not a generic disclaimer.
+
+  Context: client, conversation_count, q, page
+{% endcomment %}
+
+<h2 class="modal__title modal__title--start" id="client-modal-title">
+  Eliminar a {{ client.full_name }}
+</h2>
+
+<p class="client-delete__text">
+  {% if conversation_count == 1 %}
+    Se eliminará también su conversación y todo el historial de mensajes.
+  {% elif conversation_count %}
+    Se eliminarán también sus {{ conversation_count }} conversaciones y todo el
+    historial de mensajes.
+  {% else %}
+    Se eliminará del CRM de forma permanente.
+  {% endif %}
+  Esta acción no se puede deshacer.
+</p>
+
+<p class="client-delete__who">
+  <span class="conv-row__avatar" aria-hidden="true">{{ client.initials }}</span>
+  <span>
+    <strong>{{ client.full_name }}</strong><br>
+    <span class="table__muted">{{ client.phone }}</span>
+  </span>
+</p>
+
+<div class="client-form__actions">
+  <span class="client-form__spacer"></span>
+  <button type="button" class="btn-ghost" data-dialog-close>Cancelar</button>
+  <form hx-post="{% url 'cliente_delete' client.pk %}"
+        hx-target="#client-modal-body"
+        hx-swap="innerHTML">
+    {% csrf_token %}
+    <input type="hidden" name="q" value="{{ q }}">
+    <input type="hidden" name="page" value="{{ page }}">
+    <button type="submit" class="btn-danger">Eliminar cliente</button>
+  </form>
+</div>

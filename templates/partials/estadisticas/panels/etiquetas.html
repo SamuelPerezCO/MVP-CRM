@@ -1,0 +1,119 @@
+{% comment %}
+  Estadísticas column 3 -- the Etiquetas page: every tag in the account and
+  how many conversations carry it.
+
+  This is what core.views.estadisticas_panel returns when "Etiquetas" is
+  picked in the secondary nav. Three summary tiles up top, then the ranking
+  table: each tag as its actual pill, its chat count, and a bar scaled
+  against the busiest tag. Tags are administered in CRM > Etiquetas; this
+  screen only reads them.
+
+  Context: tag_stats (annotated with .chats), max_chats, active_tag_count,
+  archived_tag_count, total_conversations, tagged_conversations,
+  untagged_conversations
+{% endcomment %}
+
+<div class="stats-page">
+
+  <header class="stats-page__head">
+    <h1 class="stats-page__title">Estadísticas de etiquetas</h1>
+
+    <p class="stats-page__subtitle">
+      Cuántas conversaciones lleva cada etiqueta de tu cuenta
+      <span class="info-dot" tabindex="0" role="img"
+            data-tip="Una conversación puede llevar varias etiquetas, así que la suma de la tabla puede superar el número de conversaciones etiquetadas."
+            aria-label="Una conversación puede llevar varias etiquetas, así que la suma de la tabla puede superar el número de conversaciones etiquetadas.">
+        {% include "icons/info.svg" %}
+      </span>
+    </p>
+  </header>
+
+  {% if tag_stats %}
+
+    <div class="kpi-row stats-page__kpis">
+      <div class="kpi-group">
+        <div class="kpi-group__tiles">
+
+          <article class="kpi kpi--blue">
+            <p class="kpi__label">Etiquetas activas</p>
+            <p class="kpi__value">{{ active_tag_count }}</p>
+            <p class="kpi__note">
+              {% if archived_tag_count %}
+                y {{ archived_tag_count }} archivada{{ archived_tag_count|pluralize }}
+              {% else %}
+                ninguna archivada
+              {% endif %}
+            </p>
+          </article>
+
+          <article class="kpi kpi--green">
+            <p class="kpi__label">
+              Conversaciones etiquetadas
+              <span class="info-dot" tabindex="0" role="img"
+                    data-tip="Conversaciones con al menos una etiqueta. Una conversación con varias etiquetas cuenta una sola vez aquí."
+                    aria-label="Conversaciones con al menos una etiqueta. Una conversación con varias etiquetas cuenta una sola vez aquí.">
+                {% include "icons/info.svg" %}
+              </span>
+            </p>
+            <p class="kpi__value">{{ tagged_conversations }}</p>
+            <p class="kpi__note">de {{ total_conversations }} en total</p>
+          </article>
+
+          <article class="kpi kpi--orange">
+            <p class="kpi__label">Sin etiqueta</p>
+            <p class="kpi__value">{{ untagged_conversations }}</p>
+            <p class="kpi__note">conversaciones por clasificar</p>
+          </article>
+
+        </div>
+      </div>
+    </div>
+
+    <table class="table rank-table">
+      <thead>
+        <tr>
+          <th scope="col">Etiqueta</th>
+          <th scope="col" class="rank-table__num">Conversaciones</th>
+          <th scope="col" class="rank-table__bar-col">Proporción</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for tag in tag_stats %}
+          <tr{% if tag.is_archived %} class="tag-row--archived"{% endif %}>
+            <td>
+              <span class="tag-pill tag-pill--{{ tag.color }}{% if tag.is_archived %} tag-pill--archived{% endif %}">{{ tag.name }}</span>
+              {% if tag.is_archived %}<span class="table__muted"> · archivada</span>{% endif %}
+            </td>
+
+            <td class="rank-table__num">{{ tag.chats }}</td>
+
+            {% comment %} The number in the cell before this one is the
+               accessible value; the bar is decoration on top of it. {% endcomment %}
+            <td class="rank-table__bar-col">
+              <span class="rank-bar" aria-hidden="true">
+                {% if tag.chats %}
+                  <span class="rank-bar__fill"
+                        style="width: {% widthratio tag.chats max_chats 100 %}%; background: var(--tag-{{ tag.color }}-fg)"></span>
+                {% endif %}
+              </span>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+  {% else %}
+
+    <div class="empty empty--list">
+      <div class="empty__icon">{% include "icons/tag.svg" %}</div>
+      <p class="empty__title">Aún no hay etiquetas</p>
+      <p class="empty__text">
+        Crea la primera en
+        <a href="{% url 'section' 'crm' %}?view=etiquetas">CRM › Etiquetas</a>
+        y aplícala desde el Inbox; aquí verás cuántas conversaciones lleva cada una.
+      </p>
+    </div>
+
+  {% endif %}
+</div>

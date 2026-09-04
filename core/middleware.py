@@ -2,11 +2,11 @@
 
 Every request needs a session that logged in through core.views.login_view --
 against the accounts in core.agents (the APP_AGENTS environment list and the
-database accounts a master creates) -- except for the handful of paths that
-must stay reachable without a browser session: provider webhooks (hit by
+database users a master creates) -- except for the handful of paths that must
+stay reachable without a browser session: provider webhooks (hit by
 Twilio/Meta/the Baileys sidecar, authenticated by their own signature check
-instead), static/media assets, and Django admin (gated separately by
-django.contrib.auth's staff flag).
+instead), the public legal pages, static/media assets, and Django admin
+(gated separately by django.contrib.auth).
 
 Two things have to hold. The session must carry the flag login_view sets, and
 django.contrib.auth must still resolve it to a real user: AuthenticationMiddleware
@@ -23,7 +23,9 @@ from django.conf import settings
 
 SESSION_KEY = 'app_authenticated'
 
-EXEMPT_PATHS = {'/login/'}
+# /privacidad/ and /eliminacion-de-datos/ are public on purpose: Meta's app
+# review reads them without an account, and so must any customer.
+EXEMPT_PATHS = {'/login/', '/privacidad/', '/eliminacion-de-datos/'}
 EXEMPT_PREFIXES = ('/webhooks/', '/static/', '/media/', '/admin/')
 
 

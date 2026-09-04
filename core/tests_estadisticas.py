@@ -50,11 +50,13 @@ class EstadisticasScreenTests(TestCase):
         )
 
     def test_view_query_param_selects_the_panel(self):
+        # "agentes-ia" because it is the one view still on the placeholder;
+        # every other view has a real panel now (their own test files).
         response = self.client.get(
-            reverse("section", args=["estadisticas"]), {"view": "ventas"}
+            reverse("section", args=["estadisticas"]), {"view": "agentes-ia"}
         )
-        self.assertEqual(response.context["active_view"], "ventas")
-        self.assertContains(response, "Ventas — próximamente")
+        self.assertEqual(response.context["active_view"], "agentes-ia")
+        self.assertContains(response, "Agentes de IA — próximamente")
 
     def test_unknown_view_falls_back_instead_of_404(self):
         response = self.client.get(
@@ -119,13 +121,14 @@ class MensajeriaCardsTests(TestCase):
             self.assertIn('hx-target="#estadisticas-panel"', tag.split(">", 1)[0])
 
     def test_card_route_returns_a_placeholder_panel(self):
-        # "volumen-mensajes" has a real screen now (tests_estadisticas_volumen);
-        # the other three still resolve to the placeholder.
+        # "volumen-mensajes" and "tiempos-respuesta" have real screens now
+        # (tests_estadisticas_volumen / tests_estadisticas_tiempos); the other
+        # two still resolve to the placeholder.
         response = self.client.get(
-            reverse("estadisticas_card", args=["tiempos-respuesta"])
+            reverse("estadisticas_card", args=["rendimiento-agentes"])
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Tiempos de Respuesta — próximamente")
+        self.assertContains(response, "Rendimiento de Agentes — próximamente")
 
     def test_unknown_card_is_404(self):
         self.assertEqual(
@@ -140,7 +143,7 @@ class EstadisticasPanelEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("<html", body)
         self.assertNotIn("side-nav", body)  # nav panel is not re-sent
-        self.assertIn("Ventas", body)
+        self.assertIn("Estadísticas de ventas", body)
 
     def test_every_view_has_a_working_endpoint(self):
         for view in VIEWS:

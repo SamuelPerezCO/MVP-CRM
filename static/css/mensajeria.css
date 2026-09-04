@@ -111,3 +111,111 @@
   background: var(--page-gray);
   padding: 16px;
 }
+
+/* ==========================================================================
+   Respuestas rápidas — a titled header (unlike Plantillas), the table with
+   image thumbnails and an active switch, and the form's image block. The
+   modal itself reuses .modal--client / .client-form from crm.css.
+   ========================================================================== */
+
+.respuestas__head { align-items: flex-start; gap: 16px; }
+
+.respuestas__intro { flex: 1; min-width: 0; }
+
+.respuestas__title {
+  margin: 4px 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.respuestas__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.reply-table__text { max-width: 360px; color: var(--muted); }
+
+.reply-row--off td { color: var(--muted); }
+.reply-row--off .table__name { text-decoration: line-through; }
+
+.reply-thumb {
+  display: inline-block;
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--hover-bg);
+  vertical-align: middle;
+}
+
+.reply-thumb--lg { width: 96px; height: 96px; border-radius: 8px; }
+.reply-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* --- On/off switch ---------------------------------------------------------- */
+
+.switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #cfd6de;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.switch.is-on { background: var(--accent); }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.switch__knob {
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-start: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 30 50 / 25%);
+  transition: transform var(--speed) ease;
+}
+
+.switch.is-on .switch__knob { transform: translateX(14px); }
+
+/* --- Form: image block ------------------------------------------------------ */
+
+.reply-form__image { margin-block-start: 14px; }
+.reply-form__image--error .ffield__label--static { color: var(--error-text); }
+
+.ffield__label--static {
+  position: static;
+  display: block;
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.reply-form__current {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+}
+
+.reply-form__remove,
+.reply-form__active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.reply-form__active { margin-block-start: 16px; }
+
+.reply-form__file { font-size: 12.5px; }
+
+.reply-delete__text { font-size: 13px; color: var(--text); }

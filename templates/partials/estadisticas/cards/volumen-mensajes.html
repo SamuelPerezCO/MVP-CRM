@@ -18,7 +18,7 @@
 
   Context: stat_card, period_start, period_end, period_label, report, channels
 {% endcomment %}
-{% load static %}
+{% load assets %}
 
 <div class="stats-detail" data-volumen-root
      data-report-url="{% url 'estadisticas_volumen_data' %}"
@@ -216,6 +216,6 @@
 
 {% comment %} Loaded by the panel, not base.html: only this screen pays for the bundle.
    Both files tolerate re-execution -- see the guards in stats_volumen.js. {% endcomment %}
-<script src="{% static 'js/vendor/echarts.min.js' %}"></script>
-<script src="{% static 'js/stats_chart.js' %}"></script>
-<script src="{% static 'js/stats_volumen.js' %}"></script>
+<script src="{% vstatic 'js/vendor/echarts.min.js' %}"></script>
+<script src="{% vstatic 'js/stats_chart.js' %}"></script>
+<script src="{% vstatic 'js/stats_volumen.js' %}"></script>

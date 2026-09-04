@@ -55,27 +55,63 @@
           hx-on::after-request="if(event.detail.successful) this.reset()">
       {% csrf_token %}
       {% comment %}
-        Placeholder: the canned-replies picker isn't built yet, so this
-        deliberately has no target and does nothing when clicked.
+        The plantillas picker. details/summary gives the open/close for free;
+        the panel's contents load once, on first open (hx-trigger="toggle
+        once" -- the toggle event fires on the details element itself).
+        Picking an entry sends it into this chat -- the entries carry their
+        own hx-post to inbox_send, and hx-headers here is what supplies them
+        the CSRF token (they are buttons, not this form's submit). An entry
+        whose body still has a blank to fill falls back to loading the
+        composer instead; see quick_replies.html and shell.js.
       {% endcomment %}
-      <button type="button" class="composer__quick">
-        {% include "icons/zap.svg" %}
-        <span>Respuestas rápidas</span>
-      </button>
+      <details class="quickreplies" data-quickreplies
+               hx-get="{% url 'inbox_quick_replies' active_conversation.pk %}"
+               hx-trigger="toggle once"
+               hx-target="find [data-quickreplies-pop]"
+               hx-swap="innerHTML"
+               hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+        <summary class="composer__quick">
+          {% include "icons/zap.svg" %}
+          <span>Respuestas rápidas</span>
+        </summary>
+        <div class="quickreplies__pop" data-quickreplies-pop
+             role="menu" aria-label="Respuestas rápidas">
+          <p class="quickreplies__empty">Cargando…</p>
+        </div>
+      </details>
       <input class="field__input composer__input" type="text" name="body"
              placeholder="Escribe un mensaje" autocomplete="off" required
              aria-label="Escribe un mensaje">
       <button type="submit" class="btn-primary">Enviar</button>
     </form>
   {% else %}
-    {# WhatsApp's 24h rule, surfaced instead of a send that would bounce. #}
+    {% comment %}
+      WhatsApp's 24h rule, surfaced as the one thing that IS allowed: a
+      plantilla, picked and sent right here (core.views.inbox_send_template).
+      The customer's reply is what reopens the window and brings the normal
+      composer back on the next poll/click.
+    {% endcomment %}
     <div class="composer composer--closed">
-      {% include "icons/info.svg" %}
-      <p class="composer__notice">
-        La ventana de 24 horas está cerrada: solo puedes reabrir esta
-        conversación con una
-        <a href="{% url 'section' 'mensajeria' %}">plantilla aprobada</a>.
-      </p>
+      <div class="composer__notice">
+        {% include "icons/info.svg" %}
+        <p>
+          La ventana de 24 horas está cerrada. Puedes retomar la conversación
+          enviando una plantilla aprobada; cuando el cliente responda, vuelve
+          el chat libre.
+        </p>
+      </div>
+      <form class="composer__template"
+            hx-post="{% url 'inbox_send_template' active_conversation.pk %}"
+            hx-target="#chat-messages"
+            hx-swap="innerHTML">
+        {% csrf_token %}
+        {% include "partials/inbox/template_list.html" %}
+        {% if template_options %}
+          <div class="composer__template-actions">
+            <button type="submit" class="btn-primary">Enviar plantilla</button>
+          </div>
+        {% endif %}
+      </form>
     </div>
   {% endif %}
 </div>

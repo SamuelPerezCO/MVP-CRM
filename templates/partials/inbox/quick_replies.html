@@ -1,0 +1,54 @@
+{% comment %}
+  The Respuestas rápidas list -- what core.views.inbox_quick_replies drops
+  into the composer's popover the first time it opens.
+
+  Each entry is one of the account's quick replies (Configuración de
+  mensajería > Respuestas rápidas). Picking one SENDS it: the button posts
+  the reply's id to inbox_send, which resolves the text and the image on
+  the server and answers with the refreshed thread into #chat-messages. So
+  a quick reply lands in the chat in one click -- the whole point of one.
+
+  The CSRF token for these posts is inherited from the hx-headers on the
+  <details> in chat_thread.html.
+
+  Context: replies -- active QuickReply rows; conversation -- the chat the
+  sends post to
+{% endcomment %}
+
+{% if replies %}
+  <p class="quickreplies__title">Respuestas rápidas</p>
+  <ul class="quickreplies__list">
+    {% for reply in replies %}
+      <li>
+        <button type="button" class="quickreplies__item"
+                data-quick-send
+                hx-post="{% url 'inbox_send' conversation.pk %}"
+                hx-vals='{"quick_reply": "{{ reply.pk }}"}'
+                hx-target="#chat-messages"
+                hx-swap="innerHTML">
+          {% if reply.has_image %}
+            <span class="quickreplies__thumb" aria-hidden="true">
+              <img src="{{ reply.image.url }}" alt="" loading="lazy">
+            </span>
+          {% endif %}
+          <span class="quickreplies__text">
+            <span class="quickreplies__name">
+              {{ reply.title }}
+              {% if reply.has_image %}
+                <span class="quickreplies__badge quickreplies__badge--image">Imagen</span>
+              {% endif %}
+            </span>
+            {% if reply.body %}
+              <span class="quickreplies__preview">{{ reply.body|truncatechars:90 }}</span>
+            {% endif %}
+          </span>
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="quickreplies__empty">
+    No hay respuestas rápidas todavía. Créalas en
+    <a href="{% url 'section' 'mensajeria' %}?view=respuestas-rapidas">Configuración de mensajería</a>.
+  </p>
+{% endif %}

@@ -17,3 +17,9 @@ python-dotenv>=1.0,<2
 # urlparse, which silently dropped the connection string's query parameters
 # (Neon sends ?sslmode=require&channel_binding=require).
 dj-database-url>=2.1,<4
+
+# Vercel Blob client behind core.storage.VercelBlobStorage -- production
+# media storage, since Vercel functions have no persistent filesystem. Only
+# imported when BLOB_READ_WRITE_TOKEN is set (see config/settings.py).
+vercel_blob==0.4.2
+

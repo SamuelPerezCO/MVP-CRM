@@ -1,0 +1,24 @@
+{% comment %}
+  What a successful Nuevo chat answers with, into #newchat-modal-body: the
+  dismiss marker that closes the modal (shell.js), plus out-of-band swaps
+  for everything behind it -- the opened thread in column 4 (exactly what a
+  row click produces), the client details in column 5, and the conversation
+  list, so the new thread is there too.
+
+  Context: everything _thread_context builds, plus active_filter and
+           conversations for the list
+{% endcomment %}
+
+<div data-dialog-dismiss hidden></div>
+
+<div id="chat-panel" hx-swap-oob="innerHTML">
+  {% include "partials/inbox/chat_thread.html" %}
+</div>
+
+<div id="details-panel" hx-swap-oob="innerHTML">
+  {% include "partials/inbox/details_content.html" %}
+</div>
+
+<div id="conv-list" hx-swap-oob="innerHTML">
+  {% include "partials/inbox/conversation_list.html" %}
+</div>

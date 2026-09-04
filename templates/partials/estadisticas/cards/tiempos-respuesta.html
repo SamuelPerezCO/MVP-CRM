@@ -1,0 +1,225 @@
+{% comment %}
+  Estadísticas > Mensajería > "Tiempos de Respuesta" -- the second stat
+  card's detail screen, on the volumen-mensajes pattern (see that template's
+  header for the fragment/HTMX mechanics).
+
+  THREE filters govern the whole screen -- agent, platform and period -- and
+  they sit together in one bar above the content. As on volumen, the first
+  render ships its report inline (tiles, table, json_script payload) so the
+  screen is readable before any JS runs; changing any filter re-fetches
+  estadisticas_tiempos_data and updates in place -- static/js/stats_tiempos.js.
+
+  Context: stat_card, period_start, period_end, period_label, report,
+           agents, selected_agent, platforms, selected_platform
+{% endcomment %}
+{% load static %}
+
+<div class="stats-detail" data-tiempos-root
+     data-report-url="{% url 'estadisticas_tiempos_data' %}"
+     data-default-start="{{ period_start|date:'Y-m-d' }}"
+     data-default-end="{{ period_end|date:'Y-m-d' }}">
+
+  {# Back to the card grid: the Mensajería panel this card was opened from. #}
+  <a class="stats-detail__back"
+     href="{% url 'estadisticas_panel' 'mensajeria' %}"
+     hx-get="{% url 'estadisticas_panel' 'mensajeria' %}"
+     hx-target="#estadisticas-panel"
+     hx-swap="innerHTML">
+    {% include "icons/chevron-left.svg" %}
+    Estadísticas de mensajería
+  </a>
+
+  <header class="stats-detail__head">
+    <div class="stats-detail__titlerow">
+      <span class="stats-detail__icon" aria-hidden="true">{{ stat_card.icon }}</span>
+      <h1 class="stats-detail__title">{{ stat_card.title }}</h1>
+
+      <button type="button" class="pill-info" data-dialog-open="tiempos-howto-dialog">
+        {% include "icons/info.svg" %}
+        ¿Cómo funciona?
+      </button>
+    </div>
+
+    <p class="stats-detail__subtitle">
+      Métricas de velocidad de respuesta de tu equipo, incluyendo tiempos post-MIA
+    </p>
+  </header>
+
+  {# --- Filters: agent, platform and period govern every number below ----- #}
+  <div class="stats-filters">
+    <label class="stats-select">
+      <span class="stats-select__label">Agente</span>
+      <select class="stats-select__input" data-filter-agent>
+        <option value="">Todos los agentes</option>
+        {% for agent in agents %}
+          <option value="{{ agent.pk }}"
+                  {% if agent.pk == selected_agent %}selected{% endif %}>
+            {{ agent.get_full_name|default:agent.username }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="stats-select">
+      <span class="stats-select__label">Plataforma</span>
+      <select class="stats-select__input" data-filter-platform>
+        <option value="">Todas las plataformas</option>
+        {% for key, label in platforms %}
+          <option value="{{ key }}"
+                  {% if key == selected_platform %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="daterange" data-daterange>
+      <button type="button" class="daterange__field" data-range-open
+              aria-haspopup="dialog" aria-expanded="false"
+              aria-controls="tiempos-range-pop">
+        <span class="daterange__label">Período</span>
+        <span class="daterange__value" data-range-label>{{ period_label }}</span>
+      </button>
+
+      <button type="button" class="daterange__btn" data-range-reset
+              title="Restablecer a los últimos 30 días"
+              aria-label="Restablecer el período a los últimos 30 días">
+        {% include "icons/x.svg" %}
+      </button>
+      <button type="button" class="daterange__btn" data-range-open
+              title="Elegir fechas"
+              aria-label="Elegir fechas del período"
+              aria-controls="tiempos-range-pop">
+        {% include "icons/calendar.svg" %}
+      </button>
+
+      <div class="daterange__pop" id="tiempos-range-pop" data-range-pop hidden
+           role="dialog" aria-label="Seleccionar período">
+        <div class="daterange__fields">
+          <label class="daterange__input">
+            <span>Desde</span>
+            <input type="date" data-range-start value="{{ period_start|date:'Y-m-d' }}">
+          </label>
+          <label class="daterange__input">
+            <span>Hasta</span>
+            <input type="date" data-range-end value="{{ period_end|date:'Y-m-d' }}">
+          </label>
+        </div>
+        <p class="daterange__error" data-range-error hidden role="alert"></p>
+        <div class="daterange__actions">
+          <button type="button" class="btn-outline" data-range-cancel>Cancelar</button>
+          <button type="button" class="btn-primary" data-range-apply>Aplicar</button>
+        </div>
+      </div>
+    </div>
+
+    <span class="stats-filters__busy" data-busy hidden aria-live="polite">Actualizando…</span>
+  </div>
+
+  {% comment %} --- KPI tiles ---------------------------------------------------------
+     Two groups: the first two tiles measure speed, the third counts what was
+     measured -- a different kind of number, so it stands apart, exactly as
+     volumen separates its Total. --------------------------------------- {% endcomment %}
+  <div class="kpi-row">
+    <section class="kpi-group" aria-labelledby="kpi-group-tiempos">
+      <h2 class="kpi-group__label" id="kpi-group-tiempos">Tiempos de respuesta</h2>
+      <div class="kpi-group__tiles">
+        {% for tile in report.tiles %}{% if tile.key != 'measured' %}
+          <article class="kpi kpi--{{ tile.tone }}">
+            <p class="kpi__label">
+              {{ tile.label }}
+              <span class="info-dot" tabindex="0" role="img"
+                    data-tip="{{ tile.tip }}" aria-label="{{ tile.tip }}">
+                {% include "icons/info.svg" %}
+              </span>
+            </p>
+            <p class="kpi__value" data-kpi-value="{{ tile.key }}">{{ tile.value }}</p>
+            <p class="kpi__note" data-kpi-note="{{ tile.key }}">{{ tile.note }}</p>
+          </article>
+        {% endif %}{% endfor %}
+      </div>
+    </section>
+
+    <section class="kpi-group kpi-group--total" aria-labelledby="kpi-group-resumen">
+      <h2 class="kpi-group__label" id="kpi-group-resumen">Resumen</h2>
+      <div class="kpi-group__tiles">
+        {% for tile in report.tiles %}{% if tile.key == 'measured' %}
+          <article class="kpi kpi--{{ tile.tone }} kpi--filled">
+            <p class="kpi__label">
+              {{ tile.label }}
+              <span class="info-dot" tabindex="0" role="img"
+                    data-tip="{{ tile.tip }}" aria-label="{{ tile.tip }}">
+                {% include "icons/info.svg" %}
+              </span>
+            </p>
+            <p class="kpi__value" data-kpi-value="{{ tile.key }}">{{ tile.value }}</p>
+            <p class="kpi__note" data-kpi-note="{{ tile.key }}">{{ tile.note }}</p>
+          </article>
+        {% endif %}{% endfor %}
+      </div>
+    </section>
+  </div>
+
+  {# --- Distribution chart ------------------------------------------------- #}
+  <section class="chart-card" aria-labelledby="tiempos-chart-title">
+    <header class="chart-card__head">
+      <h2 class="chart-card__title" id="tiempos-chart-title">
+        Distribución de tiempos de respuesta
+        <span class="info-dot" tabindex="0" role="img"
+              data-tip="Cada respuesta medida cae en un rango según lo que tardó. Las barras muestran qué porcentaje del total cayó en cada rango."
+              aria-label="Cada respuesta medida cae en un rango según lo que tardó. Las barras muestran qué porcentaje del total cayó en cada rango.">
+          {% include "icons/info.svg" %}
+        </span>
+      </h2>
+      <p class="chart-card__subtitle">Porcentaje de respuestas por rango de tiempo</p>
+    </header>
+
+    {% comment %} Canvas labelled as an image; the "Ver tabla" table below is its
+       accessible equivalent -- same stance as volumen's chart. {% endcomment %}
+    <div class="chart-card__plot" data-chart role="img"
+         aria-label="Gráfico de barras: porcentaje de respuestas por rango de tiempo. Los mismos datos están en la tabla «Ver tabla» debajo."></div>
+
+    <p class="chart-card__empty" data-chart-empty {% if report.responses %}hidden{% endif %}>
+      No hay respuestas medidas en el período seleccionado.
+    </p>
+
+    <div class="chart-card__foot">
+      <button type="button" class="linkish" data-table-toggle
+              aria-expanded="false" aria-controls="tiempos-table">
+        Ver tabla
+      </button>
+    </div>
+
+    {% comment %} Rendered server-side so it is complete without JS; re-rendered from
+       the same report when a filter changes. {% endcomment %}
+    <div class="chart-table" id="tiempos-table" data-table hidden>
+      <table class="data-table">
+        <caption class="sr-only">
+          Respuestas por rango de tiempo en el período <span data-table-range>{{ period_label }}</span>
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Rango</th>
+            {% for entry in report.series %}<th scope="col">{{ entry.label }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody data-table-body>
+          {% for row in report.table %}
+            <tr>
+              <th scope="row">{{ row.label }}</th>
+              {% for value in row.values %}<td>{{ value }}</td>{% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {{ report|json_script:"tiempos-report" }}
+</div>
+
+{% include "partials/estadisticas/tiempos_howto_dialog.html" %}
+
+{% comment %} Loaded by the panel, not base.html: only this screen pays for the bundle.
+   All three files tolerate re-execution. {% endcomment %}
+<script src="{% static 'js/vendor/echarts.min.js' %}"></script>
+<script src="{% static 'js/stats_chart.js' %}"></script>
+<script src="{% static 'js/stats_tiempos.js' %}"></script>

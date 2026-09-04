@@ -193,6 +193,39 @@
         openDialog({ event: info.event });
       },
 
+      // The chip shows WHO the event is with, not just what it is called:
+      // serialize_event ships contactName for exactly this, and a calendar
+      // inside a CRM that hid the client on every event would be missing
+      // its point. Time-grid chips keep their time line above the title.
+      eventContent: function (arg) {
+        var wrap = document.createElement("div");
+        wrap.className = "cal-event__body";
+        if (arg.timeText) {
+          var time = document.createElement("div");
+          time.className = "cal-event__time";
+          time.textContent = arg.timeText;
+          wrap.appendChild(time);
+        }
+        var title = document.createElement("div");
+        title.className = "cal-event__title";
+        title.textContent = arg.event.title;
+        wrap.appendChild(title);
+        var client = arg.event.extendedProps.contactName;
+        if (client) {
+          var who = document.createElement("div");
+          who.className = "cal-event__client";
+          who.textContent = client;
+          wrap.appendChild(who);
+        }
+        return { domNodes: [wrap] };
+      },
+
+      // Hovering a cramped chip reveals the full line either way.
+      eventDidMount: function (arg) {
+        var client = arg.event.extendedProps.contactName;
+        arg.el.title = client ? arg.event.title + " · " + client : arg.event.title;
+      },
+
       eventDrop: persistMove,
       eventResize: persistMove,
     });

@@ -1,0 +1,40 @@
+{% comment %}
+  The plantilla picker -- one radio per usable WhatsApp template, body
+  rendered with its sample values. Shared by the Nuevo chat modal and the
+  closed composer, which wrap it in their own <form>.
+
+  Pendientes are offered with a badge: the MVP has no approval pipeline, so
+  hiding them would hide every plantilla the team wrote; Meta rejects an
+  unapproved one at send time and the thread shows the failure.
+
+  Context: template_options -- [{template, body}]
+{% endcomment %}
+
+{% if template_options %}
+  <ul class="tpl-pick">
+    {% for entry in template_options %}
+      <li>
+        <label class="tpl-pick__item">
+          <input class="tpl-pick__radio" type="radio" name="plantilla"
+                 value="{{ entry.template.pk }}" required
+                 {% if forloop.first %}checked{% endif %}>
+          <span class="tpl-pick__body">
+            <span class="tpl-pick__name">
+              {{ entry.template.name }}
+              {% if entry.template.status == "pendiente" %}
+                <span class="quickreplies__badge">Pendiente</span>
+              {% endif %}
+            </span>
+            <span class="tpl-pick__text">{{ entry.body }}</span>
+          </span>
+        </label>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="tpl-pick__empty">
+    No hay plantillas activas. WhatsApp solo permite abrir una conversación con
+    una plantilla aprobada:
+    <a href="{% url 'section' 'mensajeria' %}?view=plantillas-whatsapp">créala en Configuración de mensajería</a>.
+  </p>
+{% endif %}

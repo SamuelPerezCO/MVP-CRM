@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -22,7 +23,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # True under `manage.py test` (and pytest). core.middleware.LoginRequiredMiddleware
 # reads this so the test client -- which never logs in -- isn't locked out.
-TESTING = 'test' in sys.argv
+# `manage.py test ...` (argv[1]) or a pytest run. Matching 'test' anywhere in
+# argv, as this used to, also fired on any command that merely took 'test' as
+# an argument -- and a process that believes it is testing quietly switches to
+# SQLite, the fake provider and no login gate.
+TESTING = (
+    (len(sys.argv) > 1 and sys.argv[1] == 'test')
+    or 'PYTEST_CURRENT_TEST' in os.environ
+    or 'pytest' in sys.modules
+)
 
 # Load BASE_DIR/.env into os.environ before anything below reads it, so a
 # plain `python manage.py ...` picks up local credentials with no `export`
@@ -64,11 +73,14 @@ if VERCEL_PROJECT_PRODUCTION_URL:
 # Vercel also assigns this project two more stable aliases beyond
 # VERCEL_PROJECT_PRODUCTION_URL (project-name-team-slug, and the git branch
 # alias for main) -- hardcode them so they keep working without a dashboard
-# env var edit.
-ALLOWED_HOSTS += [
-    'mvp-crm-unaneaprogramadora.vercel.app',
-    'mvp-crm-git-main-unaneaprogramadora.vercel.app',
-]
+# env var edit. Only on Vercel (it sets VERCEL=1): locally these entries
+# would make ALLOWED_HOSTS non-empty and disable Django's DEBUG-mode
+# localhost fallback, locking the dev server out of its own machine.
+if os.environ.get('VERCEL'):
+    ALLOWED_HOSTS += [
+        'mvp-crm-unaneaprogramadora.vercel.app',
+        'mvp-crm-git-main-unaneaprogramadora.vercel.app',
+    ]
 
 CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS]
 
@@ -89,6 +101,14 @@ APP_AGENTS = os.environ.get('APP_AGENTS', '')
 # sets these two still gets in -- core.agents treats it as a one-agent list.
 APP_LOGIN_USERNAME = os.environ.get('APP_LOGIN_USERNAME', '')
 APP_LOGIN_PASSWORD = os.environ.get('APP_LOGIN_PASSWORD', '')
+
+
+# Public legal pages (core.views.privacy / data_deletion). Meta requires a
+# reachable privacy policy and data-deletion URL to publish the app; these
+# two values are what those pages name as the responsible party, so set them
+# to the real business before pointing Meta at the URLs.
+LEGAL_ENTITY_NAME = os.environ.get('LEGAL_ENTITY_NAME', 'MVP CRM')
+LEGAL_CONTACT_EMAIL = os.environ.get('LEGAL_CONTACT_EMAIL', 'sernasamuelperez@gmail.com')
 
 
 # Application definition
@@ -209,13 +229,22 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 # during the build and serves the result from its CDN -- no extra config.
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# User uploads (template header media). Served by Django in DEBUG only --
-# see config/urls.py. NOTE: Vercel's serverless functions have no persistent
-# filesystem, so files written here in production disappear after the
-# request -- wire up real object storage (e.g. Vercel Blob, S3) via a
-# django-storages backend before relying on header uploads in production.
+# User uploads (WhatsApp media, template header media). Locally they live in
+# MEDIA_ROOT, served by Django in DEBUG only -- see config/urls.py.
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# In production there is no persistent filesystem (Vercel's functions are
+# read-only + ephemeral), so uploads go to the project's Vercel Blob store
+# instead: create it in the dashboard (Storage > Create Database > Blob) and
+# connect it to the project, which injects BLOB_READ_WRITE_TOKEN into the
+# environment -- its presence alone flips the default storage backend. Tests
+# always keep the filesystem, even if a developer's .env carries the token.
+if os.environ.get('BLOB_READ_WRITE_TOKEN') and not TESTING:
+    STORAGES = {
+        'default': {'BACKEND': 'core.storage.VercelBlobStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
 
 
 # Email
@@ -234,19 +263,45 @@ MAILERS = {
 # (see .env.example). Values come from the environment so no credential ever
 # lands in this file. `manage.py test` always forces 'fake' (see TESTING
 # above), even when a developer's own .env is set to a real provider -- tests
-# must not depend on a live sidecar/Twilio/Meta connection to pass.
+# must not depend on a live sidecar/Twilio/Meta connection to pass. Outside
+# tests the variable is required -- see the check below.
 
-MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER', 'fake')
+MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER', '')
 
-# Fake provider: the shared secret dev webhooks must send in X-Fake-Signature.
-MESSAGING_FAKE_SECRET = os.environ.get('MESSAGING_FAKE_SECRET', 'dev-secret')
+# No silent default. 'fake' used to be the fallback, which meant a deploy
+# missing the variable ran happily on simulated sends and simulated receipts
+# -- ticks moving in the UI, nothing reaching a phone. Production is real
+# customers writing in through the shared database; it must never run on the
+# simulator by accident. Local development sets MESSAGING_PROVIDER=fake
+# explicitly in .env (see .env.example).
+if not MESSAGING_PROVIDER:
+    raise ImproperlyConfigured(
+        "MESSAGING_PROVIDER is not set. Choose 'twilio', 'meta' or 'baileys' "
+        "for a real WhatsApp line, or 'fake' for local development only "
+        "(see .env.example)."
+    )
+
+# Shared webhook secrets. Neither has a real default: a value committed to
+# this file is a value an attacker already has, and both providers now reject
+# every request while their secret is empty (fail closed, like Meta's). Under
+# `manage.py test` they get a fixed value instead, so the signature-checking
+# path is still exercised end to end rather than skipped.
+#
+# Fake provider: the secret dev webhooks send in X-Fake-Signature.
+MESSAGING_FAKE_SECRET = (
+    'testing-fake-secret' if TESTING else os.environ.get('MESSAGING_FAKE_SECRET', '')
+)
 
 # Twilio (unused until providers/twilio.py is implemented).
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')
 TWILIO_WHATSAPP_FROM = os.environ.get('TWILIO_WHATSAPP_FROM', '')
 
-# Meta Cloud API (unused until providers/meta.py is implemented).
+# Meta Cloud API (providers/meta.py). META_APP_SECRET signs incoming
+# webhooks and META_VERIFY_TOKEN answers Meta's subscribe handshake --
+# both fail closed when unset, so the webhook rejects traffic rather than
+# trusting it. App Dashboard > App settings > Basic for the secret; the
+# verify token is any string you also type into the webhook form.
 META_ACCESS_TOKEN = os.environ.get('META_ACCESS_TOKEN', '')
 META_PHONE_NUMBER_ID = os.environ.get('META_PHONE_NUMBER_ID', '')
 META_APP_SECRET = os.environ.get('META_APP_SECRET', '')
@@ -256,4 +311,9 @@ META_VERIFY_TOKEN = os.environ.get('META_VERIFY_TOKEN', '')
 # see whatsapp-sidecar/. QR-code pairing, no Meta Developers app needed; good
 # for demos, not for production -- see whatsapp-sidecar/README.md).
 BAILEYS_SIDECAR_URL = os.environ.get('BAILEYS_SIDECAR_URL', 'http://localhost:4000')
-BAILEYS_SIDECAR_SECRET = os.environ.get('BAILEYS_SIDECAR_SECRET', 'dev-sidecar-secret')
+# Same rule, and it matters more: baileys is a *real* provider, so its webhook
+# slug answers on every deployment, not just where it is the active one.
+BAILEYS_SIDECAR_SECRET = (
+    'testing-sidecar-secret' if TESTING
+    else os.environ.get('BAILEYS_SIDECAR_SECRET', '')
+)

@@ -599,6 +599,18 @@
 
 .msg__media .icon { width: 14px; height: 14px; }
 
+/* Inline photo/sticker: capped like WhatsApp's own thumbnails; the link
+   opens the full-size original in a new tab. */
+.msg__image { display: block; }
+.msg__image:not(:last-child) { margin-block-end: 4px; }
+
+.msg__image img {
+  display: block;
+  max-width: min(220px, 100%);
+  max-height: 220px;
+  border-radius: 8px;
+}
+
 .msg__meta {
   display: flex;
   align-items: center;
@@ -660,6 +672,201 @@
 .composer__quick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .composer__quick .icon { width: 15px; height: 15px; }
 
+/* The plantillas picker behind that button: a details/summary popover that
+   opens upward, above the composer. */
+.quickreplies { position: relative; flex-shrink: 0; }
+
+/* <summary> is the .composer__quick button; strip its disclosure marker. */
+.quickreplies summary { list-style: none; }
+.quickreplies summary::-webkit-details-marker { display: none; }
+.quickreplies[open] summary { background: var(--hover-bg); color: var(--text); }
+
+.quickreplies__pop {
+  position: absolute;
+  inset-block-end: calc(100% + 8px);
+  inset-inline-start: 0;
+  z-index: 30;
+  width: 340px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgb(15 30 50 / 16%);
+}
+
+.quickreplies__title {
+  margin: 2px 4px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.quickreplies__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quickreplies__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.quickreplies__item:hover { background: var(--hover-bg); }
+.quickreplies__item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.quickreplies__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* Not yet approved by WhatsApp -- usable inside the 24h window, but worth
+   flagging. */
+.quickreplies__badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fdf3e0;
+  color: #92600a;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+/* Carries a picture: WhatsApp gets it as a photo with the text as caption. */
+.quickreplies__badge--image {
+  background: #e7eefb;
+  color: #2b4f8f;
+}
+
+.quickreplies__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.quickreplies__thumb {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--hover-bg);
+}
+
+.quickreplies__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.quickreplies__preview {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.quickreplies__empty {
+  margin: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.quickreplies__empty a { color: var(--accent); }
+
+/* --- Plantilla picker (Nuevo chat modal + the closed composer) ------------- */
+
+.tpl-pick {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.tpl-pick__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color var(--speed) ease, background-color var(--speed) ease;
+}
+
+.tpl-pick__item:hover { background: var(--hover-bg); }
+.tpl-pick__item:has(.tpl-pick__radio:checked) { border-color: var(--accent); background: #f2f7fe; }
+.tpl-pick__radio { margin-block-start: 3px; accent-color: var(--accent); }
+
+.tpl-pick__body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
+.tpl-pick__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tpl-pick__text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.tpl-pick__empty {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--hover-bg);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.tpl-pick__empty a { color: var(--accent); }
+
+/* Nuevo chat modal */
+.modal--newchat { width: min(600px, calc(100vw - 32px)); }
+
+.newchat__lead {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.newchat__error { margin: 0 0 8px; }
+.newchat__who { display: flex; flex-direction: column; }
+.newchat__who select[size] { padding: 6px; min-height: 148px; }
+.newchat__who select[size] option { padding: 5px 6px; border-radius: 4px; }
+.newchat__label { margin-block-start: 16px; }
+
 /* Window-closed notice replacing the composer (WhatsApp's 24h rule). */
 .composer--closed {
   color: var(--muted);
@@ -668,8 +875,15 @@
 
 .composer--closed .icon { width: 16px; height: 16px; flex-shrink: 0; }
 
-.composer__notice { margin: 0; line-height: 1.45; }
+.composer__notice { display: flex; gap: 8px; align-items: flex-start; margin: 0; line-height: 1.45; }
+.composer__notice p { margin: 0; }
 .composer__notice a { color: var(--accent); }
+
+/* The closed composer stacks: notice, then the picker and its button. */
+.composer--closed { flex-direction: column; align-items: stretch; gap: 10px; }
+.composer__template { display: flex; flex-direction: column; gap: 10px; }
+.composer__template .tpl-pick { max-height: 160px; }
+.composer__template-actions { display: flex; justify-content: flex-end; }
 
 /* --- Client details (column 5 with a conversation open) ------------------- */
 

@@ -1,0 +1,90 @@
+{% load assets %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Eliminación de datos · MVP CRM</title>
+  <meta name="description" content="Cómo solicitar la eliminación de tus datos personales y del historial de tus conversaciones de WhatsApp en MVP CRM.">
+  <link rel="stylesheet" href="{% vstatic 'css/legal.css' %}">
+</head>
+<body class="legal-body">
+  <header class="legal-header">
+    <div class="legal-header__inner">
+      <a class="legal-header__brand" href="/">
+        {% include "icons/logo.svg" %}
+        <span>MVP CRM</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="legal-main" role="main">
+    <h1>Eliminación de datos</h1>
+    <p class="legal-updated">Última actualización: {{ updated }}</p>
+
+    <p>
+      Puedes pedir en cualquier momento que borremos tus datos personales y el
+      historial de tus conversaciones de WhatsApp con {{ entity }}. No cobramos
+      por esta solicitud y no necesitas dar explicaciones.
+    </p>
+
+    <h2>Cómo solicitarlo</h2>
+    <ol>
+      <li>
+        Escribe a <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>
+        con el asunto <strong>«Eliminación de datos»</strong>.
+      </li>
+      <li>
+        Indica el <strong>número de teléfono</strong> con el que nos escribiste
+        por WhatsApp. Lo necesitamos para encontrar tus conversaciones; sin él
+        no podemos identificarlas.
+      </li>
+      <li>
+        Te confirmaremos por el mismo medio cuando la eliminación se haya
+        completado.
+      </li>
+    </ol>
+
+    <div class="legal-card legal-card--accent">
+      <p style="margin:0">
+        <strong>Plazo:</strong> atendemos la solicitud dentro de los quince (15)
+        días hábiles siguientes a su recepción, conforme a la Ley 1581 de 2012.
+      </p>
+    </div>
+
+    <h2>Qué se elimina</h2>
+    <ul>
+      <li>Tu número de teléfono y el nombre de tu perfil de WhatsApp.</li>
+      <li>El contenido de todos tus mensajes, incluidos archivos adjuntos.</li>
+      <li>El historial de la conversación, sus etiquetas y notas internas.</li>
+    </ul>
+
+    <h2>Qué puede conservarse</h2>
+    <p>
+      Podremos conservar información mínima cuando una obligación legal, contable
+      o tributaria lo exija, o para atender una reclamación en curso. En esos
+      casos los datos quedan bloqueados: se guardan solo para ese fin y no se
+      usan para contactarte.
+    </p>
+    <p>
+      Ten en cuenta que los mensajes también existen en tu propio teléfono y en
+      los sistemas de WhatsApp. Eliminarlos allí depende de ti y de las
+      políticas de Meta; nosotros solo podemos borrar lo que está en MVP CRM.
+    </p>
+
+    <h2>Otros derechos</h2>
+    <p>
+      Además de la eliminación, puedes conocer, actualizar o corregir tus datos,
+      y revocar tu autorización. Todo eso está explicado en la
+      <a href="{% url 'privacy' %}">política de privacidad</a>.
+    </p>
+
+    <div class="legal-footer">
+      <p>
+        <a href="{% url 'privacy' %}">Política de privacidad</a> ·
+        <a href="/">Inicio</a>
+      </p>
+    </div>
+  </main>
+</body>
+</html>

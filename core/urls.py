@@ -9,6 +9,10 @@ urlpatterns = [
     # The app-wide login gate (core.middleware.LoginRequiredMiddleware).
     path("login/", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
+    # Public legal pages -- no session required (core.middleware), because
+    # Meta will not publish an app whose privacy policy needs a login.
+    path("privacidad/", views.privacy, name="privacy"),
+    path("eliminacion-de-datos/", views.data_deletion, name="data_deletion"),
     # Root is the welcome screen: the shell before any section is chosen. It is
     # deliberately not a `section` route, so no sidebar icon matches "/".
     path("", views.welcome, name="home"),
@@ -29,11 +33,26 @@ urlpatterns = [
         views.inbox_send,
         name="inbox_send",
     ),
+    # A plantilla into an existing chat -- the closed composer's picker.
+    path(
+        "inbox/chat/<int:conversation_id>/plantilla/",
+        views.inbox_send_template,
+        name="inbox_send_template",
+    ),
+    # "Nuevo Chat": GET the modal body, POST to start a conversation.
+    path("inbox/nuevo/", views.inbox_new_chat, name="inbox_new_chat"),
     # The chat header's agent dropdown posts here on every change.
     path(
         "inbox/chat/<int:conversation_id>/asignar/",
         views.inbox_assign,
         name="inbox_assign",
+    ),
+    # The composer's Respuestas rápidas popover, fetched when first opened.
+    # Conversation-scoped because each entry posts itself to inbox_send.
+    path(
+        "inbox/chat/<int:conversation_id>/respuestas-rapidas/",
+        views.inbox_quick_replies,
+        name="inbox_quick_replies",
     ),
     # One conversation's tag picker: GET renders it, POST toggles/creates.
     path(
@@ -48,21 +67,6 @@ urlpatterns = [
     path("crm/etiquetas/nueva/", views.tag_create, name="tag_create"),
     path("crm/etiquetas/<int:tag_id>/editar/", views.tag_update, name="tag_update"),
     path("crm/etiquetas/<int:tag_id>/archivo/", views.tag_archive, name="tag_archive"),
-    # Usuarios (CRM > Mi cuenta > Equipo) mutations, masters only; all answer
-    # with the re-rendered #user-table region.
-    path("crm/usuarios/nuevo/", views.user_create, name="user_create"),
-    path("crm/usuarios/<int:user_id>/editar/", views.user_update, name="user_update"),
-    path(
-        "crm/usuarios/<int:user_id>/clave/",
-        views.user_set_password,
-        name="user_set_password",
-    ),
-    path(
-        "crm/usuarios/<int:user_id>/estado/",
-        views.user_set_active,
-        name="user_set_active",
-    ),
-    path("crm/usuarios/<int:user_id>/eliminar/", views.user_delete, name="user_delete"),
     # CRM column 3, fetched on its own when a secondary-nav page is picked.
     path("crm/panel/<slug:view_key>/", views.crm_panel, name="crm_panel"),
     # Mi calendario: the grid's JSON feed plus event/preference mutations,
@@ -93,8 +97,29 @@ urlpatterns = [
         views.calendar_prefs,
         name="calendar_prefs",
     ),
-    # The client table region (rows + pager), fetched on its own when paging.
+    # The client table region (rows + pager), fetched on its own when paging
+    # and when the toolbar's search box changes.
     path("crm/clientes/tabla/", views.clientes_table, name="clientes_table"),
+    # Clientes CRUD. Each one answers with a fragment for the shared modal in
+    # the Clientes panel; the saves additionally swap the table in out-of-band.
+    # Usuarios (CRM > Equipo): masters create/edit/deactivate teammates.
+    path("crm/usuarios/nuevo/", views.usuario_form, name="usuario_create"),
+    path("crm/usuarios/<int:user_id>/editar/", views.usuario_form, name="usuario_update"),
+    path("crm/usuarios/<int:user_id>/activo/", views.usuario_active, name="usuario_active"),
+    # The whole client base as an .xlsx download (CRM > Exportaciones).
+    path("crm/clientes/exportar/", views.clientes_export, name="clientes_export"),
+    path("crm/clientes/nuevo/", views.cliente_form, name="cliente_create"),
+    path(
+        "crm/clientes/<int:client_id>/editar/",
+        views.cliente_form,
+        name="cliente_update",
+    ),
+    path("crm/clientes/<int:client_id>/", views.cliente_detail, name="cliente_detail"),
+    path(
+        "crm/clientes/<int:client_id>/eliminar/",
+        views.cliente_delete,
+        name="cliente_delete",
+    ),
     # Placeholder target for the "+ Crear lista" button.
     path("crm/listas/nueva/", views.lista_create, name="lista_create"),
     # Embudos column 3, fetched on its own when a secondary-nav page is picked.
@@ -139,6 +164,13 @@ urlpatterns = [
         views.estadisticas_volumen_data,
         name="estadisticas_volumen_data",
     ),
+    # Tiempos de Respuesta: same contract for its filter bar (period, agent,
+    # platform), fetched by static/js/stats_tiempos.js.
+    path(
+        "estadisticas/mensajeria/tiempos/datos/",
+        views.estadisticas_tiempos_data,
+        name="estadisticas_tiempos_data",
+    ),
     # One Mensajería stat card's detail screen (placeholder until its
     # template exists -- see core.estadisticas.card_template).
     path(
@@ -158,6 +190,24 @@ urlpatterns = [
         "mensajeria/plantillas/tab/<slug:tab_key>/",
         views.plantillas_table,
         name="plantillas_table",
+    ),
+    # Respuestas rápidas CRUD (Configuración de mensajería). Each answers with
+    # a fragment for the panel's shared modal; saves also swap the table.
+    path("mensajeria/respuestas/nueva/", views.respuesta_form, name="respuesta_create"),
+    path(
+        "mensajeria/respuestas/<int:reply_id>/editar/",
+        views.respuesta_form,
+        name="respuesta_update",
+    ),
+    path(
+        "mensajeria/respuestas/<int:reply_id>/eliminar/",
+        views.respuesta_delete,
+        name="respuesta_delete",
+    ),
+    path(
+        "mensajeria/respuestas/<int:reply_id>/activa/",
+        views.respuesta_toggle,
+        name="respuesta_toggle",
     ),
     # The chooser modal's first card: pick a ready-made template (placeholder).
     path(

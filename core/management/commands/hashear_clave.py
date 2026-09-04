@@ -26,7 +26,7 @@ from getpass import getpass
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand, CommandError
 
-from core import usuarios
+from core import agents
 
 
 class Command(BaseCommand):
@@ -80,8 +80,8 @@ class Command(BaseCommand):
 
     def _hash(self, password: str, username: str) -> str:
         try:
-            usuarios.validate_password(password, username)
-        except usuarios.UserError as exc:
+            agents.validate_password(password, username)
+        except ValueError as exc:
             raise CommandError(f"{username or 'la contraseña'}: {exc}" if username else str(exc))
 
         encoded = make_password(password)

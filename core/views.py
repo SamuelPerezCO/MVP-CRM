@@ -16,27 +16,24 @@ Sections that need their own data register a context builder in
 section: it is the shell at rest, with no sidebar icon selected.
 """
 
-from django.http import (
-    Http404,
-    HttpResponse,
-    HttpResponseForbidden,
-    HttpResponseNotAllowed,
-    JsonResponse,
-)
-from django.shortcuts import get_object_or_404, redirect
+from django.http import Http404, HttpResponse, HttpResponseNotAllowed, JsonResponse
+from django.conf import settings
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template import TemplateDoesNotExist
 from django.template.loader import get_template, render_to_string
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+
+import json
 
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth import login as auth_login, logout as auth_logout
-from django.contrib.auth import update_session_auth_hash
 from django.core.paginator import Paginator
 from django.db import IntegrityError
-from django.db.models import Count
+from django.db.models import Count, Q
 
 from messaging import services as messaging_services
 from messaging.models import Conversation, Tag
@@ -45,18 +42,26 @@ from . import (
     agents,
     automatizaciones,
     calendario,
+    clientes,
     comercio,
     crm,
     embudos,
     estadisticas,
+    estadisticas_atribuciones,
+    estadisticas_embudos,
+    estadisticas_periodos,
+    estadisticas_temas,
+    estadisticas_tiempos,
+    estadisticas_ventas,
     estadisticas_volumen,
     inbox,
     mensajeria,
     plantillas,
-    usuarios,
+    respuestas,
+    xlsx,
 )
 from .middleware import SESSION_KEY
-from .models import CalendarEvent, Client, ClientList, MessageTemplate
+from .models import CalendarEvent, Client, ClientList, MessageTemplate, QuickReply
 from .nav import (
     DEFAULT_SECTION,
     NAV_BY_KEY,
@@ -97,14 +102,18 @@ def _thread_context(conversation) -> dict:
     Shared by the full-page render (``?chat=``), the HTMX chat swap and the
     thread poll, so all three always agree on what a thread looks like.
     """
+    window_open = conversation.is_within_24h_window
     return {
         "active_conversation": conversation,
         "active_conversation_id": conversation.pk,
         "chat_messages": conversation.messages.all(),
-        "window_open": conversation.is_within_24h_window,
+        "window_open": window_open,
         # Options for the header's assignment dropdown -- everyone configured
         # in APP_AGENTS, whether or not they have logged in yet.
         "assign_options": agents.assignment_options(conversation),
+        # A closed window swaps the composer for the plantilla picker, which
+        # needs the list; an open one renders nothing from it.
+        "template_options": [] if window_open else _template_options(),
     }
 
 
@@ -167,6 +176,15 @@ def _inbox_context(request) -> dict:
             _mark_read(conversation)
             context.update(_thread_context(conversation))
 
+    # ?nuevo=<client id> opens the Nuevo chat modal on that client -- the CRM
+    # client card links here. The id is only carried through; the modal
+    # body itself is fetched (see nav_panel.html), so an unknown id just
+    # opens an unselected picker.
+    try:
+        context["new_chat_client_id"] = int(request.GET.get("nuevo", ""))
+    except ValueError:
+        context["new_chat_client_id"] = None
+
     return context
 
 
@@ -174,12 +192,44 @@ def _inbox_context(request) -> dict:
 CLIENTS_PER_PAGE = 25
 
 
+def _table_param(request, name: str) -> str:
+    """One of the client table's view parameters (``q``, ``page``).
+
+    Read from the query string normally, and from the body on the mutation
+    POSTs -- the dialogs carry the current search and page as hidden fields so
+    a save re-renders the table the agent was actually looking at, rather than
+    bouncing them back to an unfiltered page 1.
+    """
+    return (request.GET.get(name) or request.POST.get(name) or "").strip()
+
+
 def _clientes_context(request) -> dict:
-    """Paginated client list for the CRM's Clientes table."""
-    page = Paginator(Client.objects.all(), CLIENTS_PER_PAGE).get_page(
-        request.GET.get("page")
-    )
-    return {"clients": page, "page_obj": page}
+    """Paginated (and optionally searched) client list for the Clientes table,
+    plus the option lists its create/edit dialog renders from."""
+    query = _table_param(request, "q")
+    clients = Client.objects.all()
+    if query:
+        # Phone matching ignores formatting: "316 768" finds +573167687288.
+        digits = "".join(char for char in query if char.isdigit())
+        matches = (
+            Q(first_name__icontains=query)
+            | Q(last_name__icontains=query)
+            | Q(email__icontains=query)
+        )
+        if digits:
+            matches |= Q(phone__contains=digits)
+        else:
+            matches |= Q(phone__icontains=query)
+        clients = clients.filter(matches)
+
+    page = Paginator(clients, CLIENTS_PER_PAGE).get_page(_table_param(request, "page"))
+    return {
+        "clients": page,
+        "page_obj": page,
+        "client_query": query,
+        "countries": clientes.COUNTRIES,
+        "channels": Client.CHANNEL_CHOICES,
+    }
 
 
 def _lista_clientes_context(request) -> dict:
@@ -211,34 +261,75 @@ def _etiquetas_context(request) -> dict:
 
 
 def _mi_calendario_context(request) -> dict:
-    """Data for the Mi calendario panel: the sidebar preferences (still
-    session-kept, per browser rather than per account) and the event modal's
-    option lists. Advisors are the same team the Inbox assigns to -- one
-    definition of "who is on the team", not two drifting ones."""
+    """Data for the Mi calendario panel: the sidebar preferences (session-
+    kept until real users/auth exist) and the event modal's option lists."""
     return {
         "calendar_prefs": calendario.get_prefs(request.session),
         "event_types": calendario.EVENT_TYPES,
         "slot_choices": calendario.SLOT_CHOICES,
         "reminder_choices": calendario.REMINDER_CHOICES,
         "contacts": Client.objects.all(),
-        "advisors": agents.agent_users(),
+        "advisors": get_user_model().objects.filter(is_active=True).order_by("username"),
+    }
+
+
+#: Column headers of the clients export, in sheet order. The row builder in
+#: clientes_export must follow this order.
+CLIENT_EXPORT_COLUMNS = [
+    "Nombres", "Apellidos", "Teléfono", "País", "Mail", "Canal",
+    "Cliente desde", "Conversaciones", "Etiquetas",
+]
+
+
+def _exportaciones_context(request) -> dict:
+    """What the Exportaciones page shows before the download: how many rows
+    it will hold and which columns -- from the same queryset the export uses."""
+    return {
+        "client_count": Client.objects.count(),
+        "export_columns": CLIENT_EXPORT_COLUMNS,
+    }
+
+
+def _usuarios_context(request) -> dict:
+    """The team: every agent (env-configured and app-created), plus the
+    deactivated app users so a master can restore one. ``can_manage`` is
+    what shows the create/edit controls -- the page is read-only for
+    everyone else."""
+    User = get_user_model()
+    active = agents.agent_users()
+    active_ids = {user.pk for user in active}
+    inactive = [
+        user for user in User.objects.filter(is_active=False).order_by("first_name", "username")
+        if agents.is_app_user(user)
+    ]
+    # One query for the whole Maestros group instead of is_master() per row.
+    master_ids = set(
+        User.objects.filter(groups__name=agents.MASTER_GROUP).values_list("pk", flat=True)
+    )
+    env_names = {agent.username for agent in agents.configured_agents()}
+    return {
+        "team": [
+            {
+                "user": user,
+                "is_env": user.username in env_names,
+                "is_master": (
+                    user.username in env_names or user.is_superuser or user.pk in master_ids
+                ),
+            }
+            for user in active + inactive
+        ],
+        "can_manage": agents.is_master(request.user),
+        "active_ids": active_ids,
     }
 
 
 #: CRM view key -> callable(request) -> dict. Panels without an entry need no data.
-def _usuarios_context(request) -> dict:
-    """Every account for the Usuarios table, plus the role cards' copy."""
-    return {
-        "users": usuarios.list_users(),
-        "role_choices": usuarios.ROLE_CHOICES,
-    }
-
-
 PANEL_CONTEXT = {
     "clientes": _clientes_context,
     "etiquetas": _etiquetas_context,
     "lista-clientes": _lista_clientes_context,
     "mi-calendario": _mi_calendario_context,
+    "exportaciones": _exportaciones_context,
     "usuarios": _usuarios_context,
 }
 
@@ -250,15 +341,14 @@ def _crm_context(request) -> dict:
     section template differs (see sections/crm.html and sections/campanas.html).
 
     ``?view=`` selects the active row in the secondary nav. An unknown value
-    -- or a master-only one for someone who isn't -- falls back to the
-    default rather than 404-ing, so a stale bookmark opens.
+    falls back to the default rather than 404-ing, so a stale bookmark opens.
     """
     view_key = request.GET.get("view", crm.DEFAULT_VIEW)
-    if not crm.can_view(request.user, view_key):
+    if view_key not in crm.VIEW_BY_KEY:
         view_key = crm.DEFAULT_VIEW
 
     context = {
-        "crm_sections": crm.visible_sections(request.user),
+        "crm_sections": crm.SECTIONS,
         "active_view": view_key,
         "crm_view": crm.VIEW_BY_KEY[view_key],
         "panel_template": crm.panel_template(view_key),
@@ -397,10 +487,98 @@ def _mensajeria_stats_context(request) -> dict:
     return {"stat_cards": estadisticas.CARDS}
 
 
+def _etiquetas_stats_context(request) -> dict:
+    """Data for the Etiquetas stats panel: every tag with how many
+    conversations carry it, plus the tagged/untagged split for the tiles.
+
+    Counts are annotated in one query, same stance as :func:`_etiquetas_context`
+    (one through-row per (conversation, tag), so the count *is* "chats with
+    this tag"). Archived tags keep their place in the ranking but sort below
+    the active ones -- they still label old conversations, so their numbers
+    are real history, just visually retired.
+    """
+    tags = list(
+        Tag.objects.annotate(chats=Count("conversation_tags")).order_by(
+            "is_archived", "-chats", "name"
+        )
+    )
+    total = Conversation.objects.count()
+    tagged = Conversation.objects.filter(tags__isnull=False).distinct().count()
+    return {
+        "tag_stats": tags,
+        # The busiest tag's count -- what every row's bar is scaled against.
+        "max_chats": max((tag.chats for tag in tags), default=0),
+        "active_tag_count": sum(1 for tag in tags if not tag.is_archived),
+        "archived_tag_count": sum(1 for tag in tags if tag.is_archived),
+        "total_conversations": total,
+        "tagged_conversations": tagged,
+        "untagged_conversations": total - tagged,
+    }
+
+
+def _temas_stats_context(request) -> dict:
+    """Data for the Temas de conversación panel.
+
+    ``?period=`` picks the window; an unknown value falls back to the
+    default rather than erroring, and the report itself lives in
+    core.estadisticas_temas.
+    """
+    period = estadisticas_temas.parse_period(request.GET)
+    return {
+        "periods": estadisticas_temas.PERIODS,
+        "period": period,
+        "report": estadisticas_temas.report(period),
+    }
+
+
+def _ventas_stats_context(request) -> dict:
+    """Data for the Ventas panel. Same period contract as
+    :func:`_temas_stats_context`; the report lives in
+    core.estadisticas_ventas.
+    """
+    period = estadisticas_periodos.parse_period(request.GET)
+    return {
+        "periods": estadisticas_periodos.PERIODS,
+        "period": period,
+        "report": estadisticas_ventas.report(period),
+    }
+
+
+def _embudos_stats_context(request) -> dict:
+    """Data for the Embudos panel (the conversation funnel). Same period
+    contract as the Temas and Ventas panels; the report lives in
+    core.estadisticas_embudos.
+    """
+    period = estadisticas_periodos.parse_period(request.GET)
+    return {
+        "periods": estadisticas_periodos.PERIODS,
+        "period": period,
+        "report": estadisticas_embudos.report(period),
+    }
+
+
+def _atribuciones_stats_context(request) -> dict:
+    """Data for the Atribuciones panel (channel attribution). Same period
+    contract as its sibling panels; the report lives in
+    core.estadisticas_atribuciones.
+    """
+    period = estadisticas_periodos.parse_period(request.GET)
+    return {
+        "periods": estadisticas_periodos.PERIODS,
+        "period": period,
+        "report": estadisticas_atribuciones.report(period),
+    }
+
+
 #: Estadísticas view key -> callable(request) -> dict. Views without an entry
 #: need no data.
 STATS_PANEL_CONTEXT = {
     "mensajeria": _mensajeria_stats_context,
+    "ventas": _ventas_stats_context,
+    "etiquetas": _etiquetas_stats_context,
+    "embudos": _embudos_stats_context,
+    "atribuciones": _atribuciones_stats_context,
+    "temas-conversacion": _temas_stats_context,
 }
 
 
@@ -445,10 +623,21 @@ def _plantillas_context(request) -> dict:
     }
 
 
+def _respuestas_context(request) -> dict:
+    """Data for the Respuestas rápidas panel: every quick reply, active ones
+    first, with who wrote it."""
+    return {
+        "replies": QuickReply.objects.select_related("created_by").order_by(
+            "-is_active", "title"
+        ),
+    }
+
+
 #: Configuración de mensajería view key -> callable(request) -> dict. Views
 #: without an entry need no data.
 MENSAJERIA_PANEL_CONTEXT = {
     "plantillas-whatsapp": _plantillas_context,
+    "respuestas-rapidas": _respuestas_context,
 }
 
 
@@ -494,13 +683,12 @@ SECTION_CONTEXT = {
 def login_view(request):
     """The one gate in front of the whole app -- see core.middleware.
 
-    Accounts come from two places (``core.agents``): the APP_AGENTS
-    environment list, checked first, and the database accounts a master
-    creates. Either way a successful login starts a *real*
-    ``django.contrib.auth`` session, which is what makes the person an
-    identity rather than a boolean: "Tu inbox" can filter
-    ``assigned_to=request.user``, outbound messages record who wrote them,
-    and master-only screens know whom they're talking to.
+    Credentials come from the environment (``core.agents``), but a successful
+    login also starts a *real* ``django.contrib.auth`` session against that
+    agent's mirror User. That is what makes the agent an identity rather than a
+    boolean: "Tu inbox" can filter ``assigned_to=request.user``, outbound
+    messages record who wrote them, and the Inbox's assignment dropdown has a
+    sensible default.
     """
     error = None
     next_url = request.GET.get('next') or request.POST.get('next') or reverse('home')
@@ -511,17 +699,16 @@ def login_view(request):
     if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
         next_url = reverse('home')
     if request.method == 'POST':
-        user = agents.authenticate_user(
-            request, request.POST.get('username', ''), request.POST.get('password', '')
+        agent = agents.authenticate(
+            request.POST.get('username', ''), request.POST.get('password', '')
         )
-        if user is not None:
-            # An env agent's mirror row has an unusable password, so no auth
-            # backend verified it and user.backend is unset -- name the backend
-            # explicitly (harmless for database accounts, which already
-            # carry it from authenticate()).
+        if agent is not None:
+            # The mirror User has an unusable password, so no auth backend can
+            # verify it -- name the backend explicitly instead of going through
+            # django.contrib.auth.authenticate(), which would (correctly) fail.
             auth_login(
                 request,
-                user,
+                agent.user,
                 backend='django.contrib.auth.backends.ModelBackend',
             )
             # After auth_login: it cycles the session key, and the gate flag
@@ -699,10 +886,23 @@ def inbox_send(request, conversation_id: int):
     )
 
     body = (request.POST.get("body") or "").strip()
+    image_url = ""
+    # A quick reply arrives by id, not by text: the server resolves what it
+    # says and whether it carries an image, so the picker can't be made to
+    # send anything the reply doesn't hold.
+    reply_id = request.POST.get("quick_reply")
+    if reply_id:
+        reply = QuickReply.objects.filter(pk=reply_id, is_active=True).first()
+        if reply is not None:
+            body = reply.body
+            image_url = respuestas.image_url(reply)
+
     send_error = None
-    if body:
+    if body or image_url:
         try:
-            messaging_services.send_message(conversation, body, request.user)
+            messaging_services.send_message(
+                conversation, body, request.user, image_url=image_url
+            )
         except messaging_services.SendWindowClosed:
             send_error = (
                 "La ventana de 24 horas se cerró. Envía una plantilla "
@@ -710,6 +910,158 @@ def inbox_send(request, conversation_id: int):
             )
         except messaging_services.SendFailed:
             send_error = "No se pudo enviar el mensaje. Inténtalo de nuevo."
+
+    context = _thread_context(conversation)
+    context["send_error"] = send_error
+    return HttpResponse(
+        render_to_string("partials/inbox/chat_messages.html", context, request=request)
+    )
+
+
+def inbox_quick_replies(request, conversation_id: int):
+    """The Respuestas rápidas popover: the account's quick replies, each one
+    click away from landing in *this* conversation.
+
+    Fetched lazily the first time the picker opens (see chat_thread.html).
+    Lists every active :class:`core.models.QuickReply` -- the team's own
+    canned answers, managed in Configuración de mensajería > Respuestas
+    rápidas. Each entry posts its id to :func:`inbox_send`, which resolves
+    the text and the image server-side. (The picker used to list WhatsApp
+    plantillas; those now belong to the Enviar plantilla flow, the only
+    thing allowed outside the 24h window.)
+    """
+    conversation = get_object_or_404(Conversation, pk=conversation_id)
+    replies = QuickReply.objects.filter(is_active=True).order_by("title")
+    return HttpResponse(
+        render_to_string(
+            "partials/inbox/quick_replies.html",
+            {"replies": replies, "conversation": conversation},
+            request=request,
+        )
+    )
+
+
+# --- Nuevo chat / plantillas ------------------------------------------------
+#
+# WhatsApp's rule: a business may only *start* a conversation (or reopen one
+# the customer left more than 24h ago) with a pre-approved plantilla. Two
+# doors, one picker:
+#
+# * "Nuevo Chat" in the Inbox nav -- pick a client, pick a plantilla, send.
+#   The thread appears in the list and opens on the right.
+# * A closed composer -- the same plantilla picker sits where the composer
+#   would be, posting into that conversation.
+
+
+def _template_options():
+    """The plantillas the picker offers: active, not rejected, body rendered
+    with its samples. Pendientes are included with a badge (the MVP has no
+    approval pipeline -- see inbox_quick_replies' history) but flagged; a
+    real Meta send of an unapproved template is rejected by the API."""
+    templates = (
+        MessageTemplate.objects.filter(is_active=True)
+        .exclude(status="rechazada")
+        .order_by("name")
+    )
+    return [
+        {"template": template, "body": plantillas.render_body(template)}
+        for template in templates
+    ]
+
+
+def _new_chat_response(request, client=None, error=None):
+    """The Nuevo chat modal body: a searchable client list and the
+    plantilla picker."""
+    return HttpResponse(
+        render_to_string(
+            "partials/inbox/new_chat.html",
+            {
+                "clients": Client.objects.order_by("first_name", "last_name"),
+                "selected_client": client,
+                "template_options": _template_options(),
+                "new_chat_error": error,
+            },
+            request=request,
+        )
+    )
+
+
+def inbox_new_chat(request):
+    """Start a conversation from our side.
+
+    GET renders the modal body (``?cliente=`` preselects one). POST takes
+    ``cliente`` + ``plantilla``, sends the plantilla through
+    messaging.services.send_template into the client's open WhatsApp thread
+    (or a new one) and answers with the opened chat -- the same fragment a
+    row click produces -- plus the refreshed list out-of-band, and the
+    dismiss marker that closes the modal.
+    """
+    if request.method == "GET":
+        client = Client.objects.filter(pk=request.GET.get("cliente") or 0).first()
+        return _new_chat_response(request, client)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["GET", "POST"])
+
+    client = Client.objects.filter(pk=request.POST.get("cliente") or 0).first()
+    template = (
+        MessageTemplate.objects.filter(
+            pk=request.POST.get("plantilla") or 0, is_active=True
+        )
+        .exclude(status="rechazada")
+        .first()
+    )
+    if client is None:
+        return _new_chat_response(request, None, "Elige a quién escribirle.")
+    if template is None:
+        return _new_chat_response(request, client, "Elige una plantilla para abrir la conversación.")
+
+    conversation = messaging_services.start_conversation(client, "whatsapp")
+    try:
+        messaging_services.send_template(conversation, template, request.user)
+    except messaging_services.SendFailed:
+        return _new_chat_response(
+            request, client, "No se pudo enviar la plantilla. Inténtalo de nuevo."
+        )
+
+    _mark_read(conversation)
+    context = _thread_context(conversation)
+    context.update(
+        {
+            "active_filter": inbox.DEFAULT_FILTER,
+            "conversations": inbox.get_conversations(inbox.DEFAULT_FILTER, request.user),
+        }
+    )
+    return HttpResponse(
+        render_to_string("partials/inbox/new_chat_opened.html", context, request=request)
+    )
+
+
+def inbox_send_template(request, conversation_id: int):
+    """Send a plantilla into an existing conversation -- the closed
+    composer's picker posts here. Answers with the refreshed thread, like
+    inbox_send, and the composer itself swaps out-of-band: the reply that
+    just went out doesn't reopen the window (only the customer can), but the
+    thread now shows what was sent."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    conversation = get_object_or_404(
+        Conversation.objects.select_related("contact"), pk=conversation_id
+    )
+    template = (
+        MessageTemplate.objects.filter(
+            pk=request.POST.get("plantilla") or 0, is_active=True
+        )
+        .exclude(status="rechazada")
+        .first()
+    )
+    send_error = None
+    if template is None:
+        send_error = "Elige una plantilla."
+    else:
+        try:
+            messaging_services.send_template(conversation, template, request.user)
+        except messaging_services.SendFailed:
+            send_error = "No se pudo enviar la plantilla. Inténtalo de nuevo."
 
     context = _thread_context(conversation)
     context["send_error"] = send_error
@@ -935,140 +1287,6 @@ def tag_archive(request, tag_id: int):
     return _tag_table_response(request)
 
 
-# --- Usuarios ---------------------------------------------------------------
-
-
-def _forbidden() -> HttpResponse:
-    """The answer to a non-master reaching for a master-only door. Plain
-    text on purpose: it lands in an HTMX swap target or a direct URL hit,
-    neither of which wants the full shell."""
-    return HttpResponseForbidden("Solo un usuario maestro puede hacer esto.")
-
-
-def _master_only(view):
-    """Decorator: 403 unless ``request.user`` is a master (core.agents)."""
-
-    def wrapped(request, *args, **kwargs):
-        if not agents.is_master(request.user):
-            return _forbidden()
-        return view(request, *args, **kwargs)
-
-    wrapped.__name__ = view.__name__
-    wrapped.__doc__ = view.__doc__
-    return wrapped
-
-
-def _user_table_response(request, error=None):
-    """The re-rendered #user-table region every user mutation answers with.
-
-    Errors still travel as a 200 (the region re-renders with the banner, as
-    the Etiquetas page does), but with two additions for the four-field
-    create dialog: the message is also swapped out-of-band into the dialog
-    itself, and the X-Form-Error header tells shell.js to leave the dialog
-    open -- nobody should retype a whole form over a taken username.
-    """
-    context = _usuarios_context(request)
-    context["user_error"] = error
-    html = render_to_string("partials/crm/user_table.html", context, request=request)
-    html += render_to_string(
-        "partials/crm/user_form_error.html", {"user_error": error, "oob": True}
-    )
-    response = HttpResponse(html)
-    if error:
-        response["X-Form-Error"] = "1"
-    return response
-
-
-def _managed_user_or_404(user_id: int):
-    """The target of a user mutation -- app accounts only. Staff rows belong
-    to /admin (see core.agents.can_log_in) and are never rendered here, so a
-    pk naming one is a hand-crafted request: it gets the same 404 as a pk
-    that doesn't exist."""
-    return get_object_or_404(get_user_model(), pk=user_id, is_staff=False)
-
-
-@_master_only
-def user_create(request):
-    """Create an account from the Usuarios page's modal."""
-    if request.method != "POST":
-        return HttpResponseNotAllowed(["POST"])
-    error = None
-    try:
-        usuarios.create_user(
-            request.user,
-            request.POST.get("username", ""),
-            request.POST.get("name", ""),
-            request.POST.get("password", ""),
-            request.POST.get("role", ""),
-        )
-    except usuarios.UserError as exc:
-        error = str(exc)
-    return _user_table_response(request, error)
-
-
-@_master_only
-def user_update(request, user_id: int):
-    """Rename / change the role of one account."""
-    if request.method != "POST":
-        return HttpResponseNotAllowed(["POST"])
-    user = _managed_user_or_404(user_id)
-    error = None
-    try:
-        usuarios.update_user(
-            request.user, user, request.POST.get("name", ""), request.POST.get("role", "")
-        )
-    except usuarios.UserError as exc:
-        error = str(exc)
-    return _user_table_response(request, error)
-
-
-@_master_only
-def user_set_password(request, user_id: int):
-    """Give one account a new password."""
-    if request.method != "POST":
-        return HttpResponseNotAllowed(["POST"])
-    user = _managed_user_or_404(user_id)
-    error = None
-    try:
-        usuarios.set_password(request.user, user, request.POST.get("password", ""))
-    except usuarios.UserError as exc:
-        error = str(exc)
-    else:
-        # Changing your own password rotates the session auth hash; without
-        # this the very next request would log you out of the page you're on.
-        if user.pk == request.user.pk:
-            update_session_auth_hash(request, user)
-    return _user_table_response(request, error)
-
-
-@_master_only
-def user_set_active(request, user_id: int):
-    """Deactivate (``active=0``) or reactivate (``active=1``) one account."""
-    if request.method != "POST":
-        return HttpResponseNotAllowed(["POST"])
-    user = _managed_user_or_404(user_id)
-    error = None
-    try:
-        usuarios.set_active(request.user, user, request.POST.get("active") == "1")
-    except usuarios.UserError as exc:
-        error = str(exc)
-    return _user_table_response(request, error)
-
-
-@_master_only
-def user_delete(request, user_id: int):
-    """Hard-delete one account, after the confirm dialog."""
-    if request.method != "POST":
-        return HttpResponseNotAllowed(["POST"])
-    user = _managed_user_or_404(user_id)
-    error = None
-    try:
-        usuarios.delete_user(request.user, user)
-    except usuarios.UserError as exc:
-        error = str(exc)
-    return _user_table_response(request, error)
-
-
 def crm_panel(request, view_key: str):
     """Return just the CRM's column 3 for one secondary-nav view.
 
@@ -1077,8 +1295,6 @@ def crm_panel(request, view_key: str):
     """
     if view_key not in crm.VIEW_BY_KEY:
         raise Http404(f"Unknown CRM view: {view_key!r}")
-    if not crm.can_view(request.user, view_key):
-        return _forbidden()
 
     context = {
         "active_view": view_key,
@@ -1105,6 +1321,310 @@ def clientes_table(request):
         render_to_string(
             "partials/crm/client_table.html", _clientes_context(request), request=request
         )
+    )
+
+
+# --- Clientes CRUD ----------------------------------------------------------
+#
+# The four screens all render into one shared modal (#client-modal-body in
+# panels/clientes.html) rather than a dialog per row: at 25 rows a page, three
+# pre-rendered dialogs each would triple the panel's HTML for markup nobody
+# opens. Fetching the one that was asked for keeps the table light.
+#
+# A successful save answers with partials/crm/client_saved.html, which closes
+# the modal and swaps the refreshed table in out-of-band. A rejected one
+# answers with the form again -- errors inline, everything typed still there.
+
+
+def _client_form_response(request, state, errors, client=None):
+    """The create/edit dialog body, rendered for the modal."""
+    return HttpResponse(
+        render_to_string(
+            "partials/crm/client_form.html",
+            {
+                "form": state,
+                "errors": errors,
+                "client": client,
+                "countries": clientes.COUNTRIES,
+                "channels": Client.CHANNEL_CHOICES,
+                "q": _table_param(request, "q"),
+                "page": _table_param(request, "page"),
+            },
+            request=request,
+        )
+    )
+
+
+def _client_saved_response(request, message: str):
+    """What every successful mutation answers with: close the modal, refresh
+    the table under it."""
+    context = _clientes_context(request)
+    context["client_notice"] = message
+    return HttpResponse(
+        render_to_string("partials/crm/client_saved.html", context, request=request)
+    )
+
+
+def cliente_form(request, client_id: int | None = None):
+    """The Crear/Editar cliente dialog: GET renders it, POST saves it.
+
+    One view for both because the only difference is whether there is a row to
+    update -- exactly the shape core.plantillas.plantilla_editor has, and the
+    same error contract: invalid input re-renders the form with per-field
+    messages instead of throwing away what was typed.
+    """
+    client = get_object_or_404(Client, pk=client_id) if client_id else None
+
+    if request.method == "POST":
+        state = clientes.form_state(request.POST)
+        errors = clientes.validate(state, client)
+        if not errors:
+            saved = clientes.apply(state, client)
+            return _client_saved_response(
+                request,
+                f"Cliente actualizado: {saved.full_name}."
+                if client
+                else f"Cliente creado: {saved.full_name}.",
+            )
+        return _client_form_response(request, state, errors, client)
+
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    return _client_form_response(request, clientes.form_state(client=client), {}, client)
+
+
+def cliente_detail(request, client_id: int):
+    """The read-only "Ver" card behind the eye button.
+
+    Shows what the row can't fit: when the client came in, which channels they
+    have threads on and which lists they belong to.
+    """
+    client = get_object_or_404(
+        Client.objects.prefetch_related("conversations", "client_lists"), pk=client_id
+    )
+    return HttpResponse(
+        render_to_string(
+            "partials/crm/client_detail.html",
+            {
+                "client": client,
+                "conversations": client.conversations.all(),
+                "q": _table_param(request, "q"),
+                "page": _table_param(request, "page"),
+            },
+            request=request,
+        )
+    )
+
+
+def cliente_delete(request, client_id: int):
+    """GET asks; POST deletes.
+
+    The confirmation is not decoration: ``Conversation.contact`` cascades, so
+    deleting a client takes their whole message history with them. The GET
+    fragment says how many threads that is before the agent commits.
+    """
+    client = get_object_or_404(Client, pk=client_id)
+
+    if request.method == "POST":
+        name = client.full_name
+        client.delete()
+        return _client_saved_response(request, f"Cliente eliminado: {name}.")
+
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    return HttpResponse(
+        render_to_string(
+            "partials/crm/client_delete.html",
+            {
+                "client": client,
+                "conversation_count": client.conversations.count(),
+                "q": _table_param(request, "q"),
+                "page": _table_param(request, "page"),
+            },
+            request=request,
+        )
+    )
+
+
+def clientes_export(request):
+    """Download the client base as an Excel file (CRM > Exportaciones).
+
+    Every client, one row each, in the CLIENT_EXPORT_COLUMNS order. Built
+    with core.xlsx rather than a CSV: Excel opens a CSV with the wrong
+    encoding and turns "+573167687288" into 5.73E+11, which is exactly the
+    column people export this for. Conversation and tag columns come from
+    two annotations/prefetches, not one query per row.
+    """
+    clients = (
+        Client.objects.annotate(conversation_count=Count("conversations", distinct=True))
+        .prefetch_related("conversations__tags")
+        .order_by("first_name", "last_name")
+    )
+    country_names = {country.code: country.name for country in clientes.COUNTRIES}
+    rows = []
+    for client in clients:
+        tags = sorted(
+            {tag.name for conversation in client.conversations.all() for tag in conversation.tags.all()}
+        )
+        rows.append([
+            client.first_name,
+            client.last_name,
+            client.phone,
+            country_names.get(client.country, client.country),
+            client.email,
+            client.get_channel_display() if client.channel else "",
+            timezone.localtime(client.created_at).strftime("%d/%m/%Y"),
+            client.conversation_count,
+            ", ".join(tags),
+        ])
+
+    stamp = timezone.localtime(timezone.now()).strftime("%Y-%m-%d")
+    response = HttpResponse(
+        xlsx.build(CLIENT_EXPORT_COLUMNS, rows, sheet_name="Clientes"),
+        content_type=xlsx.CONTENT_TYPE,
+    )
+    response["Content-Disposition"] = f'attachment; filename="clientes-{stamp}.xlsx"'
+    return response
+
+
+# --- Usuarios (CRM > Equipo) ------------------------------------------------
+#
+# Same shared-modal shape as the Clientes CRUD. Every mutation is gated on
+# core.agents.is_master: the response for anyone else is a fragment saying
+# so, with a 403, so a stale button can't do anything.
+
+
+def _forbidden_fragment(request):
+    return HttpResponse(
+        render_to_string("partials/crm/usuarios/forbidden.html", {}, request=request),
+        status=403,
+    )
+
+
+def _user_table_fragment(request, notice=None):
+    context = _usuarios_context(request)
+    context["user_notice"] = notice
+    return render_to_string("partials/crm/usuarios/table.html", context, request=request)
+
+
+def _user_form_response(request, state, errors, user=None):
+    return HttpResponse(
+        render_to_string(
+            "partials/crm/usuarios/form.html",
+            {"form": state, "errors": errors, "edit_user": user},
+            request=request,
+        )
+    )
+
+
+def _user_saved_response(request, notice):
+    context = _usuarios_context(request)
+    context["user_notice"] = notice
+    return HttpResponse(
+        render_to_string("partials/crm/usuarios/saved.html", context, request=request)
+    )
+
+
+def _user_form_state(post=None, user=None) -> dict:
+    if post is not None:
+        return {
+            "username": (post.get("username") or "").strip(),
+            "display_name": (post.get("display_name") or "").strip(),
+            "password": post.get("password") or "",
+            "password2": post.get("password2") or "",
+            "master": post.get("master") == "1",
+        }
+    if user is not None:
+        return {
+            "username": user.username,
+            "display_name": user.get_full_name() or user.username,
+            "password": "",
+            "password2": "",
+            "master": agents.is_master(user),
+        }
+    return {"username": "", "display_name": "", "password": "", "password2": "", "master": False}
+
+
+def _validate_user_form(state: dict, editing) -> dict:
+    errors = {}
+    if not editing:
+        username = state["username"]
+        if not username:
+            errors["username"] = "Escribe el usuario con el que iniciará sesión."
+        elif len(username) > 150 or any(c in username for c in " :,"):
+            errors["username"] = "Sin espacios, dos puntos ni comas; máximo 150 caracteres."
+    password_required = not editing
+    if password_required and not state["password"]:
+        errors["password"] = "Ponle una contraseña."
+    if state["password"]:
+        if len(state["password"]) < 8:
+            errors["password"] = "Mínimo 8 caracteres."
+        elif state["password"] != state["password2"]:
+            errors["password2"] = "Las contraseñas no coinciden."
+    return errors
+
+
+def usuario_form(request, user_id: int | None = None):
+    """Crear/Editar usuario (masters only). Creating needs a password;
+    editing may leave it blank to keep the current one."""
+    if not agents.is_master(request.user):
+        return _forbidden_fragment(request)
+    User = get_user_model()
+    user = get_object_or_404(User, pk=user_id) if user_id else None
+    if user is not None and agents.is_env_agent(user):
+        return _user_saved_response(
+            request, f"{user.username} se configura en el entorno (APP_AGENTS), no aquí."
+        )
+
+    if request.method == "POST":
+        state = _user_form_state(request.POST)
+        errors = _validate_user_form(state, editing=user is not None)
+        if not errors:
+            try:
+                if user is None:
+                    saved = agents.create_user(
+                        state["username"], state["password"], state["display_name"], state["master"]
+                    )
+                    notice = f"Usuario creado: {saved.get_full_name() or saved.username}."
+                else:
+                    # A master can't demote themselves -- that would leave
+                    # a team where nobody can manage anyone.
+                    master = state["master"] or user.pk == request.user.pk
+                    saved = agents.update_user(user, state["display_name"], master, state["password"])
+                    notice = f"Usuario actualizado: {saved.get_full_name() or saved.username}."
+            except agents.UsernameTaken as exc:
+                errors["username"] = str(exc)
+            except ValueError as exc:
+                errors["username"] = str(exc)
+            else:
+                return _user_saved_response(request, notice)
+        return _user_form_response(request, state, errors, user)
+
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    return _user_form_response(request, _user_form_state(user=user), {}, user)
+
+
+def usuario_active(request, user_id: int):
+    """Deactivate (``active=0``) or restore (``active=1``) an app-created
+    user. No hard delete: their history keeps pointing at them."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    if not agents.is_master(request.user):
+        return _forbidden_fragment(request)
+    user = get_object_or_404(get_user_model(), pk=user_id)
+    active = request.POST.get("active") == "1"
+    if user.pk == request.user.pk and not active:
+        return HttpResponse(
+            _user_table_fragment(request, "No puedes desactivar tu propio usuario.")
+        )
+    try:
+        agents.set_user_active(user, active)
+    except ValueError as exc:
+        return HttpResponse(_user_table_fragment(request, str(exc)))
+    label = "restaurado" if active else "desactivado"
+    return HttpResponse(
+        _user_table_fragment(request, f"Usuario {label}: {user.get_full_name() or user.username}.")
     )
 
 
@@ -1299,11 +1819,35 @@ def _volumen_context(request) -> dict:
     }
 
 
+def _tiempos_context(request) -> dict:
+    """Data for the Tiempos de Respuesta detail screen.
+
+    Same stance as :func:`_volumen_context` -- the first render ships its
+    report inline; moving any of the three filters re-fetches
+    :func:`estadisticas_tiempos_data` -- plus the two new filters' option
+    lists (agents and platforms) and their applied values.
+    """
+    start, end = estadisticas_tiempos.parse_range(request.GET)
+    agent = estadisticas_tiempos.parse_agent(request.GET)
+    platform = estadisticas_tiempos.parse_platform(request.GET)
+    return {
+        "period_start": start,
+        "period_end": end,
+        "period_label": estadisticas_tiempos.format_range(start, end),
+        "report": estadisticas_tiempos.report(start, end, agent, platform),
+        "agents": get_user_model().objects.filter(is_active=True).order_by("username"),
+        "selected_agent": agent.pk if agent else "",
+        "platforms": estadisticas_tiempos.PLATFORMS,
+        "selected_platform": platform,
+    }
+
+
 #: Stat card key -> callable(request) -> dict, mirroring
 #: :data:`STATS_PANEL_CONTEXT`. Cards without an entry render the
 #: placeholder and need no data.
 STATS_CARD_CONTEXT = {
     "volumen-mensajes": _volumen_context,
+    "tiempos-respuesta": _tiempos_context,
 }
 
 
@@ -1342,6 +1886,19 @@ def estadisticas_volumen_data(request):
     """
     start, end = estadisticas_volumen.parse_range(request.GET)
     return JsonResponse(estadisticas_volumen.report(start, end))
+
+
+def estadisticas_tiempos_data(request):
+    """JSON feed behind the Tiempos de Respuesta screen's filters.
+
+    Same contract as :func:`estadisticas_volumen_data`: one request answers
+    the whole report, and unusable filter values fall back (default period,
+    all agents, all platforms) with the response echoing what it used.
+    """
+    start, end = estadisticas_tiempos.parse_range(request.GET)
+    agent = estadisticas_tiempos.parse_agent(request.GET)
+    platform = estadisticas_tiempos.parse_platform(request.GET)
+    return JsonResponse(estadisticas_tiempos.report(start, end, agent, platform))
 
 
 def mensajeria_panel(request, view_key: str):
@@ -1385,6 +1942,105 @@ def plantillas_table(request, tab_key: str):
                 "columns": mensajeria.TABLE_COLUMNS,
                 "templates": mensajeria.get_templates(tab_key),
             },
+            request=request,
+        )
+    )
+
+
+# --- Respuestas rápidas CRUD ------------------------------------------------
+#
+# Same shape as the Clientes CRUD: one shared modal on the panel
+# (#reply-modal-body), each button fetching the body it needs, a successful
+# save answering with a fragment that closes the modal and swaps the table
+# in out-of-band, a rejected one re-rendering the form with its errors.
+
+
+def _reply_form_response(request, state, errors, reply=None):
+    return HttpResponse(
+        render_to_string(
+            "partials/mensajeria/respuestas/form.html",
+            {
+                "form": state,
+                "errors": errors,
+                "reply": reply,
+                "title_max": respuestas.TITLE_MAX,
+                "body_max": respuestas.BODY_MAX,
+            },
+            request=request,
+        )
+    )
+
+
+def _reply_saved_response(request, message: str):
+    context = _respuestas_context(request)
+    context["reply_notice"] = message
+    return HttpResponse(
+        render_to_string(
+            "partials/mensajeria/respuestas/saved.html", context, request=request
+        )
+    )
+
+
+def respuesta_form(request, reply_id: int | None = None):
+    """The Crear/Editar respuesta rápida dialog: GET renders, POST saves.
+
+    Multipart, because of the image: the form posts with hx-encoding and the
+    upload arrives in request.FILES.
+    """
+    reply = get_object_or_404(QuickReply, pk=reply_id) if reply_id else None
+
+    if request.method == "POST":
+        state = respuestas.form_state(request.POST)
+        upload = request.FILES.get("image")
+        errors = respuestas.validate(state, upload, reply)
+        if not errors:
+            saved = respuestas.apply(state, upload, reply, request.user)
+            return _reply_saved_response(
+                request,
+                f"Respuesta actualizada: {saved.title}."
+                if reply
+                else f"Respuesta creada: {saved.title}.",
+            )
+        return _reply_form_response(request, state, errors, reply)
+
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    return _reply_form_response(request, respuestas.form_state(reply=reply), {}, reply)
+
+
+def respuesta_delete(request, reply_id: int):
+    """GET asks; POST deletes the reply.
+
+    The stored image file stays: messages already sent with it point at that
+    URL (``Message.media_url``), and deleting the bytes would break real
+    history. See core.respuestas.apply for the same reasoning.
+    """
+    reply = get_object_or_404(QuickReply, pk=reply_id)
+    if request.method == "POST":
+        title = reply.title
+        reply.delete()
+        return _reply_saved_response(request, f"Respuesta eliminada: {title}.")
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    return HttpResponse(
+        render_to_string(
+            "partials/mensajeria/respuestas/delete.html", {"reply": reply}, request=request
+        )
+    )
+
+
+def respuesta_toggle(request, reply_id: int):
+    """Flip a reply's active switch from the table -- hidden from the picker
+    without losing the text."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    reply = get_object_or_404(QuickReply, pk=reply_id)
+    reply.is_active = request.POST.get("active") == "1"
+    reply.save(update_fields=["is_active", "updated_at"])
+    return HttpResponse(
+        render_to_string(
+            "partials/mensajeria/respuestas/table.html",
+            _respuestas_context(request),
             request=request,
         )
     )
@@ -1685,3 +2341,32 @@ def calendar_prefs(request):
         slot=request.POST.get("slot", ""),
     )
     return JsonResponse({"ok": True, **calendario.get_prefs(request.session)})
+
+
+# --- Public legal pages -----------------------------------------------------
+# Reachable without a session (see core.middleware.EXEMPT_PATHS). Meta requires
+# a publicly readable privacy policy and data-deletion URL before an app can be
+# published, and a policy sitting behind the login gate is not a policy anyone
+# -- reviewer or customer -- can actually read.
+
+#: Shown as "Last updated" on both pages. A constant rather than today's date:
+#: a policy that claims to change every time it is rendered is worthless.
+LEGAL_UPDATED = '2 de septiembre de 2026'
+
+
+def _legal_context():
+    return {
+        'updated': LEGAL_UPDATED,
+        'entity': settings.LEGAL_ENTITY_NAME,
+        'contact_email': settings.LEGAL_CONTACT_EMAIL,
+    }
+
+
+def privacy(request):
+    """The privacy policy. Public by design."""
+    return render(request, 'legal/privacidad.html', _legal_context())
+
+
+def data_deletion(request):
+    """How to ask us to delete your data. Public by design."""
+    return render(request, 'legal/eliminacion-de-datos.html', _legal_context())

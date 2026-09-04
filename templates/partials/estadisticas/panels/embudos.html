@@ -1,0 +1,94 @@
+{% comment %}
+  Estadísticas column 3 -- the Embudos page: the conversation funnel, from
+  first message to sale.
+
+  This is what core.views.estadisticas_panel returns when "Embudos" is
+  picked in the secondary nav. A period select over the four-stage funnel;
+  the report behind it is core.estadisticas_embudos, which measures the one
+  funnel the data already contains (no Funnel model exists yet -- custom
+  funnels will join this built-in one when the builder lands).
+
+  Every stage carries its exact rule as an info-dot, because the stages are
+  independent subsets of the period's conversations, not nested steps --
+  the module docstring has the full rationale.
+
+  The select re-fetches this same panel through the estadisticas_panel
+  endpoint with ?period=, exactly like Temas and Ventas.
+
+  Context: periods, period, report (stages / base)
+{% endcomment %}
+
+<div class="stats-page">
+
+  <header class="stats-page__head">
+    <h1 class="stats-page__title">Embudo de conversión</h1>
+
+    <p class="stats-page__subtitle">
+      Del primer mensaje a la venta: dónde se quedan tus conversaciones
+      <span class="info-dot" tabindex="0" role="img"
+            data-tip="Cada etapa se mide sobre las conversaciones creadas en el período. Pasa el cursor por el punto de información de cada etapa para ver su regla exacta."
+            aria-label="Cada etapa se mide sobre las conversaciones creadas en el período. Pasa el cursor por el punto de información de cada etapa para ver su regla exacta.">
+        {% include "icons/info.svg" %}
+      </span>
+    </p>
+  </header>
+
+  <div class="stats-filters stats-page__filters">
+    <label class="stats-select">
+      <span class="stats-select__label">Período</span>
+      <select name="period" class="stats-select__input"
+              hx-get="{% url 'estadisticas_panel' 'embudos' %}"
+              hx-target="#estadisticas-panel"
+              hx-swap="innerHTML">
+        {% for option in periods %}
+          <option value="{{ option.key }}"{% if option.key == period.key %} selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  {% if report.base %}
+
+    <div class="funnel">
+      {% for stage in report.stages %}
+        <div class="funnel__row">
+          <div class="funnel__meta">
+            <span class="funnel__label">
+              {{ stage.label }}
+              <span class="info-dot" tabindex="0" role="img"
+                    data-tip="{{ stage.tip }}" aria-label="{{ stage.tip }}">
+                {% include "icons/info.svg" %}
+              </span>
+            </span>
+
+            <span class="funnel__nums">
+              <strong>{{ stage.count }}</strong> · {{ stage.pct }}%
+            </span>
+          </div>
+
+          {% comment %} The count and percentage above are the accessible
+             values; the bar is decoration on top of them. {% endcomment %}
+          <div class="funnel__track" aria-hidden="true">
+            {% if stage.count %}
+              <span class="funnel__fill funnel__fill--{{ stage.tone }}"
+                    style="width: {{ stage.pct }}%"></span>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+  {% else %}
+
+    <div class="empty empty--list">
+      <div class="empty__icon">{% include "icons/funnel.svg" %}</div>
+      <p class="empty__title">Sin conversaciones en el período</p>
+      <p class="empty__text">
+        El embudo se construye con las conversaciones creadas en el período
+        elegido. Prueba con un período más amplio, o espera a que lleguen
+        mensajes nuevos.
+      </p>
+    </div>
+
+  {% endif %}
+</div>

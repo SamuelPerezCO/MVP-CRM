@@ -1,0 +1,16 @@
+{% comment %}
+  What a successful create/edit/delete answers with -- the same contract as
+  partials/crm/client_saved.html: close the modal ([data-dialog-dismiss],
+  shell.js), refresh the table behind it (out-of-band #reply-table) and
+  announce the result (#reply-notice, a live region on the panel).
+
+  Context: replies, reply_notice
+{% endcomment %}
+
+<div data-dialog-dismiss hidden></div>
+
+<div id="reply-table" hx-swap-oob="innerHTML">
+  {% include "partials/mensajeria/respuestas/table.html" %}
+</div>
+
+<p id="reply-notice" class="sr-only" role="status" hx-swap-oob="innerHTML">{{ reply_notice }}</p>

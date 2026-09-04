@@ -249,44 +249,54 @@
 }
 
 /* ==========================================================================
-   Usuarios (Mi cuenta › Equipo)
-   The table reuses .table / .row-actions / .icon-btn--bare above; the
-   dialogs get their own compact skin, a sibling of .tag-dialog (tags.css)
-   rather than the wide .modal shell -- a four-field form doesn't want 700px.
+   Clientes CRUD — the shared modal every ver/crear/editar/eliminar screen
+   renders into (see templates/partials/crm/panels/clientes.html), plus the
+   destructive buttons only this flow needs.
+
+   The form itself is built from the shared .ffield system (plantillas.css);
+   everything here is layout and the red variants.
    ========================================================================== */
 
-.user-row--inactive td { color: var(--muted); }
-.user-row--inactive .user-name { text-decoration: line-through; }
+.modal--client { width: min(560px, calc(100vw - 32px)); }
 
-.user-name { font-weight: 600; }
+/* The modal's own X sits top-right, so leave the title clear of it. */
+.modal--client .modal__title { text-align: start; font-size: 18px; }
+.modal--client .modal__body { padding: 28px; }
 
-/* Role / origin pills. Quiet by default; the master one borrows the accent
-   so the people who can do everything stand out at a glance. */
-.user-badge {
-  display: inline-block;
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: var(--hover-bg);
-  color: var(--muted);
-  font-size: 11.5px;
-  font-weight: 600;
+/* Two fields per line, collapsing to one on a narrow modal. */
+.client-form__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
-.user-badge--master { background: var(--accent-soft); color: var(--accent); }
-.user-badge--env    { background: #fdf3e0; color: #b97a12; }
+@media (max-width: 520px) {
+  .client-form__row { grid-template-columns: 1fr; }
+}
 
-/* Red on hover only: a row of grey icons where one is permanently red
-   reads as "this row has a problem", not "this button deletes". */
-.icon-btn--danger:hover { color: var(--error-text, #c73e3e); background: #fdecec; }
+.client-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-block-start: 24px;
+}
+
+/* Pushes Cancelar/Guardar to the end while Eliminar stays on the left. */
+.client-form__spacer { flex: 1; }
+
+.client-form__actions form { display: contents; }
+
+/* --- Destructive buttons --------------------------------------------------- */
 
 .btn-danger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 7px;
   padding: 9px 12px;
   border: 0;
   border-radius: 8px;
-  background: var(--error-text, #c73e3e);
+  background: var(--badge);
   color: #fff;
   font: inherit;
   font-size: 13px;
@@ -295,84 +305,183 @@
   transition: background-color var(--speed) ease;
 }
 
-.btn-danger:hover { background: #a93131; }
+.btn-danger:hover { background: #d92b36; }
 .btn-danger:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
-/* --- Dialog ---------------------------------------------------------------- */
-
-.user-dialog {
-  width: 380px;
-  padding: 20px;
-  border: 0;
-  border-radius: 12px;
-  box-shadow: 0 16px 48px rgb(15 30 50 / 25%);
+.btn-danger-ghost {
+  padding: 9px 12px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--error-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
 }
 
-.user-dialog::backdrop { background: rgb(15 30 50 / 35%); }
+.btn-danger-ghost:hover { background: #fdf1f1; }
+.btn-danger-ghost:focus-visible { outline: 2px solid var(--error-text); outline-offset: 1px; }
 
-.user-dialog__title {
-  margin: 0 0 6px;
-  font-size: 15px;
-  font-weight: 700;
+/* Stays muted in the row until pointed at -- a delete shouldn't shout from
+   every line of the table. */
+.icon-btn--danger:hover { color: var(--error-text); background: #fdf1f1; }
+
+/* --- Ver cliente ----------------------------------------------------------- */
+
+.client-detail { margin: 18px 0 0; }
+
+.client-detail__row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  border-block-end: 1px solid var(--sidebar-border);
+  font-size: 13px;
 }
 
-.user-dialog__label {
-  display: block;
-  margin: 12px 0 5px;
+.client-detail__row:last-child { border-block-end: none; }
+
+.client-detail dt {
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.03em;
   color: var(--muted);
+  padding-block-start: 2px;
 }
 
-/* The dialog's text inputs are the Inbox search field minus its icon inset. */
-.user-dialog .field__input { padding-inline-start: 10px; height: 36px; }
+.client-detail dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
 
-.user-dialog__hint {
-  margin: 6px 0 0;
+.client-detail__thread {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 999px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 12.5px;
+  transition: background-color var(--speed) ease;
+}
+
+.client-detail__thread:hover { background: var(--hover-bg); }
+.client-detail__thread .icon { width: 14px; height: 14px; }
+
+/* --- Eliminar cliente ------------------------------------------------------ */
+
+.client-delete__text {
+  margin: 14px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.client-delete__who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--hover-bg);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* ==========================================================================
+   Exportaciones — one card per export, and the Acciones dropdown on the
+   Clientes toolbar that shortcuts to it.
+   ========================================================================== */
+
+.export-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 720px;
+}
+
+.export-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.export-card__icon {
+  display: inline-flex;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--hover-bg);
+  color: var(--accent);
+}
+
+.export-card__icon .icon { width: 22px; height: 22px; }
+
+.export-card__body { flex: 1; min-width: 0; }
+
+.export-card__title {
+  margin: 2px 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.export-card__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.export-card__columns {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.export-card__actions { flex-shrink: 0; }
+.export-card__actions .btn-primary .icon { width: 15px; height: 15px; }
+
+/* Nothing to export yet: the button stays visible so the page reads the
+   same, but it is inert (aria-disabled + tabindex on the element). */
+.btn-primary.is-disabled { opacity: 0.5; pointer-events: none; }
+
+/* The Acciones dropdown reuses the shared details.dropdown (tags.css); the
+   summary is the ghost button itself. */
+.crm-actions .dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-decoration: none;
+  color: var(--text);
+}
+.crm-actions .dropdown__item .icon { width: 15px; height: 15px; color: var(--muted); }
+
+/* ==========================================================================
+   Usuarios (Equipo) — the read-only notice for non-masters and the visible
+   notice line above the table.
+   ========================================================================== */
+
+.usuarios__readonly {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--hover-bg);
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--muted);
 }
 
-.user-dialog__hint strong { color: var(--text); }
-
-.user-dialog__error { margin: 8px 0 0; }
-
-.user-roles {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 14px 0 0;
-  padding: 0;
-  border: 0;
-}
-
-.user-roles legend { padding: 0; }
-
-.user-role {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  padding: 9px 10px;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: border-color var(--speed) ease, background-color var(--speed) ease;
-}
-
-.user-role:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-.user-role:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
-
-.user-role input { margin: 3px 0 0; accent-color: var(--accent); }
-
-.user-role__body { display: flex; flex-direction: column; gap: 1px; }
-.user-role__name { font-size: 13px; font-weight: 600; }
-.user-role__help { font-size: 12px; color: var(--muted); }
-
-.user-dialog__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-block-start: 18px;
-}
+.usuarios__notice { background: #eaf2fd; color: #1a4b8f; }

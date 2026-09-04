@@ -1,0 +1,132 @@
+{% comment %}
+  The Crear/Editar cliente form -- the body of the shared client modal.
+
+  One template for both, exactly like tag_dialog.html: with ``client`` it
+  updates, without it creates. core.views.cliente_form renders it on GET and
+  again on a rejected POST, so ``form`` always holds what the agent last
+  typed and ``errors`` marks the fields to fix.
+
+  The form targets the modal body itself: a rejected save lands right back
+  here with the messages, and a successful one answers with
+  client_saved.html, which closes the modal and swaps the table.
+
+  ``q`` and ``page`` ride along as hidden fields so the refreshed table keeps
+  the search and page the agent was on.
+
+  Context: form, errors, client (or None), countries, channels, q, page
+{% endcomment %}
+
+<h2 class="modal__title modal__title--start" id="client-modal-title">
+  {% if client %}Editar cliente{% else %}Crear cliente{% endif %}
+</h2>
+
+<form class="client-form"
+      hx-post="{% if client %}{% url 'cliente_update' client.pk %}{% else %}{% url 'cliente_create' %}{% endif %}"
+      hx-target="#client-modal-body"
+      hx-swap="innerHTML">
+  {% csrf_token %}
+  <input type="hidden" name="q" value="{{ q }}">
+  <input type="hidden" name="page" value="{{ page }}">
+
+  <div class="client-form__row">
+    <div class="ffield{% if errors.first_name %} ffield--error{% endif %}">
+      <input class="ffield__input" type="text" name="first_name" id="client-first-name"
+             maxlength="80" placeholder=" " autocomplete="off" required
+             value="{{ form.first_name }}"
+             {% if errors.first_name %}aria-describedby="client-error-first-name"{% endif %}>
+      <label class="ffield__label" for="client-first-name">Nombres</label>
+    </div>
+
+    <div class="ffield{% if errors.last_name %} ffield--error{% endif %}">
+      <input class="ffield__input" type="text" name="last_name" id="client-last-name"
+             maxlength="80" placeholder=" " autocomplete="off"
+             value="{{ form.last_name }}"
+             {% if errors.last_name %}aria-describedby="client-error-last-name"{% endif %}>
+      <label class="ffield__label" for="client-last-name">Apellidos</label>
+    </div>
+  </div>
+  {% if errors.first_name %}
+    <p class="ffield__error" id="client-error-first-name">{{ errors.first_name }}</p>
+  {% endif %}
+  {% if errors.last_name %}
+    <p class="ffield__error" id="client-error-last-name">{{ errors.last_name }}</p>
+  {% endif %}
+
+  <div class="client-form__row">
+    <div class="ffield{% if errors.phone %} ffield--error{% endif %}">
+      <input class="ffield__input" type="tel" name="phone" id="client-phone"
+             maxlength="30" placeholder=" " autocomplete="off" required
+             value="{{ form.phone }}"
+             aria-describedby="client-hint-phone{% if errors.phone %} client-error-phone{% endif %}">
+      <label class="ffield__label" for="client-phone">Teléfono</label>
+    </div>
+
+    {# Blank means "work it out from the number" -- see clientes.country_from_phone. #}
+    <div class="ffield ffield--select{% if errors.country %} ffield--error{% endif %}">
+      <select class="ffield__input" name="country" id="client-country">
+        <option value="">Según el indicativo</option>
+        {% for country in countries %}
+          <option value="{{ country.code }}"
+                  {% if form.country == country.code %}selected{% endif %}>
+            {{ country.name }} ({{ country.dialing }})
+          </option>
+        {% endfor %}
+      </select>
+      <label class="ffield__label" for="client-country">País</label>
+    </div>
+  </div>
+  <p class="ffield__hint" id="client-hint-phone">
+    Con indicativo del país, p. ej. +57 316 768 7288.
+  </p>
+  {% if errors.phone %}
+    <p class="ffield__error" id="client-error-phone">{{ errors.phone }}</p>
+  {% endif %}
+  {% if errors.country %}
+    <p class="ffield__error">{{ errors.country }}</p>
+  {% endif %}
+
+  <div class="client-form__row">
+    <div class="ffield{% if errors.email %} ffield--error{% endif %}">
+      <input class="ffield__input" type="email" name="email" id="client-email"
+             maxlength="254" placeholder=" " autocomplete="off"
+             value="{{ form.email }}"
+             {% if errors.email %}aria-describedby="client-error-email"{% endif %}>
+      <label class="ffield__label" for="client-email">Mail</label>
+    </div>
+
+    <div class="ffield ffield--select{% if errors.channel %} ffield--error{% endif %}">
+      <select class="ffield__input" name="channel" id="client-channel">
+        <option value="">Sin canal</option>
+        {% for key, label in channels %}
+          <option value="{{ key }}" {% if form.channel == key %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+      <label class="ffield__label" for="client-channel">Canal</label>
+    </div>
+  </div>
+  {% if errors.email %}
+    <p class="ffield__error" id="client-error-email">{{ errors.email }}</p>
+  {% endif %}
+  {% if errors.channel %}
+    <p class="ffield__error">{{ errors.channel }}</p>
+  {% endif %}
+
+  <div class="client-form__actions">
+    {% if client %}
+      {# Swaps in the confirmation, which knows how much history this costs. #}
+      <button type="button" class="btn-danger-ghost"
+              hx-get="{% url 'cliente_delete' client.pk %}?q={{ q|urlencode }}&page={{ page|urlencode }}"
+              hx-target="#client-modal-body"
+              hx-swap="innerHTML">
+        Eliminar
+      </button>
+    {% endif %}
+    <span class="client-form__spacer"></span>
+    <button type="button" class="btn-ghost" data-dialog-close>Cancelar</button>
+    <button type="submit" class="btn-primary">
+      {% if client %}Guardar cambios{% else %}Crear cliente{% endif %}
+    </button>
+  </div>
+</form>

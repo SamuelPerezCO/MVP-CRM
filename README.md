@@ -4,12 +4,12 @@ MVP de un CRM omnicanal para comercios, inspirado en plataformas tipo Treble/Lea
 
 ## Funcionalidades
 
-- **Inbox** — conversaciones reales filtradas por canal y asignación, con lista, chat en vivo (polling htmx), compositor con la regla de 24 horas de WhatsApp y panel de detalles del cliente.
-- **CRM** — tabla de clientes (nombre, teléfono con bandera de país, mail, canal) y listas de clientes.
+- **Inbox** — conversaciones reales filtradas por canal y asignación, con lista, chat en vivo (polling htmx), compositor con la regla de 24 horas de WhatsApp (fuera de la ventana ofrece enviar una plantilla), **Nuevo chat** para escribirle primero a un cliente, respuestas rápidas (texto o imagen) que se envían de un clic y panel de detalles del cliente.
+- **CRM** — clientes con alta, edición, ficha y baja desde la tabla (nombre, teléfono con bandera de país, mail, canal), buscador, exportación a Excel, listas de clientes, calendario con el cliente visible en cada evento, y el equipo (usuarios) que un usuario maestro administra.
 - **Embudos** — panel de embudos de venta con creación de nuevos embudos.
 - **Automatizaciones** — flujos de chatbots y banner de Academy.
 - **Mi comercio** — catálogo de productos con creación e importación.
-- **Campañas, Estadísticas y Mensajería** — métricas de mensajería y plantillas de WhatsApp.
+- **Campañas, Estadísticas y Mensajería** — métricas de mensajería, plantillas de WhatsApp y respuestas rápidas propias (texto e imagen) para el compositor.
 
 Las secciones sin pantalla propia todavía (Performance HUB, Integraciones, etc.) muestran un placeholder automáticamente; agregar una sección nueva es una línea en [core/nav.py](core/nav.py).
 
@@ -25,37 +25,71 @@ Las secciones sin pantalla propia todavía (Performance HUB, Integraciones, etc.
 python -m venv venv
 venv\Scripts\activate        # en Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
+copy .env.example .env       # en Linux/macOS: cp .env.example .env
 python manage.py migrate
 python manage.py runserver
 ```
 
+El paso del `.env` no es opcional: `MESSAGING_PROVIDER` es obligatorio y la
+app no arranca sin él (ver [Mensajería](#mensajería-cambiar-de-proveedor)).
+Para desarrollo local el `.env.example` ya trae `MESSAGING_PROVIDER=fake`.
+
 Abre http://127.0.0.1:8000/ — la pantalla de bienvenida enlaza a Inbox, CRM y Embudos.
 
-Para ver el Inbox con datos:
+El Inbox no trae datos de ejemplo: se llena únicamente con clientes reales,
+a medida que escriben por el proveedor configurado o los deja la automatización
+que escribe en la misma base de datos. Ya no existe un generador de datos de
+demostración; si una base heredó fixtures del antiguo `seed_conversations`
+(contactos `+5730000000xx`, eventos "Evento de demostración.", el login
+`asesor`), límpialos sin tocar a los clientes reales con:
 
 ```powershell
-python manage.py seed_conversations       # contactos y conversaciones de demo (--fresh para regenerar)
-python manage.py simulate_inbound "+573000000001" "Hola, ¿sigue disponible?"
+python manage.py reset_conversations --demo-only        # simulación: muestra qué borraría
+python manage.py reset_conversations --demo-only --yes  # borra solo eso
 ```
 
-`seed_conversations` crea un usuario `asesor` (solo asignatario: sin contraseña, no puede iniciar sesión) y le asigna conversaciones de demo. `simulate_inbound` empuja un mensaje entrante por el **mismo** código del webhook (firma, parseo, idempotencia); con el Inbox abierto lo verás llegar solo en el siguiente poll.
+`reset_conversations` a secas (con `--yes`) vacía el Inbox entero -- todas
+las conversaciones, mensajes y contactos -- y es un simulacro hasta que se
+pasa `--yes`, porque corre contra la base de producción y no hay deshacer.
 
-## Agentes y usuarios
+Los tres comandos corren contra la base que diga `DATABASE_URL`, así que
+todos nombran la base antes de tocarla y ninguno borra nada sin `--yes`. Para
+apuntar a la base local en una máquina cuyo `.env` mira a Neon:
+
+```bash
+DATABASE_URL= python manage.py reset_conversations
+```
+
+## Salir a producción: dejar el CRM vacío
+
+Antes de conectar el número real de WhatsApp, `go_live` vacía la aplicación y **conserva al equipo**: borra contactos, conversaciones, mensajes, etiquetas, eventos de calendario, listas, productos, plantillas, respuestas rápidas y las cuentas de prueba (las que solo existen como asignatario, p. ej. `asesor`), y deja intactas las cuentas que pueden iniciar sesión — las creadas en CRM > Equipo > Usuarios, las de `APP_AGENTS` y cualquier superusuario.
+
+```bash
+python manage.py go_live          # simulación: dice qué borraría y no toca nada
+python manage.py go_live --yes    # lo borra de verdad
+```
+
+Igual que `reset_conversations`: es simulación por defecto, nombra la base a la que apunta antes de tocarla y borra dentro de una sola transacción. `--keep-catalog` conserva productos, plantillas y respuestas rápidas (útil si las plantillas de WhatsApp ya están aprobadas por Meta). No borra los archivos ya subidos a Vercel Blob, solo las filas que apuntaban a ellos.
+
+Cuál de los tres usar:
+
+| Comando | Qué borra |
+|---|---|
+| `reset_conversations --demo-only` | solo los fixtures del antiguo generador (`+5730000000xx`, "Evento de demostración.", el login `asesor`) — el único seguro si ya hay clientes reales |
+| `reset_conversations` | conversaciones, mensajes y contactos; deja etiquetas, plantillas, calendario y equipo |
+| `go_live` | todo lo anterior más etiquetas, calendario, listas, catálogo y cuentas de prueba; deja solo al equipo |
+
+Crea tu cuenta en **CRM > Equipo > Usuarios** *antes* de correrlo con `--yes`: si ninguna cuenta sobrevive, la simulación te avisa.
+
+`reset_conversations` sigue existiendo para lo de siempre — vaciar solo el Inbox (conversaciones, mensajes y contactos) sin tocar etiquetas, plantillas ni calendario.
+
+## Agentes (personas) y la pantalla Equipo
 
 Un **agente** es a la vez un login y un asignatario: la misma identidad que
 pasa la puerta de entrada es la que puede aparecer como responsable de una
-conversación en el Inbox. Hay dos roles:
-
-- **Maestro** — hace todo, incluido crear y gestionar usuarios.
-- **Agente** — hace todo *excepto* gestionar usuarios.
-
-Y dos orígenes de cuentas, ambas sobre el mismo `User` de Django
-([core/agents.py](core/agents.py)):
-
-### Cuentas del entorno (`APP_AGENTS`)
-
-Las cuentas fundacionales: existen antes de que nadie haya entrado, así que el
-equipo nunca puede quedar fuera por una base de datos a la que no llega.
+conversación en el Inbox. La lista vive en el entorno, no en la base de datos
+— agregar un compañero es editar una variable y volver a desplegar, sin
+pantalla de gestión de usuarios ni registro:
 
 ```
 APP_AGENTS=Admin:pbkdf2_sha256$1500000$SALT$HASH=:Admin
@@ -71,84 +105,71 @@ python manage.py hashear_clave Admin Samuel
 
 que pide cada contraseña por teclado (no quedan en el historial) e imprime la
 línea `APP_AGENTS=...` completa, lista para pegar en el `.env` y en el panel de
-Vercel. Con un solo usuario imprime solo su entrada `usuario:hash:Nombre`, y
-sin ninguno solo el hash. Unir las entradas a mano es justo donde una coma de
-más deja al equipo fuera de un despliegue en el que ya nadie puede entrar a
-arreglarlo. Así, quien pueda leer el entorno — el panel
-de Vercel, un log de CI, un `.env` compartido — encuentra un hash y no una
-credencial que funcione. Se verifica con `check_password`, la misma función y
-el mismo coste (PBKDF2) que la contraseña de una cuenta de la app.
+Vercel. Con un solo usuario imprime solo su entrada `usuario:hash:Nombre`, y sin
+ninguno solo el hash. Unir las entradas a mano es justo donde una coma de más
+deja al equipo fuera de un despliegue en el que ya nadie puede entrar a
+arreglarlo.
+
+Así, quien pueda leer el entorno — el panel de Vercel, un log de CI, un `.env`
+compartido — encuentra un hash y no una credencial que funcione. Se verifica con
+`check_password`, la misma función y el mismo coste (PBKDF2) que la contraseña
+de un usuario creado en la app.
 
 Una contraseña en texto plano ahí **sigue funcionando**, para que ningún
 despliegue anterior se quede fuera, pero está desaconsejada: `manage.py check`
-avisa por cada agente que siga así (`core.W001`).
+avisa por cada agente que siga así (`core.W001`). Ni `:` ni `,` pueden aparecer
+en el campo del medio, que son los separadores; los hashes PBKDF2 de Django no
+llevan ninguno de los dos.
 
-**Siempre son maestros**, siempre activos y de solo lectura dentro de la app:
-su fuente de verdad es el entorno, así que cambiarles la contraseña es editar
-la variable y volver a desplegar. Cada uno tiene un `User` espejo con
-contraseña inutilizable — existe para que `assigned_to` y `sent_by` tengan a
-quién apuntar, nunca para entrar por la base de datos, ni siquiera con el hash
-del entorno.
-
-Si `APP_AGENTS` no está definida se usa el par antiguo
-`APP_LOGIN_USERNAME`/`APP_LOGIN_PASSWORD` como lista de un solo agente, así que
-un entorno anterior a esto sigue funcionando sin tocar nada.
-
-### Cuentas de la app (CRM › Mi cuenta › Equipo › Usuarios)
-
-Un maestro crea el resto desde la app ([core/usuarios.py](core/usuarios.py)):
-usuario, nombre, contraseña (mínimo 8 caracteres; se guarda con el hash PBKDF2
-de Django, nunca en claro) y rol.
-Sobre ellas puede renombrar, cambiar el rol, poner una contraseña nueva,
-desactivar/reactivar y eliminar. La página solo aparece en la navegación de
-los maestros, y sus endpoints responden 403 a cualquier otro.
-
-Reglas que impiden que el equipo se deje fuera a sí mismo:
-
-- Nadie puede quitarse a sí mismo el rol de maestro, desactivarse ni
-  eliminarse.
-- No se puede quitar el último maestro que pueda entrar, salvo que el entorno
-  garantice uno (con cualquier `APP_AGENTS` configurado, siempre lo hay).
-- Un usuario nuevo no puede llamarse como una cuenta del entorno ni como una
-  existente (sin distinguir mayúsculas).
-
-**Desactivar** deja al usuario fuera en su siguiente petición, lo saca del
-desplegable de asignación y conserva su nombre en las conversaciones que
-atendió; es la opción reversible. **Eliminar** borra la cuenta: sus
-conversaciones, mensajes, etiquetas y eventos se conservan, pero dejan de
-mostrar su nombre (todas las FK a `User` son `SET_NULL`). Cambiar la
-contraseña de alguien cierra su sesión actual.
-
-Si quitas un agente de `APP_AGENTS`, su `User` espejo queda como cuenta de la
-app sin contraseña ("Sin contraseña" en la tabla): asígnale una para
-adoptarlo como cuenta de la app, o elimínalo.
-
-Las cuentas de staff de Django (`is_staff`, las de `createsuperuser` y
-`/admin`) no son cuentas de la app: no entran por `/login/`, no aparecen en
-Usuarios ni en el desplegable de asignación. Si una instalación sin
-`APP_AGENTS` se queda sin ningún maestro que pueda entrar, la puerta de
-recuperación es la consola:
-
-```bash
-python manage.py crear_master jefa --name "Jefa"
-```
-
-(pide la contraseña por teclado; `--password` existe para scripts).
+Al iniciar sesión se abre una sesión real de `django.contrib.auth` contra un
+`User` espejo de ese agente ([core/agents.py](core/agents.py)), creado bajo
+demanda y con contraseña inutilizable: existe para que `assigned_to` y
+`sent_by` tengan a quién apuntar, nunca para autenticar — el entorno sigue
+siendo la única vía de entrada, ni siquiera con el hash que guarda. Eso es lo que hace que el filtro "Tu inbox"
+funcione y que cada mensaje enviado registre quién lo escribió.
 
 En el Inbox, el desplegable junto al estado de la conversación ("Abierta")
 cambia el agente asignado y guarda al instante; "Sin asignar" la devuelve a la
 bandeja común.
+
+### Usuarios creados en la app (usuario maestro)
+
+Los agentes de `APP_AGENTS` son los **maestros**: desde CRM > Equipo >
+Usuarios pueden crear al resto del equipo sin tocar el entorno ni volver a
+desplegar. Un usuario creado ahí es un `User` de Django con contraseña real:
+inicia sesión por el mismo formulario, aparece en el desplegable de
+asignación y en "Tu inbox", y puede marcarse también como maestro. Los
+usuarios se desactivan (nunca se borran): su historial de conversaciones y
+mensajes sigue apuntando a ellos. Los agentes del entorno se muestran en la
+misma tabla pero solo se editan en `APP_AGENTS` ([core/agents.py](core/agents.py)).
+
+El rol maestro vive en el grupo `Maestros` de Django, no en `is_staff`: ese
+flag significa "puede entrar a /admin/", que es otra pregunta — el login
+`asesor` que dejó el antiguo generador lo tiene y no por eso administra el
+equipo.
+
+Si `APP_AGENTS` no está definida se usa el par antiguo
+`APP_LOGIN_USERNAME`/`APP_LOGIN_PASSWORD` como lista de un solo agente, así que
+un entorno anterior a esto sigue funcionando sin tocar nada.
 
 ## Mensajería: cambiar de proveedor
 
 Toda la integración con WhatsApp vive en [messaging/](messaging/) detrás de una abstracción de proveedor ([messaging/providers/base.py](messaging/providers/base.py)). El proveedor activo lo decide **una sola variable**:
 
 ```
-MESSAGING_PROVIDER=fake    # hoy
 MESSAGING_PROVIDER=twilio  # cuando haya credenciales de Twilio
 MESSAGING_PROVIDER=meta    # cuando Meta desbloquee la cuenta
 MESSAGING_PROVIDER=baileys # WhatsApp real ya, sin esperar a Meta (ver abajo)
+MESSAGING_PROVIDER=fake    # solo desarrollo local: simula envíos y recibos
 ```
+
+La variable es **obligatoria**: sin ella la app no arranca. Antes `fake` era
+el valor por defecto, y un despliegue al que se le olvidara la variable
+corría feliz sobre el simulador -- palomitas moviéndose en pantalla, nada
+llegando a un teléfono. Producción es clientes reales; no debe poder caer en
+el simulador por accidente.
+
+El webhook del proveedor `fake` (`/webhooks/messaging/fake/`) crea contactos y conversaciones y su única llave es `MESSAGING_FAKE_SECRET`, cuyo valor por defecto está publicado en este repositorio. Por eso solo responde donde los datos falsos tienen sentido: con `DEBUG=True` o bajo `manage.py test`. En un despliegue real devuelve 404, así que nadie puede meter clientes inventados en el Inbox ([messaging/providers/registry.py](messaging/providers/registry.py)). Los webhooks de Meta, Twilio y el sidecar no cambian.
 
 ### Mensajería real ya, sin esperar a Meta: `baileys`
 
@@ -177,16 +198,22 @@ npm start
 
 Escanea el código QR que aparece en la terminal desde **WhatsApp > Ajustes >
 Dispositivos vinculados > Vincular un dispositivo**, con el número que quieres
-usar para el CRM. La sesión queda guardada en `whatsapp-sidecar/auth/`, así
-que no hay que volver a escanear en cada reinicio.
+usar para el CRM. La sesión queda guardada en el directorio `auth/` del sidecar,
+así que no hay que volver a escanear en cada reinicio.
 
 Luego, en el `.env` de Django:
 
 ```
 MESSAGING_PROVIDER=baileys
 BAILEYS_SIDECAR_URL=http://localhost:4000
-BAILEYS_SIDECAR_SECRET=dev-sidecar-secret   # debe coincidir con el .env del sidecar
+BAILEYS_SIDECAR_SECRET=   # genera un valor largo y aleatorio; debe coincidir con el .env del sidecar
 ```
+
+`BAILEYS_SIDECAR_SECRET` no tiene valor por defecto y mientras esté vacío el
+webhook rechaza todo. Genera uno propio (`openssl rand -hex 32`) en vez de
+copiar un ejemplo: el slug `/webhooks/messaging/baileys/` responde en todos
+los despliegues, así que ese secreto es lo único que impide que cualquiera
+escriba mensajes en la base de datos.
 
 Arranca Django normalmente (`python manage.py runserver`) -- los mensajes que
 lleguen al número vinculado aparecen en el Inbox, y las respuestas enviadas
@@ -209,6 +236,7 @@ En el dashboard del proyecto (Settings → Environment Variables) define, como m
 
 - `SECRET_KEY` — cualquier string largo y aleatorio (sin esto usa un valor de desarrollo inseguro).
 - `DEBUG=False`
+- `MESSAGING_PROVIDER` — **obligatorio**, y en producción nunca `fake`: `twilio`, `meta` o `baileys`, con las credenciales del proveedor elegido. Sin esta variable el despliegue falla al arrancar, a propósito.
 - `DATABASE_URL` — Postgres (por ejemplo Vercel Postgres o Neon, desde la pestaña Storage). SQLite no sirve en producción porque las funciones serverless no tienen disco persistente.
 - `ALLOWED_HOSTS` — opcional; el dominio del deploy y el alias de producción se confían automáticamente vía `VERCEL_URL` y `VERCEL_PROJECT_PRODUCTION_URL`, agrega aquí solo dominios propios (custom domains).
 
@@ -216,7 +244,14 @@ Con `DATABASE_URL` configurado, corre las migraciones contra la base de producci
 
 Los archivos estáticos (`static/`) se recolectan y sirven automáticamente desde el CDN de Vercel — no requiere WhiteNoise ni configuración adicional. Los uploads de usuario (`media/`, ej. cabeceras de plantillas) sí requieren almacenamiento externo (Vercel Blob, S3, etc.) porque el filesystem de las funciones no persiste entre requests; sin eso, esa funcionalidad puntual no sobrevive en producción.
 
-`whatsapp-sidecar/` (el conector Baileys) es un proceso Node de larga duración con una conexión WebSocket persistente a WhatsApp — no corre en funciones serverless. Para producción con `MESSAGING_PROVIDER=baileys`, despliégalo aparte en un host con procesos persistentes (Railway, Fly.io, un VPS, etc.); para Vercel, `fake`, `twilio` o `meta` son los proveedores que funcionan tal cual.
+El conector Baileys ([repo aparte](https://github.com/SamuelPerezCO/whatsapp-sidecar), ya no vive en este árbol) es un proceso Node de larga duración con una conexión WebSocket persistente a WhatsApp — no corre en funciones serverless. Para producción con `MESSAGING_PROVIDER=baileys`, despliégalo en un host con procesos persistentes (Railway, Fly.io, un VPS, etc.). En Vercel los que funcionan tal cual son `twilio` y `meta`; `fake` no es una opción de producción — simula los envíos y no manda nada a ningún teléfono.
+
+### Seguridad del webhook
+
+La URL del webhook nombra al proveedor (`/webhooks/messaging/<proveedor>/`) para que, durante una migración, un callback de Twilio se siga interpretando como Twilio aunque el proveedor activo ya sea Meta. Dos consecuencias que conviene tener presentes:
+
+- El endpoint del proveedor `fake` **solo responde donde `MESSAGING_PROVIDER=fake`**. En un despliegue real devuelve 404: sin ese candado sería una forma anónima de escribir clientes inventados en la base de datos de producción, indistinguibles después de los reales.
+- Cada proveedor real *sí* sigue siendo alcanzable siempre, así que su secreto es lo único que lo protege. Ninguno tiene valor por defecto: `META_APP_SECRET`, `BAILEYS_SIDECAR_SECRET` y `MESSAGING_FAKE_SECRET` rechazan todo mientras estén vacíos. Un secreto escrito en el repositorio no protege nada.
 
 ## Tests
 

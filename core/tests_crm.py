@@ -1,6 +1,5 @@
 """Tests for the CRM screen: model helpers, secondary nav, and the client table."""
 
-from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -46,27 +45,20 @@ class CrmScreenTests(TestCase):
 
     def test_heading_and_section_titles_render(self):
         response = self.client.get(reverse("section", args=["crm"]))
-        for text in ("Mi cuenta", "Gestión de clientes", "Calendario"):
+        for text in ("Mi cuenta", "Gestión de clientes", "Calendario", "Equipo"):
             self.assertContains(response, text)
 
     def test_every_nav_view_renders_as_a_link(self):
-        # As a master: the Usuarios row only exists for masters (tests_usuarios
-        # covers the hidden side).
-        self.client.force_login(get_user_model().objects.create_superuser("jefa"))
         html = self.client.get(reverse("section", args=["crm"])).content.decode()
         for view in ALL_VIEWS:
             with self.subTest(view.key):
                 self.assertIn(f"?view={view.key}", html)
                 self.assertIn(view.label, html)
 
-    def test_sections_start_collapsed(self):
-        html = self.client.get(reverse("section", args=["crm"])).content.decode()
-        # Two for an agent (Equipo is masters-only), three for a master.
-        self.assertEqual(html.count('<details class="side-nav__section">'), 2)
-        self.assertNotIn('<details class="side-nav__section" open>', html)
-        self.client.force_login(get_user_model().objects.create_superuser("jefa"))
+    def test_all_sections_start_collapsed(self):
         html = self.client.get(reverse("section", args=["crm"])).content.decode()
         self.assertEqual(html.count('<details class="side-nav__section">'), 3)
+        self.assertNotIn('<details class="side-nav__section" open>', html)
 
     def test_clientes_is_the_default_view(self):
         response = self.client.get(reverse("section", args=["crm"]))
@@ -82,10 +74,11 @@ class CrmScreenTests(TestCase):
         self.assertContains(response, "+ Crear etiqueta")
 
     def test_still_placeholder_views_say_so(self):
+        # Exportaciones used to be the example here; it is a real page now.
         response = self.client.get(
-            reverse("section", args=["crm"]), {"view": "exportaciones"}
+            reverse("section", args=["crm"]), {"view": "campos-personalizados"}
         )
-        self.assertContains(response, "Exportaciones — próximamente")
+        self.assertContains(response, "Campos personalizados — próximamente")
 
     def test_unknown_view_falls_back_instead_of_404(self):
         response = self.client.get(reverse("section", args=["crm"]), {"view": "bogus"})
@@ -94,10 +87,10 @@ class CrmScreenTests(TestCase):
 
     def test_exactly_one_row_is_active(self):
         html = self.client.get(
-            reverse("section", args=["crm"]), {"view": "exportaciones"}
+            reverse("section", args=["crm"]), {"view": "campos-personalizados"}
         ).content.decode()
         self.assertEqual(html.count("side-nav__row--child is-active"), 1)
-        active = html.split('?view=exportaciones"')[0].rsplit("<a ", 1)[-1]
+        active = html.split('?view=campos-personalizados"')[0].rsplit("<a ", 1)[-1]
         self.assertIn("is-active", active)
 
     def test_toolbar_controls_render(self):
@@ -206,7 +199,6 @@ class CrmPanelEndpointTests(TestCase):
         self.assertIn("Clientes", body)
 
     def test_every_view_has_a_working_endpoint(self):
-        self.client.force_login(get_user_model().objects.create_superuser("jefa"))
         for view in ALL_VIEWS:
             with self.subTest(view.key):
                 response = self.client.get(reverse("crm_panel", args=[view.key]))

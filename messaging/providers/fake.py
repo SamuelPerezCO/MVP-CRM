@@ -1,7 +1,14 @@
 """A provider that behaves like WhatsApp without leaving the machine.
 
-Used while no real credentials exist (``MESSAGING_PROVIDER=fake``, the
-default). It keeps the whole pipeline honest:
+**Local development only.** Everything it produces is invented, so its
+webhook answers only where ``MESSAGING_PROVIDER=fake`` is itself the
+configured provider -- on a deployment running Twilio, Meta or the sidecar
+the endpoint 404s (``registry.is_enabled_provider``). Without that gate it
+would be an unauthenticated way to write fabricated customers into a
+production database, and nothing downstream could tell them apart from real
+ones afterwards.
+
+Used while no real credentials exist. It keeps the whole pipeline honest:
 
 * ``send_text`` returns a message id like a real API would.
 * Delivery receipts happen: previously-sent messages advance through
@@ -9,10 +16,13 @@ default). It keeps the whole pipeline honest:
   ``status`` events a real provider would POST to the webhook -- so the tick
   marks in the UI move for real, through the real code path.
 * Webhooks are signed: requests must carry ``X-Fake-Signature`` matching
-  ``settings.MESSAGING_FAKE_SECRET``, so the 401 branch is exercised too.
+  ``settings.MESSAGING_FAKE_SECRET``, so the 401 branch is exercised too. An
+  unset secret rejects everything rather than accepting everything -- the
+  same fail-closed stance the Meta provider takes.
 
-The ``simulate_inbound`` management command POSTs this provider's payload
-shape at the webhook endpoint to fake a customer writing in.
+To push an inbound message through this provider by hand, POST its payload
+shape (``{"events": [{...InboundEvent fields...}]}``) to
+``/webhooks/messaging/fake/`` with that header.
 """
 
 from __future__ import annotations
@@ -59,6 +69,14 @@ class FakeProvider(MessagingProvider):
         )
         return message_id
 
+    def send_image(self, to: str, image_url: str, caption: str = "") -> str:
+        message_id = f"fake-{uuid.uuid4().hex}"
+        logger.info(
+            "[fake] send_image to=%s id=%s url=%s caption=%r",
+            to, message_id, image_url, caption,
+        )
+        return message_id
+
     # --- Webhook -----------------------------------------------------------
 
     def verify_signature(self, request) -> bool:
@@ -67,8 +85,15 @@ class FakeProvider(MessagingProvider):
         Deliberately simpler than the real providers' HMACs, but real enough
         that the endpoint's reject-before-parse branch gets exercised.
         """
+        secret = settings.MESSAGING_FAKE_SECRET
+        if not secret:
+            logger.error(
+                "MESSAGING_FAKE_SECRET is not set -- rejecting the fake "
+                "webhook. An empty secret would make the endpoint open."
+            )
+            return False
         supplied = request.headers.get("X-Fake-Signature", "")
-        return constant_time_compare(supplied, settings.MESSAGING_FAKE_SECRET)
+        return constant_time_compare(supplied, secret)
 
     def parse_webhook(self, request) -> list[InboundEvent]:
         """Payload shape: ``{"events": [{...InboundEvent fields...}]}``.
@@ -98,6 +123,7 @@ class FakeProvider(MessagingProvider):
                     to_number=raw.get("to_number", ""),
                     body=raw.get("body", ""),
                     media_url=raw.get("media_url", ""),
+                    media_type=raw.get("media_type", ""),
                     timestamp=timestamp,
                     status=MessageStatus(raw["status"]) if raw.get("status") else None,
                     channel=raw.get("channel", "whatsapp"),
@@ -108,7 +134,12 @@ class FakeProvider(MessagingProvider):
 
     def handshake(self, request) -> str | None:
         """Echo ``hub.challenge`` like Meta does, so the GET handshake path
-        can be tried end-to-end before real credentials exist."""
+        can be tried end-to-end before real credentials exist.
+
+        The value is whatever the caller sent, so ``webhook()`` returns it as
+        text/plain -- reflecting an unauthenticated query parameter as HTML
+        would be a scripting hole on whatever origin this is deployed to.
+        """
         return request.GET.get("hub.challenge")
 
     # --- Delivery simulation ----------------------------------------------

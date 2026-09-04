@@ -1,0 +1,72 @@
+{% comment %}
+  The Nuevo chat modal body (core.views.inbox_new_chat): who, then which
+  plantilla. A conversation started from our side has no 24h window yet, so
+  a plantilla is the only thing WhatsApp lets us send -- the copy says so
+  instead of offering a free-text box that would bounce.
+
+  The client list is a filterable <select> (the calendar's contact picker
+  pattern, filtered by shell.js via data-select-filter). The form targets
+  this modal body -- BOTH outcomes land here: a rejected submit re-renders
+  the form with its message, and a success answers with
+  new_chat_opened.html, whose dismiss marker closes the modal while the
+  opened chat, the details panel and the list arrive out-of-band. Targeting
+  #chat-panel instead would have dropped a rejected form into the chat
+  column.
+
+  Context: clients, selected_client (or None), template_options,
+           new_chat_error (or None)
+{% endcomment %}
+
+<h2 class="modal__title modal__title--start" id="newchat-modal-title">Nuevo chat</h2>
+<p class="newchat__lead">
+  Escríbele por WhatsApp a un cliente que aún no te ha escrito, o retoma uno
+  que lleva más de 24 horas en silencio. La conversación se abre con una
+  plantilla aprobada; después podrás escribir libremente cuando responda.
+</p>
+
+<form class="newchat"
+      hx-post="{% url 'inbox_new_chat' %}"
+      hx-target="#newchat-modal-body"
+      hx-swap="innerHTML">
+  {% csrf_token %}
+
+  {% if new_chat_error %}
+    <p class="ffield__error newchat__error" role="alert">{{ new_chat_error }}</p>
+  {% endif %}
+
+  <div class="newchat__who" data-select-filter>
+    <div class="ffield">
+      <input class="ffield__input" type="text" id="newchat-filter" placeholder=" "
+             autocomplete="off" data-select-filter-input
+             aria-describedby="newchat-filter-status">
+      <label class="ffield__label" for="newchat-filter">Buscar cliente</label>
+    </div>
+    <p class="sr-only" role="status" id="newchat-filter-status" data-select-filter-status></p>
+    <div class="ffield ffield--select">
+      <select class="ffield__input" name="cliente" id="newchat-client" required
+              data-select-filter-target size="6">
+        {% for client in clients %}
+          <option value="{{ client.pk }}"
+                  {% if selected_client and client.pk == selected_client.pk %}selected{% endif %}>
+            {{ client.full_name }} · {{ client.phone }}
+          </option>
+        {% empty %}
+          <option value="" disabled>Aún no hay clientes: créalos en el CRM.</option>
+        {% endfor %}
+      </select>
+      <label class="ffield__label" for="newchat-client">Cliente</label>
+    </div>
+  </div>
+
+  <p class="ffield__label ffield__label--static newchat__label">Plantilla</p>
+  {% include "partials/inbox/template_list.html" %}
+
+  <div class="client-form__actions">
+    <span class="client-form__spacer"></span>
+    <button type="button" class="btn-ghost" data-dialog-close>Cancelar</button>
+    <button type="submit" class="btn-primary"
+            {% if not template_options or not clients %}disabled{% endif %}>
+      Enviar y abrir chat
+    </button>
+  </div>
+</form>

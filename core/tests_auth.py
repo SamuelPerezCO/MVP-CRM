@@ -14,8 +14,14 @@ from core.middleware import SESSION_KEY
 CREDS = {"username": "tester", "password": "secret-pw"}
 
 
+# APP_AGENTS="" matters as much as the pair below it: core.agents prefers the
+# agent list whenever it is non-empty, so a developer with APP_AGENTS in their
+# .env would otherwise never reach the legacy credentials these tests pin.
 @override_settings(
-    TESTING=False, APP_LOGIN_USERNAME="tester", APP_LOGIN_PASSWORD="secret-pw"
+    TESTING=False,
+    APP_AGENTS="",
+    APP_LOGIN_USERNAME="tester",
+    APP_LOGIN_PASSWORD="secret-pw",
 )
 class LoginGateTests(TestCase):
     def test_unauthenticated_request_redirects_to_login(self):
@@ -81,8 +87,15 @@ class LoginGateTests(TestCase):
     def test_provider_webhook_is_reachable_without_a_session(self):
         # Signature-authenticated (see messaging/views.py), not session-gated --
         # an unsigned request should 401, never redirect to login.
+        #
+        # Meta rather than the fake provider on purpose: this class runs with
+        # TESTING=False, i.e. as a real deployment would, and there the
+        # simulator's webhook is switched off entirely
+        # (messaging.providers.registry.webhook_enabled). Meta's is the door
+        # that really is open in production, so it is the one worth asserting
+        # stays signature-gated rather than login-gated.
         response = self.client.post(
-            reverse("messaging_webhook", args=["fake"]),
+            reverse("messaging_webhook", args=["meta"]),
             data="{}",
             content_type="application/json",
         )
