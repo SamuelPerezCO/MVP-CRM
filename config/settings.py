@@ -89,6 +89,40 @@ CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS]
 # CSRF checks and any secure-cookie/redirect behavior.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# HTTPS-only cookies and redirects, on exactly when the app is not in
+# development. Without these the session and CSRF cookies go out over a
+# deployed site without the Secure flag, so anything that can see the
+# network can lift a session; `manage.py check --deploy` flags all three.
+#
+# Tied to DEBUG rather than to a variable of their own: a deployment already
+# sets DEBUG=False (see .env.example), and a second switch is one more thing
+# to forget. Local development stays on plain HTTP and is unaffected.
+#
+# SECURE_SSL_REDIRECT additionally sits out the test run. Django's test
+# client speaks http://, so redirecting every insecure request would answer
+# the whole suite with 301s instead of running it -- and TESTING already
+# forces DEBUG off, which is what would otherwise switch this on.
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_SSL_REDIRECT = not DEBUG and not TESTING
+
+# HSTS tells a browser to refuse plain HTTP for this domain for max-age
+# seconds, and it CANNOT be taken back within that window -- a browser that
+# has seen the header will not talk to the domain over HTTP again until it
+# expires. That is why this one is opt-in by variable rather than following
+# DEBUG like the three above: switch it on deliberately, on a domain that is
+# fully on HTTPS and going to stay there, and start with a short max-age
+# (say 3600) before raising it to a year (31536000).
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
+# Both only mean anything while HSTS is on, and both widen its blast radius:
+# INCLUDE_SUBDOMAINS covers every subdomain (including ones not on HTTPS
+# yet), and PRELOAD asks browsers to ship the rule built in, which is far
+# harder to undo than waiting out a max-age.
+SECURE_HSTS_INCLUDE_SUBDOMAINS = (
+    os.environ.get('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'False') == 'True'
+)
+SECURE_HSTS_PRELOAD = os.environ.get('SECURE_HSTS_PRELOAD', 'False') == 'True'
+
 # Who can log in, and who a conversation can be assigned to -- the same list
 # either way (see core/agents.py for the format and the reasoning). Comma-
 # separated `username:hash:Nombre` entries, e.g.
