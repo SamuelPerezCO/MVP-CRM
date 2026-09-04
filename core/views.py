@@ -22,6 +22,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template import TemplateDoesNotExist
 from django.template.loader import get_template, render_to_string
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
 import json
@@ -56,6 +57,7 @@ from . import (
     inbox,
     mensajeria,
     plantillas,
+    xlsx,
 )
 from .middleware import SESSION_KEY
 from .models import CalendarEvent, Client, ClientList, MessageTemplate
@@ -257,12 +259,30 @@ def _mi_calendario_context(request) -> dict:
     }
 
 
+#: Column headers of the clients export, in sheet order. The row builder in
+#: clientes_export must follow this order.
+CLIENT_EXPORT_COLUMNS = [
+    "Nombres", "Apellidos", "Teléfono", "País", "Mail", "Canal",
+    "Cliente desde", "Conversaciones", "Etiquetas",
+]
+
+
+def _exportaciones_context(request) -> dict:
+    """What the Exportaciones page shows before the download: how many rows
+    it will hold and which columns -- from the same queryset the export uses."""
+    return {
+        "client_count": Client.objects.count(),
+        "export_columns": CLIENT_EXPORT_COLUMNS,
+    }
+
+
 #: CRM view key -> callable(request) -> dict. Panels without an entry need no data.
 PANEL_CONTEXT = {
     "clientes": _clientes_context,
     "etiquetas": _etiquetas_context,
     "lista-clientes": _lista_clientes_context,
     "mi-calendario": _mi_calendario_context,
+    "exportaciones": _exportaciones_context,
 }
 
 
@@ -1247,6 +1267,47 @@ def cliente_delete(request, client_id: int):
             request=request,
         )
     )
+
+
+def clientes_export(request):
+    """Download the client base as an Excel file (CRM > Exportaciones).
+
+    Every client, one row each, in the CLIENT_EXPORT_COLUMNS order. Built
+    with core.xlsx rather than a CSV: Excel opens a CSV with the wrong
+    encoding and turns "+573167687288" into 5.73E+11, which is exactly the
+    column people export this for. Conversation and tag columns come from
+    two annotations/prefetches, not one query per row.
+    """
+    clients = (
+        Client.objects.annotate(conversation_count=Count("conversations", distinct=True))
+        .prefetch_related("conversations__tags")
+        .order_by("first_name", "last_name")
+    )
+    country_names = {country.code: country.name for country in clientes.COUNTRIES}
+    rows = []
+    for client in clients:
+        tags = sorted(
+            {tag.name for conversation in client.conversations.all() for tag in conversation.tags.all()}
+        )
+        rows.append([
+            client.first_name,
+            client.last_name,
+            client.phone,
+            country_names.get(client.country, client.country),
+            client.email,
+            client.get_channel_display() if client.channel else "",
+            timezone.localtime(client.created_at).strftime("%d/%m/%Y"),
+            client.conversation_count,
+            ", ".join(tags),
+        ])
+
+    stamp = timezone.localtime(timezone.now()).strftime("%Y-%m-%d")
+    response = HttpResponse(
+        xlsx.build(CLIENT_EXPORT_COLUMNS, rows, sheet_name="Clientes"),
+        content_type=xlsx.CONTENT_TYPE,
+    )
+    response["Content-Disposition"] = f'attachment; filename="clientes-{stamp}.xlsx"'
+    return response
 
 
 def lista_create(request):

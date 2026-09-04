@@ -44,9 +44,26 @@
         {% include "icons/funnel.svg" %}
       </button>
 
-      <button type="button" class="btn-ghost">
-        <span>Acciones</span>{% include "icons/chevron-down.svg" %}
-      </button>
+      {# Acciones over the whole base; per-row actions live on each row. #}
+      <details class="dropdown crm-actions" data-dropdown>
+        <summary class="btn-ghost">
+          <span>Acciones</span>{% include "icons/chevron-down.svg" %}
+        </summary>
+        <div class="dropdown__panel dropdown__panel--end">
+          <a class="dropdown__item" href="{% url 'clientes_export' %}" download>
+            {% include "icons/download.svg" %}<span>Descargar Excel</span>
+          </a>
+          {# Relative URLs: this panel also mounts under Campañas. #}
+          <a class="dropdown__item"
+             href="?view=exportaciones"
+             hx-get="{% url 'crm_panel' 'exportaciones' %}"
+             hx-target="closest main"
+             hx-swap="innerHTML"
+             hx-push-url="?view=exportaciones">
+            {% include "icons/archive.svg" %}<span>Ver exportaciones</span>
+          </a>
+        </div>
+      </details>
 
       {# hx-include carries the live search + page; see client_table.html. #}
       <button type="button" class="btn-primary"

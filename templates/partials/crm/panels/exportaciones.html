@@ -1,0 +1,53 @@
+{% comment %}
+  CRM column 3 -- the Exportaciones page: download the client base as Excel.
+
+  One card per export. The download is a plain link on purpose (no hx-get):
+  a file response can't be swapped into a panel, and a real href also works
+  with JS off. The count on the card comes from the same queryset the export
+  iterates, so what the agent reads is what they get.
+
+  Context: client_count, export_columns
+{% endcomment %}
+
+<div class="crm-panel">
+
+  <header class="crm-panel__head">
+    <h1 class="crm-panel__title">
+      Exportaciones
+      <span class="info-dot" role="img" aria-label="Información sobre exportaciones">
+        {% include "icons/info.svg" %}
+      </span>
+    </h1>
+  </header>
+
+  <div class="export-cards">
+    <article class="export-card">
+      <div class="export-card__icon">{% include "icons/users.svg" %}</div>
+      <div class="export-card__body">
+        <h2 class="export-card__title">Base de datos de clientes</h2>
+        <p class="export-card__text">
+          {% if client_count %}
+            {{ client_count }} cliente{{ client_count|pluralize }} en un archivo
+            Excel (.xlsx), con encabezados fijos y filtros listos.
+          {% else %}
+            Aún no hay clientes que exportar. Los que crees o te escriban
+            saldrán aquí.
+          {% endif %}
+        </p>
+        <p class="export-card__columns">
+          Columnas:
+          {% for column in export_columns %}{{ column }}{% if not forloop.last %} · {% endif %}{% endfor %}
+        </p>
+      </div>
+      <div class="export-card__actions">
+        <a class="btn-primary{% if not client_count %} is-disabled{% endif %}"
+           href="{% url 'clientes_export' %}"
+           {% if not client_count %}aria-disabled="true" tabindex="-1"{% endif %}
+           download>
+          {% include "icons/download.svg" %}
+          <span>Descargar Excel</span>
+        </a>
+      </div>
+    </article>
+  </div>
+</div>
