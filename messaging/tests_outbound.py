@@ -6,7 +6,6 @@ from unittest import mock
 
 from django.test import TestCase, override_settings
 
-from messaging.providers.baileys import BaileysProvider
 from messaging.providers.base import MessagingProvider
 from messaging.providers.fake import FakeProvider
 from messaging.providers.meta import MetaProvider
@@ -50,50 +49,6 @@ class MetaSendImageTests(TestCase):
         self.assertEqual(payload["template"]["language"], {"code": "es"})
         parameters = payload["template"]["components"][0]["parameters"]
         self.assertEqual(parameters, [{"type": "text", "text": "Camila"}])
-
-
-class BaileysOutboundTests(TestCase):
-    @override_settings(BAILEYS_SIDECAR_URL="http://side", BAILEYS_SIDECAR_SECRET="s")
-    def test_send_template_sends_the_rendered_body_not_the_template_name(self):
-        # Regression: it used to substitute params into the NAME and send
-        # that, so the customer received "saludo_inicial".
-        provider = BaileysProvider()
-        with mock.patch.object(provider, "_send", return_value="b-1") as send:
-            provider.send_template(
-                "+57", "saludo_inicial",
-                {"1": "Camila", "_language": "es", "_rendered": "Hola Camila, ¿qué tal?"},
-            )
-        send.assert_called_once_with("+57", "Hola Camila, ¿qué tal?")
-
-    @override_settings(BAILEYS_SIDECAR_URL="http://side", BAILEYS_SIDECAR_SECRET="s")
-    def test_without_a_rendered_body_it_still_substitutes_into_the_name(self):
-        provider = BaileysProvider()
-        with mock.patch.object(provider, "_send", return_value="b-2") as send:
-            provider.send_template("+57", "Hola {{1}}", {"1": "Camila"})
-        send.assert_called_once_with("+57", "Hola Camila")
-
-    @override_settings(BAILEYS_SIDECAR_URL="http://side", BAILEYS_SIDECAR_SECRET="s")
-    def test_send_image_passes_the_url_to_the_sidecar(self):
-        provider = BaileysProvider()
-        with mock.patch("messaging.providers.baileys.requests.post") as post:
-            post.return_value.json.return_value = {"id": "b-3"}
-            post.return_value.raise_for_status.return_value = None
-            self.assertEqual(
-                provider.send_image("+57", "https://cdn.example/p.png", "Precios"), "b-3"
-            )
-        self.assertEqual(
-            post.call_args.kwargs["json"],
-            {"to": "+57", "body": "Precios", "image_url": "https://cdn.example/p.png"},
-        )
-
-    @override_settings(BAILEYS_SIDECAR_URL="http://side", BAILEYS_SIDECAR_SECRET="s")
-    def test_a_plain_text_send_carries_no_image_key(self):
-        provider = BaileysProvider()
-        with mock.patch("messaging.providers.baileys.requests.post") as post:
-            post.return_value.json.return_value = {"id": "b-4"}
-            post.return_value.raise_for_status.return_value = None
-            provider.send_text("+57", "hola")
-        self.assertEqual(post.call_args.kwargs["json"], {"to": "+57", "body": "hola"})
 
 
 class FakeProviderImageTests(TestCase):

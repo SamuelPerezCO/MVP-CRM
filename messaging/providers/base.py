@@ -91,8 +91,8 @@ class MessagingProvider(ABC):
     # Only the official Cloud API keeps a catalogue of templates that must be
     # submitted and approved before ``send_template`` will accept them. The
     # defaults below are the "no catalogue" answer, so Twilio (templates are
-    # approved in its console), Baileys (renders templates as plain text) and
-    # the fake provider inherit them untouched -- same stance as ``handshake``.
+    # approved in its console) and the fake provider inherit them untouched --
+    # same stance as ``handshake``.
 
     def create_template(self, spec: TemplateSpec) -> str | None:
         """Submit ``spec`` for approval. Returns the provider's id for the new

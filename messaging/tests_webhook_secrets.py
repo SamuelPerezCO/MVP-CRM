@@ -5,10 +5,9 @@ deployment. The real providers' doors stay open by design -- a Twilio status
 callback must still parse as Twilio halfway through a migration to Meta -- so
 for those the shared secret is the only thing in front of the database.
 
-Which makes a secret with a default a secret an attacker already has: both
-values used to ship in this repository. baileys is the one that mattered,
-being a real provider whose slug answers everywhere. Now an empty secret
-rejects everything rather than accepting the published default.
+Which makes a secret with a default a secret an attacker already has, and
+this repository used to ship one. Now an empty secret rejects everything
+rather than accepting the published default.
 """
 
 from __future__ import annotations
@@ -42,34 +41,6 @@ def post(client, provider, header, secret):
         content_type="application/json",
         headers={header: secret},
     )
-
-
-class SidecarSecretTests(TestCase):
-    """baileys is real, so its slug answers on every deployment."""
-
-    @override_settings(MESSAGING_PROVIDER="meta", BAILEYS_SIDECAR_SECRET="")
-    def test_an_unset_secret_rejects_everything(self):
-        for supplied in ["", "dev-sidecar-secret", "anything"]:
-            with self.subTest(supplied=supplied):
-                response = post(self.client, "baileys", "X-Sidecar-Secret", supplied)
-                self.assertEqual(response.status_code, 401)
-
-        self.assertEqual(Message.objects.count(), 0)
-        self.assertEqual(Conversation.objects.count(), 0)
-        self.assertEqual(Client.objects.count(), 0)
-
-    @override_settings(MESSAGING_PROVIDER="baileys", BAILEYS_SIDECAR_SECRET="real-secret")
-    def test_a_configured_secret_still_works(self):
-        self.assertEqual(
-            post(self.client, "baileys", "X-Sidecar-Secret", "real-secret").status_code, 200
-        )
-        self.assertEqual(Message.objects.count(), 1)
-
-    @override_settings(MESSAGING_PROVIDER="baileys", BAILEYS_SIDECAR_SECRET="real-secret")
-    def test_the_wrong_secret_is_still_rejected(self):
-        self.assertEqual(
-            post(self.client, "baileys", "X-Sidecar-Secret", "guess").status_code, 401
-        )
 
 
 class FakeSecretTests(TestCase):

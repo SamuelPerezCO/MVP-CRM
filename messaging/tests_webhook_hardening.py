@@ -1,12 +1,9 @@
 """The webhook endpoint's fail-closed rules.
 
-Two holes these cover, both of which let anyone on the internet write rows
-into the production database that the app then renders as real customers:
-
-* the fake provider stayed routable on a deployment running a real provider,
-  and its shared secret shipped with a value committed to the repository;
-* the sidecar secret shipped with a committed default too, so the baileys
-  slug accepted forged traffic even when it was not the active provider.
+The hole these cover let anyone on the internet write rows into the
+production database that the app then renders as real customers: the fake
+provider stayed routable on a deployment running a real provider, and its
+shared secret shipped with a value committed to the repository.
 
 The database is shared with an external automation, so an injected row is
 indistinguishable from a real conversation once it lands.
@@ -16,11 +13,13 @@ from __future__ import annotations
 
 import json
 
+from django.conf import settings
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from core.models import Client
 from messaging.models import Conversation, Message
+from messaging.providers import registry
 
 INBOUND = {
     "events": [
@@ -92,26 +91,30 @@ class FakeProviderIsDevelopmentOnlyTests(TestCase):
         self.assertTrue(response["Content-Type"].startswith("text/plain"))
 
 
-class SidecarSecretTests(TestCase):
-    """baileys is a real provider, so it stays routable mid-migration -- which
-    makes a committed default secret an open door rather than a convenience."""
 
-    def post(self, secret=""):
-        return self.client.post(
-            url("baileys"),
-            data=json.dumps(INBOUND),
-            content_type="application/json",
-            headers={"X-Sidecar-Secret": secret},
+
+class ConfiguredProviderTests(TestCase):
+    """MESSAGING_PROVIDER must name a provider that exists.
+
+    An unknown value used to pass startup and raise only when something tried
+    to send, so a deployment looked healthy while every outbound message
+    crashed. That matters most right after a provider is dropped, when an
+    environment can still be carrying its name.
+    """
+
+    def test_the_settings_list_matches_the_registry(self):
+        """Two places name the providers; drift between them is the bug this
+        catches (settings cannot import the registry at settings time)."""
+        self.assertEqual(
+            sorted(settings.MESSAGING_PROVIDERS), sorted(registry._PROVIDERS)
         )
 
-    @override_settings(MESSAGING_PROVIDER="meta", BAILEYS_SIDECAR_SECRET="")
-    def test_an_unset_sidecar_secret_rejects_everything(self):
-        for supplied in ["", "dev-sidecar-secret", "anything"]:
-            with self.subTest(supplied):
-                self.assertEqual(self.post(supplied).status_code, 401)
-        self.assertEqual(Message.objects.count(), 0)
+    def test_a_provider_this_app_lacks_is_not_known(self):
+        self.assertFalse(registry.is_known_provider("retirado"))
 
-    @override_settings(MESSAGING_PROVIDER="baileys", BAILEYS_SIDECAR_SECRET="real-secret")
-    def test_a_configured_sidecar_secret_still_works(self):
-        self.assertEqual(self.post("real-secret").status_code, 200)
-        self.assertEqual(Message.objects.count(), 1)
+    def test_its_webhook_slug_is_a_404(self):
+        response = self.client.post(
+            "/webhooks/messaging/retirado/", data="{}",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)

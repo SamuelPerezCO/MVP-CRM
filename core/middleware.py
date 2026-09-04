@@ -6,7 +6,7 @@ It's one shared username/password pair from the environment (APP_LOGIN_USERNAME
 remembered as a flag in the session. This middleware is what enforces it: any
 request without that flag is redirected to the login page, except for the
 handful of paths that must stay reachable without a browser session --
-provider webhooks (hit by Twilio/Meta/the Baileys sidecar, authenticated by
+provider webhooks (hit by Twilio/Meta, authenticated by
 their own signature check instead), the public legal pages, static/media
 assets, and Django admin (gated separately by django.contrib.auth).
 """

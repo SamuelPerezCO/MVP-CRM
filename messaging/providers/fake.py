@@ -2,7 +2,7 @@
 
 **Local development only.** Everything it produces is invented, so its
 webhook answers only where ``MESSAGING_PROVIDER=fake`` is itself the
-configured provider -- on a deployment running Twilio, Meta or the sidecar
+configured provider -- on a deployment running Twilio or Meta
 the endpoint 404s (``registry.is_enabled_provider``). Without that gate it
 would be an unauthenticated way to write fabricated customers into a
 production database, and nothing downstream could tell them apart from real

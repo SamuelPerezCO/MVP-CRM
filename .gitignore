@@ -23,7 +23,5 @@ db.sqlite3
 .env.*
 !.env.example
 
-# Now its own repo (github.com/SamuelPerezCO/whatsapp-sidecar), deployed to
-# Render independently of this app -- kept as a local checkout for
-# convenience, but no longer tracked here to avoid two diverging copies.
-/whatsapp-sidecar/
+# Intermediate files assemble.py writes next to the PDF it renders.
+docs/generar/*.final.json
