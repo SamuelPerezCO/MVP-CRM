@@ -284,6 +284,84 @@ class Message(models.Model):
         related_name="sent_messages",
     )
 
+    #: The plantilla this message was sent from, when it was a template send
+    #: (``services.send_template``). NULL for free-form messages and for
+    #: everything that arrived over the webhook. SET_NULL rather than CASCADE:
+    #: deleting a plantilla must never delete the messages already sent with
+    #: it -- the billing history below would go with them.
+    #
+    # How the field works: Django stores a ForeignKey as an integer column
+    # (``template_id``) holding the plantilla's primary key, and
+    # ``message.template`` fetches the MessageTemplate row on first access --
+    # one extra query per message unless the queryset asked for
+    # ``select_related("template")``, which pulls it in with a JOIN. The
+    # "app.Model" string is how one app names a model of another app without
+    # importing it; Django resolves the string once every app is loaded. Set
+    # only by ``services.send_template`` (``Message.objects.create(...,
+    # template=template)``); ``send_message`` and the webhook path never
+    # fill it, so it is also what tells a template send apart in a thread.
+    template = models.ForeignKey(
+        "core.MessageTemplate",
+        # SET_NULL: deleting the plantilla writes NULL into this column on
+        # every message that used it; the message rows stay. ``null=True``
+        # allows that NULL in the database, ``blank=True`` lets an admin form
+        # leave the field empty.
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        # The reverse side of the relation: ``plantilla.sent_messages.all()``
+        # lists every message sent with that plantilla. The same name as
+        # ``sent_by`` above is fine because each lives on a different model
+        # (User.sent_messages vs MessageTemplate.sent_messages).
+        related_name="sent_messages",
+        # The label the admin shows for this field ("Plantilla"). A keyword
+        # here because a ForeignKey's first positional argument is the target
+        # model, unlike the plain fields below.
+        verbose_name="plantilla",
+    )
+
+    # --- What this message cost -------------------------------------------
+    #
+    # Frozen at send time, never recomputed: WhatsApp's price list changes,
+    # and a rate change must not rewrite what last month cost. NULL means
+    # "not billed" -- every inbound message and every free-form reply inside
+    # the 24h window. Zero means billed at nothing (a failed send, or a rule
+    # that made it free), which is a different fact and stays distinguishable.
+
+    # Who writes and reads these three columns: ``services.send_template``
+    # fills them from the ``pricing.Quote`` it computed (category, amount,
+    # currency) in the same ``Message.objects.create`` call that stores the
+    # text, so a row never exists half-priced; if the provider then errors it
+    # sets ``billed_amount`` to zero. ``pricing.spent_between`` sums
+    # ``billed_amount`` for the monthly budget check, the admin lists and
+    # filters on them, and the Inbox bubble (chat_messages.html) and the send
+    # dialog's confirmation (send_sent.html) print amount + currency.
+
+    #: The category the send was billed as, at send time
+    #: (marketing/utility/authentication -- see messaging.pricing).
+    # Deliberately no ``choices=`` (see ``billed_category_display`` below).
+    # The first positional argument of a plain field is its verbose_name, the
+    # label the admin shows. Empty string, not NULL, when the message was
+    # never billed -- Django's convention for optional text columns.
+    billed_category = models.CharField("categoría facturada", max_length=20, blank=True)
+    #: Amount charged for this message, in ``billed_currency``. Six decimals
+    #: because per-message rates are quoted in fractions of a cent.
+    # A DecimalField comes back as ``decimal.Decimal`` in Python, never as a
+    # float: 0.0125 has no exact binary representation, so float sums drift
+    # by fractions of a cent and a comparison against the budget would be
+    # off. ``max_digits=12, decimal_places=6`` allows up to 999999.999999.
+    # This is the one nullable column of the three: ``null=True`` is what
+    # makes the NULL ("not billed") vs zero ("billed at nothing") distinction
+    # above possible, and what the partial index in Meta keys on.
+    billed_amount = models.DecimalField(
+        "importe", max_digits=12, decimal_places=6, null=True, blank=True
+    )
+    #: ISO 4217 code ("USD"), hence ``max_length=3``; comes from
+    #: ``pricing.currency()`` (the MESSAGING_CURRENCY setting, "USD" by
+    #: default). Stored per row so the amount stays readable even if the
+    #: configured currency changes later. Empty when not billed.
+    billed_currency = models.CharField("moneda", max_length=3, blank=True)
+
     class Meta:
         verbose_name = "mensaje"
         verbose_name_plural = "mensajes"
@@ -292,6 +370,27 @@ class Message(models.Model):
         indexes = [
             # The thread query: one conversation's messages in order.
             models.Index(fields=["conversation", "timestamp"]),
+            # The spend query (messaging.pricing.spent_between): billed rows
+            # in a date range. Partial, because the billed ones are the small
+            # minority of a busy inbox's messages.
+            #
+            # A partial index is an ordinary index with a WHERE clause: the
+            # ``condition`` becomes ``CREATE INDEX ... ON messaging_message
+            # (timestamp) WHERE billed_amount IS NOT NULL``, so only billed
+            # rows are entered in it and it stays small. The query it serves
+            # filters on exactly that predicate plus a timestamp range
+            # (``filter(billed_amount__isnull=False, timestamp__gte=start)``),
+            # which is what lets the database planner pick it. Django insists
+            # on an explicit ``name`` for any index with a condition (the
+            # plain index above gets an auto-generated one). Both backends
+            # this project runs on, SQLite and PostgreSQL, support the WHERE
+            # clause. Created in the database by migration
+            # 0004_message_billing.
+            models.Index(
+                fields=["timestamp"],
+                condition=models.Q(billed_amount__isnull=False),
+                name="message_billed_timestamp_idx",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -300,6 +399,37 @@ class Message(models.Model):
     @property
     def is_outbound(self) -> bool:
         return self.direction == self.OUTBOUND
+
+    @property
+    def billed_category_display(self) -> str:
+        """The Spanish label for what this send was billed as.
+
+        Not ``get_billed_category_display()``: the field carries no choices
+        on purpose (it records whatever category the plantilla had at send
+        time, and a category list added by Meta later must still store), so
+        the labels are looked up from the plantilla model instead --
+        imported inside the property to keep this module free of a top-level
+        ``core.models`` import, the same stance the "app.Model" strings above
+        take.
+
+        Read by templates/partials/plantillas/send_sent.html as
+        ``{{ sent_message.billed_category_display }}`` -- ``@property`` is
+        what lets a template read it like a plain attribute, no call needed.
+        """
+        # The import runs when the property is used, not when this module
+        # loads. Python caches imported modules, so after the first access it
+        # costs a couple of dictionary lookups. This file otherwise refers to
+        # core models only by "app.Model" strings (``template`` above,
+        # ``Conversation.contact``), so core.models is never imported at the
+        # top of it.
+        from core.models import MessageTemplate
+
+        # CATEGORY_CHOICES is a list of (stored value, label) pairs; dict()
+        # turns it into {"marketing": "Marketing", ...}. ``.get`` with the raw
+        # value as the default means an unknown or empty category comes back
+        # as is instead of raising -- the row still renders.
+        labels = dict(MessageTemplate.CATEGORY_CHOICES)
+        return labels.get(self.billed_category, self.billed_category)
 
     @property
     def is_inline_image(self) -> bool:

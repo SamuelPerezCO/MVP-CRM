@@ -43,4 +43,24 @@
   <div id="client-table">
     {% include "partials/crm/client_table.html" %}
   </div>
+
+  {% comment %}
+    One dialog for the whole table: each row's send button loads its own body
+    into it. Outside #client-table so it survives paging swaps.
+  {% endcomment %}
+  {% comment %}
+    How the mount works: the include tag renders send_dialog.html right here,
+    in this template's context (it needs none of it). A <dialog> element is
+    invisible until something calls showModal() on it -- shell.js does, when
+    a row's data-dialog-open button is clicked -- so nothing shows until
+    then. This panel is rendered both by the full page and by
+    core.views.crm_panel for the HTMX panel swap, so the dialog arrives with
+    the table every time the panel does. Paging goes through
+    core.views.clientes_table instead, which answers with client_table.html
+    alone and lands inside #client-table above; the dialog is not in there,
+    so turning a page neither replaces nor closes it. Its ids
+    (plantilla-send-dialog, plantilla-send-body) are what every row button
+    points at, which is why there is exactly one copy per page.
+  {% endcomment %}
+  {% include "partials/plantillas/send_dialog.html" %}
 </div>

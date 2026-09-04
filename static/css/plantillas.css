@@ -506,3 +506,213 @@
 .wa-bubble__button + .wa-bubble__button {
   border-block-start: 1px solid #e9edf2;
 }
+
+/* --- Enviar plantilla (dialog) --------------------------------------------
+   The modal that writes first to a client. Wider than the base .modal
+   because it puts the form and the WhatsApp preview side by side; the money
+   block is deliberately the most solid thing on the form, since every one of
+   these sends is billed. */
+
+/* Where these classes live: the <dialog class="modal modal--send"> is
+   templates/partials/plantillas/send_dialog.html, mounted once per screen
+   (CRM > Clientes and the Inbox's closed-window composer). htmx fills its
+   body with send_form.html (the picker, the variables, the price) and,
+   after a successful send, send_sent.html. Everything below styles those
+   two partials; the dialog behaviour (open, close, backdrop click) is
+   shell.js, and the shared shell rules are static/css/modal.css. */
+
+/* Modifier on the shared .modal shell: modal.css sets 700px, this dialog
+   needs room for two columns. min() takes the smaller of 860px and the
+   viewport minus a 16px gutter each side, so it never overflows a narrow
+   screen. */
+.modal--send { width: min(860px, calc(100vw - 32px)); }
+/* modal.css centres the title and subtitle for the template chooser it was
+   built for; a form reads better left-aligned. `start` is the
+   writing-direction-aware left, in keeping with the logical properties
+   used throughout, and the heading is sized down from the shell's 22px.
+   Both rules cover all three states of the dialog, since the "Cargando"
+   placeholder, the form and the sent view each render their own
+   .modal__title / .modal__subtitle. */
+.modal--send .modal__title { text-align: start; font-size: 19px; }
+.modal--send .modal__subtitle { text-align: start; }
+
+/* The <form data-send-form> in send_form.html; the margin separates it from
+   the phone-number subtitle above it. */
+.send-form { margin-block-start: 18px; }
+
+/* Two columns: the fields on the left, the WhatsApp preview on the right.
+   flex-start keeps the shorter column at its own height instead of
+   stretching it to match the taller one. */
+.send-form__grid {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+/* The left column takes whatever width the preview leaves. min-width: 0
+   matters: a flex item's default minimum width is its content's intrinsic
+   width, so without it a wide child (a long picker option, an unbreakable
+   string) could force the column wider and push the preview out of the
+   row. */
+.send-form__fields { flex: 1 1 0; min-width: 0; }
+
+/* The preview column keeps a fixed share so the bubble doesn't stretch. */
+/* .wa-preview itself (defined above) carries no flex rule, because the
+   Crear plantilla editor lays it out its own way, so the send grid adds one
+   through the descendant selector: no grow, no shrink, a fixed 300px. */
+.send-form__grid .wa-preview { flex: 0 0 300px; }
+
+/* The 24-hour notice at the top of the form: an info icon plus one of two
+   sentences (the window is open and free text would also do, or it is
+   closed and only a billed plantilla gets through). Same amber palette as
+   .wa-preview__note above, and fixed hexes for the same reason: there are
+   no amber tokens yet. */
+.send-form__window {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid #f2dfa8;
+  border-radius: 8px;
+  background: #fdf6e3;
+  color: #775b06;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* The inline icons/info.svg: never squeezed by a long sentence, nudged 1px
+   down so it sits on the first line of text. */
+.send-form__window .icon { flex-shrink: 0; width: 15px; height: 15px; margin-block-start: 1px; }
+
+/* The two small muted lines under the fields: __note is the "pendiente de
+   aprobación" warning under the picker, __hint the "lo que dejes en blanco"
+   line under the variable inputs. */
+.send-form__note,
+.send-form__hint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* The role="alert" paragraph at the top of the form when
+   core.views.plantilla_send re-renders it with ``error`` set (a refused
+   send, or a provider failure). --error-text is the text-safe red declared
+   at the top of this file. */
+.send-form__error {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fdecec;
+  color: var(--error-text);
+  font-size: 12.5px;
+}
+
+/* --- The money ------------------------------------------------------------ */
+
+/* The price card under the variable inputs, inside the fields column: this
+   send's cost, how it was worked out, and the month's running total. The
+   border and background tokens come from sidebar.css. */
+.send-cost {
+  margin-block-start: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: var(--content-bg);
+}
+
+/* One line of the card: a label on the left, a figure on the right, pushed
+   apart by space-between. It is a <p>, hence the margin reset. */
+.send-cost__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+/* The amount itself ("Sin costo", or currency and value). */
+.send-cost__row strong { font-weight: 700; }
+
+/* Modifier for the second row ("Plantillas enviadas este mes"): the top
+   border and padding draw a divider under this send's price, and the
+   smaller muted type marks it as context rather than the number to act on.
+   Same specificity as .send-cost__row, so it must stay below that rule for
+   its font-size and colour to win. */
+.send-cost__row--muted {
+  margin-block-start: 10px;
+  padding-block-start: 10px;
+  border-block-start: 1px solid var(--sidebar-border);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* The fine print under the price: the plantilla's category and the
+   per-message rate (with the country when the quote names one), and the
+   reason when a send comes out free. */
+.send-cost__meta {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* Right-aligned button row: Cancelar (data-dialog-close, which shell.js
+   turns into a close of the enclosing dialog) beside the Enviar submit,
+   whose label carries the price. send_sent.html reuses the same row for
+   "Ver la conversación" and "Listo". */
+.send-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-block-start: 20px;
+}
+
+/* What send_form.html renders instead of the form when there is no
+   sendable plantilla at all: a short explanation and a link to create one. */
+.send-form__empty {
+  margin-block-start: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.send-form__empty-title { margin: 0 0 6px; font-weight: 700; color: var(--text); }
+
+/* --- Sent ----------------------------------------------------------------- */
+
+/* send_sent.html, the body core.views.plantilla_send swaps into the dialog
+   after a successful send: the text that went out, what it cost, and the
+   way into the conversation it started. */
+.send-done { margin-block-start: 18px; }
+
+/* The sent text drawn as an outgoing bubble: light green, with the same
+   squared top-left corner as .wa-bubble. The body is rendered as plain
+   text, so pre-wrap is what keeps the plantilla's line breaks, and
+   overflow-wrap breaks a long URL rather than letting it widen the
+   dialog. */
+.send-done__body {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border-start-start-radius: 0;
+  background: #e7f7e2;
+  font-size: 13.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* "Cobrado: ..." (or "Sin costo para este envío"): the one number the
+   dialog stays open to show, hence the heavier weight. */
+.send-done__cost {
+  margin: 14px 0 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* The month's running total, and the ceiling when one is configured. */
+.send-done__month { margin: 4px 0 0; font-size: 12px; color: var(--muted); }

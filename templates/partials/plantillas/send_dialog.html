@@ -1,0 +1,91 @@
+{% comment %}
+  The "Enviar plantilla" modal shell -- how the CRM writes *first* to a
+  client (a new one has no open 24-hour window, and outside it WhatsApp only
+  delivers plantillas, charging for each).
+
+  Included once per screen that offers the send: the CRM's Clientes panel and
+  the Inbox's closed-window composer. The body is empty until opened: the
+  opener button carries both data-dialog-open (shell.js shows the dialog) and
+  an hx-get into #plantilla-send-body, so one click opens the dialog and
+  loads the form for *that* client -- one dialog per screen instead of one
+  per row.
+
+  Context: (none -- the body brings its own)
+{% endcomment %}
+
+{% comment %}
+  How the pieces fit, for a first read:
+
+  * This file is pulled in with Django's {% include %} tag from
+    templates/partials/crm/panels/clientes.html (once, below the client
+    table) and templates/partials/inbox/chat_thread.html (only when the
+    24h window is closed on a WhatsApp thread). {% include %} renders the
+    named file in place, handing it the including template's context; this
+    file reads nothing from it.
+  * <dialog> is a native HTML element. It is invisible until a script calls
+    showModal() on it. That call happens in static/js/shell.js: a click
+    listener delegated from document looks for [data-dialog-open] on the
+    clicked element or its nearest ancestor, reads the id in that
+    attribute, and calls showModal() on the element with that id
+    (skipping it if the dialog is already open). showModal() gives the focus
+    trap, the Escape key and the focus return for free; the dimmed page
+    behind it is the ::backdrop pseudo-element.
+  * The opener buttons (client_table.html, chat_thread.html) also carry
+    hx-get="/plantillas/enviar/<client id>/" with hx-target set to
+    #plantilla-send-body and hx-swap="innerHTML". htmx (loaded in
+    base.html) turns that into an AJAX GET to core.views.plantilla_send_form
+    and replaces the *children* of the body div with the HTML it answers
+    with (send_form.html). Neither request nor swap touches this <dialog>
+    element itself, so its open state and attributes survive every swap.
+  * Every later request in the flow -- the plantilla picker's hx-get and the
+    form's hx-post inside send_form.html -- targets the same div, so the
+    body walks through form -> re-rendered form -> send_sent.html while the
+    shell stays put.
+{% endcomment %}
+
+{% comment %}
+  The <dialog> element: id is the handle the opener buttons name in
+  data-dialog-open, and what core.tests_plantilla_envio counts to check the
+  Clientes page mounts the dialog once, not once per row. .modal is the shared shell in
+  static/css/modal.css (up to 700px wide, rounded, non-scrolling, tinted backdrop);
+  .modal--send in plantillas.css widens it to min(860px, 100vw - 32px) so
+  the form and the WhatsApp preview fit side by side and left-aligns the
+  title. aria-labelledby points at the h2 with id plantilla-send-title:
+  every body the server swaps in (send_form.html, send_sent.html) renders its
+  own h2 with that same id, so the reference stays valid after each swap.
+  aria-modal="true" tells assistive technology the page behind is inert.
+  data-dialog-backdrop-close is read by shell.js: a click whose press
+  (pointerdown) and release both land on the ::backdrop, outside the dialog
+  box, closes it; clicks on the dialog's own padding do not.
+{% endcomment %}
+<dialog class="modal modal--send" id="plantilla-send-dialog"
+        aria-labelledby="plantilla-send-title"
+        aria-modal="true"
+        data-dialog-backdrop-close>
+  {% comment %}
+    The X in the corner. data-dialog-close is the other half of the shell.js
+    contract: its click handler finds the closest enclosing <dialog> and
+    calls close() on it. This button sits outside .modal__body, so no htmx
+    swap ever removes it. {% include "icons/x.svg" %} inlines the SVG file
+    from templates/icons as markup (no image request; it takes the button's
+    text colour through stroke="currentColor").
+  {% endcomment %}
+  <button type="button" class="modal__close" data-dialog-close aria-label="Cerrar">
+    {% include "icons/x.svg" %}
+  </button>
+
+  {% comment %}
+    The swap target. Its id is what every hx-target in this flow names, and
+    hx-swap="innerHTML" means only what is *inside* this div is replaced.
+    .modal__body (modal.css) is the part that scrolls when the content is
+    taller than the viewport. The starting content below is a placeholder:
+    the heading exists so aria-labelledby resolves before the first load,
+    and "Cargando…" is what the agent sees during the first request. Nothing
+    clears the div on close, so a later open shows whatever body was loaded
+    last until the new response for the clicked client lands.
+  {% endcomment %}
+  <div class="modal__body" id="plantilla-send-body">
+    <h2 class="modal__title" id="plantilla-send-title">Enviar plantilla</h2>
+    <p class="modal__subtitle">Cargando…</p>
+  </div>
+</dialog>

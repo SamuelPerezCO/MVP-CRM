@@ -173,10 +173,28 @@ class MetaProvider(MessagingProvider):
         parameters in numeric order; any other key becomes a *named*
         parameter, matching templates authored with ``{{nombre}}``
         placeholders. The reserved key ``_language`` overrides the language
-        code for one send.
+        code for one send; ``_body`` (the caller's own rendering of the
+        template, for providers that have no template mechanism) is dropped
+        here -- Meta renders the approved copy from its own records, and
+        sending our text would be a second, unapproved body.
+
+        Both reserved keys are popped from a *copy* of ``params`` (the
+        ``dict(...)`` in the first statement below), so the caller's dict
+        comes back exactly as it went in. Whatever survives the two pops is
+        handed to :meth:`_build_template_parameters`, which is why ``_body``
+        has to go before that call and not after. The finished payload goes
+        through :meth:`_post_message`, and the ``wamid`` it returns is the
+        value handed back to ``services.send_template``.
         """
         params = dict(params or {})
         language = str(params.pop("_language", _DEFAULT_TEMPLATE_LANGUAGE))
+        # ``pop`` with a ``None`` default removes ``_body`` when present and is
+        # a no-op when absent, so callers written before this key existed
+        # still work. It must happen before ``_build_template_parameters``
+        # below: that helper treats every remaining key as a body variable,
+        # and a leftover ``_body`` would fail its all-numeric check and ship
+        # to Graph as a named parameter the approved template never declared.
+        params.pop("_body", None)
 
         payload = {
             "messaging_product": "whatsapp",

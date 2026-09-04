@@ -1,0 +1,99 @@
+{% comment %}
+  The Enviar plantilla dialog after a successful send: what went out, what it
+  cost, and the way into the conversation it started.
+
+  Replaces the form in place rather than closing the dialog, because the cost
+  is the part worth showing -- a modal that vanished would hide the one number
+  the agent should see. The response also carries HX-Trigger:
+  plantilla-enviada, which is what makes an open Inbox thread pick the message
+  up immediately instead of on its next poll.
+
+  Context: client, conversation, sent_message, budget
+{% endcomment %}
+
+{% comment %}
+  How this fragment is produced and consumed, for a first read:
+
+  * Rendered by core.views.plantilla_send, and only once
+    messaging.services.send_template has returned without raising -- every
+    refusal re-renders send_form.html instead. The view wraps it in an
+    HttpResponse and htmx, which sent the form's hx-post, swaps it into
+    #plantilla-send-body (send_dialog.html) with hx-swap="innerHTML",
+    replacing the form. Nothing here is an htmx request of its own.
+  * HX-Trigger is a response header htmx understands: it fires a DOM event
+    of the given name (here "plantilla-enviada") on the element that made
+    the request, as soon as the response arrives, and the event bubbles up
+    to <body>. The Inbox thread declares
+    hx-trigger="every 5s, plantilla-enviada from:body" on #chat-messages
+    (templates/partials/inbox/chat_thread.html), so it re-fetches its
+    messages at once. On the CRM screen nothing listens and the event
+    passes unnoticed.
+  * Context, as plantilla_send builds it:
+      client        the core.models.Client written to
+      conversation  the messaging.models.Conversation the message landed in:
+                    the client's open/pending WhatsApp thread if there was
+                    one, else the thread the view created for this send
+      sent_message  the messaging.models.Message row send_template created,
+                    body already filled in by core.plantillas.fill_body and
+                    billed_category / billed_amount / billed_currency copied
+                    from the pricing.Quote at send time
+      budget        messaging.pricing.budget_state(), re-read *after* the
+                    send so spent already includes this message
+{% endcomment %}
+
+{# Same id as the heading this fragment replaces, so the dialog's aria-labelledby keeps resolving after the swap. #}
+<h2 class="modal__title" id="plantilla-send-title">Plantilla enviada</h2>
+<p class="modal__subtitle">{{ client.full_name }} · {{ client.phone }}</p>
+
+<div class="send-done">
+  {# The text exactly as it went out, variables substituted; .send-done__body keeps its line breaks (white-space: pre-wrap). #}
+  <p class="send-done__body">{{ sent_message.body }}</p>
+
+  {% comment %}
+    billed_amount is a DecimalField, so it arrives as decimal.Decimal, and
+    a Decimal zero is false in a template if -- the else branch is a send
+    priced at nothing, the utility-inside-an-open-window rule in
+    messaging.pricing.quote. A failed send never reaches this template.
+    floatformat:4 prints four decimals. billed_category_display is a
+    @property on Message that maps the stored key ("marketing") to the
+    Spanish label from MessageTemplate.CATEGORY_CHOICES; read without
+    parentheses, like any attribute.
+  {% endcomment %}
+  <p class="send-done__cost">
+    {% if sent_message.billed_amount %}
+      Cobrado: {{ sent_message.billed_currency }}
+      {{ sent_message.billed_amount|floatformat:4 }}
+      ({{ sent_message.billed_category_display }})
+    {% else %}
+      Sin costo para este envío.
+    {% endif %}
+  </p>
+  {% comment %}
+    budget.spent and budget.budget are dict keys reached with the same
+    dotted lookup as attributes. budget.budget is None when no
+    MESSAGING_MONTHLY_BUDGET is configured, which hides the "de un tope"
+    clause; floatformat:2 prints the cap with two decimals.
+  {% endcomment %}
+  <p class="send-done__month">
+    Este mes llevas {{ budget.currency }} {{ budget.spent|floatformat:4 }}
+    en plantillas{% if budget.budget %} de un tope de {{ budget.budget|floatformat:2 }}{% endif %}.
+  </p>
+
+  {% comment %}
+    Two exits. The link is a full-page navigation, no hx-* on it: the url
+    tag reverses the "section" route to /s/inbox/, and the ?chat=<pk> query
+    string appended after it is what core.views._inbox_context (the Inbox
+    half of the section view) reads to open that thread (the test suite
+    pins it). "Listo" is type="button":
+    shell.js sees data-dialog-close and calls close() on the enclosing
+    <dialog>, nothing else -- an Inbox thread behind the dialog has already
+    refreshed on the HX-Trigger event described above.
+  {% endcomment %}
+  <div class="send-form__actions">
+    <a class="btn-ghost"
+       href="{% url 'section' 'inbox' %}?chat={{ conversation.pk }}">
+      Ver la conversación
+    </a>
+    <button type="button" class="btn-primary" data-dialog-close>Listo</button>
+  </div>
+</div>

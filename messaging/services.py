@@ -1,6 +1,6 @@
 """Application services: everything between the UI/webhook and the provider.
 
-Two entry points matter:
+Three entry points matter:
 
 * :func:`process_inbound_events` -- the "heavy" half of webhook handling,
   kept out of the view so it can move behind a task queue (Celery/RQ) later
@@ -9,17 +9,34 @@ Two entry points matter:
   is Django only), so it runs synchronously.
 * :func:`send_message` -- the only way the app sends a free-form text. It is
   where the 24-hour window rule lives.
+* :func:`send_template` -- the only way the app sends one of its own
+  plantillas, which is how a *new* client (nobody has written to us, so the
+  window was never open) gets reached at all. Where ``send_message`` has the
+  window rule, this one has the money: it prices the send, enforces the
+  monthly ceiling and freezes what it cost onto the row.
+
+The plantilla path end to end: the Enviar plantilla dialog POSTs to
+``core.views.plantilla_send``, which finds or opens the thread
+(:func:`find_open_conversation` / :func:`conversation_for_client`) and calls
+:func:`send_template`; that function prices the send with
+``messaging.pricing``, writes the ``Message`` row and hands the actual
+delivery to whichever provider ``settings.MESSAGING_PROVIDER`` names
+(``providers/registry.py``). :func:`sendable_templates` is the list the
+dialog's plantilla picker is built from.
 """
 
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from core.models import Client
+from core import plantillas
+from core.models import Client, MessageTemplate
 
+from . import pricing
 from .models import Conversation, ConversationTag, Message, Tag
 from .providers.registry import get_provider
 from .providers.types import InboundEvent, MessageStatus, status_rank
@@ -39,6 +56,29 @@ class SendWindowClosed(Exception):
 class SendFailed(Exception):
     """The provider rejected or errored on a send. The Message row is kept
     with ``status=failed`` so the thread shows what happened."""
+
+
+# Raised by send_template's first two checks, before any Message row exists.
+# core.views.plantilla_send catches it (together with BudgetExceeded) and
+# shows str(exc) as the dialog's error line, which is why the message text is
+# a Spanish sentence for the agent rather than a developer note.
+class TemplateNotSendable(Exception):
+    """The plantilla itself can't go out: switched off, or rejected by
+    WhatsApp. Raised before anything is billed or written."""
+
+
+class BudgetExceeded(Exception):
+    """The send would push this month past ``MESSAGING_MONTHLY_BUDGET``.
+
+    Template sends cost real money, so the ceiling is enforced here rather
+    than trusted to the UI -- a bulk loop and a hand-crafted POST hit the
+    same guard the dialog does.
+
+    Raised by :func:`send_template` after pricing and before the Message row
+    is written, so a refused send leaves no trace in the thread.
+    ``core.views.plantilla_send`` catches it and shows ``str(exc)`` (a
+    Spanish sentence naming the ceiling) as the dialog's error line.
+    """
 
 
 # --- Sending ---------------------------------------------------------------
@@ -85,6 +125,197 @@ def send_message(conversation: Conversation, body: str, user=None) -> Message:
     conversation.last_message_at = message.timestamp
     conversation.save(update_fields=["last_message_at"])
     return message
+
+
+def conversation_for_client(client: Client, channel: str = "whatsapp") -> Conversation:
+    """The thread a message to ``client`` belongs in, created if there is none.
+
+    This is what makes writing to a *new* client possible at all: someone
+    added by hand in the CRM (or imported from a list) has never written, so
+    no conversation exists to open in the Inbox. Reuses the same
+    open-or-create rule inbound messages follow, so a template send and the
+    customer's eventual reply land in one thread rather than two.
+
+    Called by ``core.views.plantilla_send`` only once a send is really about
+    to happen (the dialog itself uses :func:`find_open_conversation`, which
+    never creates) and by the tests. ``channel`` defaults to WhatsApp because
+    plantillas are a WhatsApp mechanism. Delegates to
+    :func:`_get_or_create_open_conversation`: an open or pending thread on
+    that channel is returned as is; otherwise a new ``Conversation`` row is
+    inserted with the model defaults (status ``open``, no messages, no
+    ``last_message_at`` yet).
+    """
+    return _get_or_create_open_conversation(client, channel)
+
+
+def send_template(
+    conversation: Conversation, template, values: dict | None = None, user=None
+) -> Message:
+    """Send one of the CRM's own plantillas, and record what it cost.
+
+    The counterpart to :func:`send_message`: no 24-hour window check, because
+    a template is precisely what the platform allows outside the window --
+    the way to reach a client who has never written. What replaces that check
+    is money. Every template send is billed, so this function:
+
+    * refuses a plantilla that is switched off or rejected
+      (:class:`TemplateNotSendable`) before anything is charged;
+    * prices the send (``messaging.pricing.quote``) and refuses it when it
+      would break the configured monthly ceiling (:class:`BudgetExceeded`);
+    * freezes the price onto the Message row, so a later rate change cannot
+      rewrite what this send cost.
+
+    ``values`` maps variable number -> text ({1: "Camila"}); anything missing
+    falls back to the plantilla's stored sample. Failure zeroes the amount
+    rather than deleting the row: nothing is billed for a message that never
+    left, and the thread still shows the attempt.
+
+    Inputs: ``conversation`` is the thread the message lands in (from
+    :func:`conversation_for_client`), ``template`` a
+    ``core.models.MessageTemplate``, ``values`` the agent's variable texts
+    keyed by int, ``user`` the request's user (stored as ``sent_by`` when
+    authenticated). Returns the saved ``Message`` row. Called by
+    ``core.views.plantilla_send`` (the dialog's POST) and by the tests; the
+    provider it talks to is whichever ``settings.MESSAGING_PROVIDER`` names.
+    """
+    # 1. Refuse before anything is billed or written. Both checks read
+    #    fields already on the template instance -- no query, no row.
+    #    is_active is the account's own on/off toggle; status is WhatsApp's
+    #    verdict, one of MessageTemplate.STATUS_CHOICES
+    #    (pendiente/aceptada/rechazada).
+    if not template.is_active:
+        raise TemplateNotSendable(
+            f"La plantilla «{template.name}» está desactivada."
+        )
+    if template.status == "rechazada":
+        raise TemplateNotSendable(
+            f"WhatsApp rechazó la plantilla «{template.name}»: no se puede enviar."
+        )
+
+    # 2. Render the text and price the send. fill_body swaps each {{n}} in
+    #    the body for values[n], falling back to the plantilla's stored
+    #    sample for that variable. The quote depends on the template's
+    #    category, the client's country and whether this thread's 24h window
+    #    is open (a utility template inside the window is free). A
+    #    brand-new thread has no inbound message yet, so its window reads as
+    #    closed and the full rate applies.
+    body = plantillas.fill_body(template, values)
+    quote = pricing.quote(
+        template, conversation.contact, window_open=conversation.is_within_24h_window
+    )
+    # 3. The monthly ceiling. would_exceed_budget sums the billed_amount of
+    #    this month's Message rows and adds quote.amount; with no
+    #    MESSAGING_MONTHLY_BUDGET configured it is always False. Nothing
+    #    locks between this check and the insert below, so two sends racing
+    #    each other can both pass.
+    if pricing.would_exceed_budget(quote.amount):
+        raise BudgetExceeded(
+            "Este envío supera el presupuesto mensual de plantillas "
+            f"({pricing.budget()} {quote.currency}). Súbelo o espera al "
+            "próximo mes."
+        )
+
+    # 4. Write the row before talking to the provider, same as send_message:
+    #    a crash mid-send leaves a ``queued`` row as evidence instead of a
+    #    lost message. objects.create() INSERTs immediately and returns the
+    #    instance with its pk. The three billed_* columns are copied from the
+    #    quote here and never recomputed -- that is what "frozen" means.
+    #    sent_by is None when there is no user or an anonymous one:
+    #    AnonymousUser.is_authenticated is False, and getattr() falls back to
+    #    False when the object has no such attribute at all.
+    message = Message.objects.create(
+        conversation=conversation,
+        direction=Message.OUTBOUND,
+        body=body,
+        status=MessageStatus.QUEUED.value,
+        sent_by=user if getattr(user, "is_authenticated", False) else None,
+        template=template,
+        billed_category=quote.category,
+        billed_amount=quote.amount,
+        billed_currency=quote.currency,
+    )
+
+    # 5. Hand the send to the active provider. get_provider() instantiates
+    #    the class registered under settings.MESSAGING_PROVIDER (always
+    #    ``fake`` while the test runner is active, otherwise whatever the
+    #    MESSAGING_PROVIDER environment variable names).
+    provider = get_provider()
+    # The provider contract (providers/base.py) wants the variables keyed by
+    # their number as strings ({"1": "Andrés"}). The keys arrive as ints
+    # (core.views._posted_values builds them with int()), hence str(); entries
+    # whose text is empty are dropped.
+    params = {str(number): text for number, text in (values or {}).items() if text}
+    # Reserved key: the template's language code (es, en_US...). The Meta
+    # provider puts it in its payload as template.language.code; Baileys
+    # discards it.
+    params["_language"] = template.language
+    # The rendered text, for providers with no template mechanism of their
+    # own (Baileys); ones with a real template API drop it.
+    params["_body"] = body
+    # send_template returns the provider's own message id (a string) on
+    # success and raises on anything else; that id is all we need back.
+    try:
+        provider_id = provider.send_template(
+            to=conversation.contact.phone, template_name=template.name, params=params
+        )
+    except Exception as exc:
+        # 6a. Any provider error (network, HTTP, a bug in the adapter) lands
+        #     here: the row stays, marked failed, so the thread shows the
+        #     attempt.
+        message.status = MessageStatus.FAILED.value
+        # Nothing is charged for a message the provider never accepted.
+        message.billed_amount = Decimal("0")
+        # Zero, not NULL: NULL means "never billed" (inbound rows, free-form
+        # replies), while 0 keeps this row inside pricing.spent_between's
+        # billed_amount__isnull=False filter and simply adds nothing. Decimal
+        # rather than float because the column is a DecimalField and binary
+        # floats cannot hold amounts like 0.0125 exactly.
+        # save(update_fields=...) issues an UPDATE on just these two columns.
+        message.save(update_fields=["status", "billed_amount"])
+        # logger.exception records the traceback at ERROR level; "from exc"
+        # chains the provider's error onto the SendFailed the view catches.
+        logger.exception("send_template failed for conversation %s", conversation.pk)
+        raise SendFailed(str(exc)) from exc
+
+    # 6b. Success: attach the provider's id. It is the key later status
+    #     webhooks (_apply_status_event) use to find this row and move it
+    #     from queued to sent/delivered/read.
+    message.provider_message_id = provider_id
+    message.save(update_fields=["provider_message_id"])
+
+    # 7. Bump the thread so it sorts to the top of the Inbox list
+    #    (Conversation.Meta.ordering is -last_message_at). Only
+    #    last_message_at moves: last_inbound_at is left alone, so our own
+    #    send does not open the 24h window -- only the customer writing back
+    #    does that.
+    conversation.last_message_at = message.timestamp
+    conversation.save(update_fields=["last_message_at"])
+    return message
+
+
+def sendable_templates():
+    """The plantillas the send dialog offers, best first.
+
+    Same stance as the Inbox's Respuestas rápidas picker: every active
+    plantilla that WhatsApp hasn't rejected, pendientes included. A real
+    account can only send *aceptada* ones, but this MVP has no approval
+    pipeline, so filtering them out would leave every freshly created
+    plantilla unusable. The UI badges them instead of hiding them.
+
+    Returns a lazy QuerySet: no query runs until it is iterated (the views
+    wrap it in ``list()``). Called by ``core.views._send_form_context`` to
+    fill the picker, and by ``plantilla_send_form`` / ``plantilla_send`` to
+    check that the id a request names is one the picker actually offered.
+    ``filter`` and ``exclude`` become a single SQL WHERE
+    (``is_active AND NOT status = 'rechazada'``).
+    """
+    return (
+        MessageTemplate.objects.filter(is_active=True)
+        .exclude(status="rechazada")
+        # "aceptada" sorts before "pendiente" alphabetically, which is also
+        # the order they should be offered in -- approved plantillas first.
+        .order_by("status", "name")
+    )
 
 
 # --- Inbound processing -----------------------------------------------------
@@ -248,19 +479,43 @@ def _client_channel(conversation_channel: str) -> str:
     return conversation_channel
 
 
-def _get_or_create_open_conversation(contact: Client, channel: str) -> Conversation:
-    """The active thread for this contact+channel, or a fresh one.
+def find_open_conversation(
+    contact: Client, channel: str = "whatsapp"
+) -> Conversation | None:
+    """The active thread for this contact+channel, or ``None``.
 
-    Only open/pending threads are reused. Resolved threads stay closed
-    history -- a new inbound after resolution starts a new conversation row,
-    so per-thread metrics survive the customer coming back.
+    Only open/pending threads count. Resolved ones stay closed history -- a
+    new inbound after resolution starts a new conversation row, so per-thread
+    metrics survive the customer coming back.
+
+    Read-only on purpose, and public for it: the send dialog needs to know
+    whether a thread (and so a 24h window) exists before deciding what to
+    charge, and merely *looking* must not create one.
+
+    Called by ``core.views._send_form_context`` (to price the dialog) and
+    ``core.views.plantilla_send`` (to know whether the send is opening a
+    thread), and by :func:`_get_or_create_open_conversation` below. Query
+    mechanics: ``filter`` picks this contact's threads on this channel,
+    ``exclude`` drops the resolved ones (open and pending stay),
+    ``order_by`` puts the most recent activity first and ``first()`` runs
+    the query with ``LIMIT 1``, returning that row or ``None``.
     """
-    conversation = (
+    return (
         Conversation.objects.filter(contact=contact, channel=channel)
         .exclude(status=Conversation.RESOLVED)
         .order_by("-last_message_at")
         .first()
     )
+
+
+def _get_or_create_open_conversation(contact: Client, channel: str) -> Conversation:
+    """The active thread for this contact+channel, or a fresh one."""
+    # Look first, create only on a miss. The lookup is the public read-only
+    # function above, so both apply the same "resolved threads don't count"
+    # rule. Conversation.objects.create() inserts the row with the model
+    # defaults: status open, unread_count 0, assigned_to NULL, and
+    # last_message_at / last_inbound_at NULL until a message lands.
+    conversation = find_open_conversation(contact, channel)
     if conversation is not None:
         return conversation
     return Conversation.objects.create(contact=contact, channel=channel)

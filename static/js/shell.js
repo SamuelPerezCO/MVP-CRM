@@ -560,6 +560,84 @@
   syncTemplateEditor();
 
   /* -------------------------------------------------------------------------
+   * Enviar plantilla dialog ([data-send-form]): the preview bubble follows
+   * the variable inputs as they are typed.
+   *
+   * Same substitution rule the server applies when it actually sends
+   * (core.plantillas.fill_body): a filled field wins, an empty one falls
+   * back to the plantilla's sample, and a variable with neither keeps its
+   * literal {{n}} so the hole stays visible. The raw body travels in the
+   * form's data-send-body attribute -- and everything is written with
+   * textContent, never markup.
+   * ---------------------------------------------------------------------- */
+
+  // The markup this works on is templates/partials/plantillas/send_form.html,
+  // which core.views.plantilla_send_form renders into the dialog's
+  // #plantilla-send-body on demand (the opener button's hx-get, then again
+  // on every change of the plantilla picker): a
+  // <form data-send-form data-send-body="..."> holding one
+  // <input name="var_n" data-sample="..."> per {{n}} in the body, and the
+  // shared whatsapp_preview.html column whose <p data-wa-body> the server
+  // has already filled in. That server render is the starting state; the
+  // code below only takes over once the agent types into a variable field,
+  // so with JS off the preview simply shows the last server render.
+
+  /** Rewrite the preview bubble inside `form` (the <form data-send-form>
+   *  element) from the raw body and the variable inputs as they stand right
+   *  now. Called by the delegated "input" listener below on every keystroke
+   *  inside a [data-send-form]; returns nothing -- its only effect is the
+   *  bubble's textContent. */
+  function syncSendPreview(form) {
+    // whatsapp_preview.html is included *inside* the <form>, so the bubble
+    // is found from the form itself and nothing outside the dialog is
+    // touched. No bubble means nothing to update.
+    var bubble = form.querySelector("[data-wa-body]");
+    if (!bubble) return;
+    // form.dataset.sendBody is the data-send-body attribute: the plantilla's
+    // body with its {{n}} holes still in it (the `|| ""` covers a form with
+    // no such attribute). The regex is the same pattern as
+    // TEMPLATE_VARIABLE_RE above, written out as its own literal: canonical
+    // {{1}}, {{2}}... only, no leading zeros. With a /g regex, replace()
+    // calls the function once per match, passing the whole token ("{{2}}")
+    // and the captured digits ("2", still a string), and splices whatever it
+    // returns into the output in place of that match.
+    bubble.textContent = (form.dataset.sendBody || "").replace(
+      /\{\{([1-9]\d*)\}\}/g,
+      function (token, number) {
+        // The input send_form.html rendered for this variable (var_1,
+        // var_2...); the digits go straight into the attribute selector.
+        var input = form.querySelector('[name="var_' + number + '"]');
+        // No input means the form did not render a field for this number;
+        // leave the token as it is rather than invent a value.
+        if (!input) return token;
+        // Priority, left to right: 1. what the agent typed (trim() so
+        // spaces alone count as empty), 2. the plantilla's sample from the
+        // input's data-sample attribute (an empty attribute is "" and falls
+        // through), 3. the literal {{n}}. The same order fill_body applies
+        // on the server, so the preview matches what will actually be sent.
+        return input.value.trim() || input.dataset.sample || token;
+      }
+    );
+  }
+
+  // Delegated from document rather than bound to the form, as everything in
+  // this file is (see the header note): the form does not exist on page load
+  // -- htmx loads it into the dialog on demand and replaces it again whenever
+  // the picker changes or a send is refused -- and a document-level listener
+  // keeps working across every one of those swaps with nothing to re-bind.
+  // "input" bubbles up from the field being typed in; closest() walks back
+  // up to the enclosing [data-send-form], and an event from any other form
+  // (the Crear plantilla editor has its own listener above) finds no such
+  // ancestor and is ignored. The `closest &&` guards against a target with
+  // no closest() at all, the same check the other listeners here make.
+  // Switching plantillas needs nothing here: the picker's own hx-get swaps
+  // the whole body in again, data-send-body and pre-filled bubble included.
+  document.addEventListener("input", function (event) {
+    var form = event.target.closest && event.target.closest("[data-send-form]");
+    if (form) syncSendPreview(form);
+  });
+
+  /* -------------------------------------------------------------------------
    * Tag modal live preview: the pill mirrors the name as it is typed and the
    * swatch as it is picked.
    * ---------------------------------------------------------------------- */

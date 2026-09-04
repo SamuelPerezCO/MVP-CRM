@@ -39,9 +39,27 @@
     </div>
   </header>
 
+  {% comment %}
+    Polls every 5s, and refreshes at once when the plantilla dialog reports a
+    send (core.views.plantilla_send answers with HX-Trigger) -- so the message
+    the agent just paid for shows up immediately.
+  {% endcomment %}
+  {% comment %}
+    How the trigger reads. hx-trigger takes a comma-separated list, and each
+    entry re-issues the hx-get (core.views.inbox_thread, which answers with
+    chat_messages.html); hx-swap="innerHTML" drops the answer inside this
+    div. "every 5s" is htmx's polling syntax. "plantilla-enviada from:body"
+    listens for a DOM event of that name on the <body> element: when
+    core.views.plantilla_send answers with the response header
+    "HX-Trigger: plantilla-enviada", htmx dispatches a bubbling CustomEvent
+    of that name on the element that made the request (the form inside the
+    send dialog), it bubbles up to body, and this listener refreshes the
+    thread. The dialog itself is mounted outside this div (bottom of this
+    file), so the refresh leaves it open on its "enviada" state.
+  {% endcomment %}
   <div class="chat-thread__messages" id="chat-messages"
        hx-get="{% url 'inbox_thread' active_conversation.pk %}"
-       hx-trigger="every 5s"
+       hx-trigger="every 5s, plantilla-enviada from:body"
        hx-swap="innerHTML">
     {% include "partials/inbox/chat_messages.html" %}
   </div>
@@ -81,14 +99,72 @@
       <button type="submit" class="btn-primary">Enviar</button>
     </form>
   {% else %}
-    {# WhatsApp's 24h rule, surfaced instead of a send that would bounce. #}
+    {% comment %}
+      WhatsApp's 24h rule, surfaced instead of a send that would bounce --
+      with the one thing that *does* work in its place. Plantillas are a
+      WhatsApp mechanism, so the button only appears on WhatsApp threads;
+      other channels keep the plain notice.
+    {% endcomment %}
+    {% comment %}
+      How this branch decides. window_open comes from
+      Conversation.is_within_24h_window via core.views._thread_context: False
+      when the client never wrote, or last wrote more than 24 hours ago.
+      active_conversation.channel is the Conversation row's own channel
+      column ("whatsapp" is one of its CHANNEL_CHOICES); it is checked twice
+      below, once to extend the notice with the cost warning and once to
+      render the button.
+    {% endcomment %}
     <div class="composer composer--closed">
       {% include "icons/info.svg" %}
       <p class="composer__notice">
         La ventana de 24 horas está cerrada: solo puedes reabrir esta
         conversación con una
-        <a href="{% url 'section' 'mensajeria' %}">plantilla aprobada</a>.
+        <a href="{% url 'section' 'mensajeria' %}">plantilla aprobada</a>{% if active_conversation.channel == "whatsapp" %}, que
+        se cobra por mensaje{% endif %}.
       </p>
+      {% comment %}
+        The same two-hook button as the CRM client row (client_table.html):
+        data-dialog-open makes shell.js call showModal() on the dialog with
+        that id, and hx-get (a button's default htmx trigger is click) fetches
+        core.views.plantilla_send_form in the background. That URL is keyed
+        by client, not by conversation, so active_conversation.contact.pk --
+        the ForeignKey to core.models.Client -- is what the url tag puts in
+        it. The response, send_form.html, replaces the contents
+        (hx-swap="innerHTML") of #plantilla-send-body inside the dialog
+        mounted at the bottom of this file. .composer__template
+        (static/css/inbox.css) pushes the button to the end of the notice row.
+      {% endcomment %}
+      {% if active_conversation.channel == "whatsapp" %}
+        <button type="button" class="btn-primary composer__template"
+                data-dialog-open="plantilla-send-dialog"
+                hx-get="{% url 'plantilla_send_form' active_conversation.contact.pk %}"
+                hx-target="#plantilla-send-body"
+                hx-swap="innerHTML">
+          Enviar plantilla
+        </button>
+      {% endif %}
     </div>
+  {% endif %}
+
+  {% comment %}
+    Mounted only where the button above exists, and outside the polled
+    #chat-messages region so an open dialog is never swapped out from under
+    the agent mid-send.
+  {% endcomment %}
+  {% comment %}
+    How the mount works: the include tag renders send_dialog.html here with
+    the current context (it uses none of it), and the <dialog> stays
+    invisible until shell.js calls showModal(). The condition mirrors the
+    button's, so the ids the button points at (plantilla-send-dialog,
+    plantilla-send-body) exist exactly when the button does. Opening another
+    conversation replaces this whole template (core.views.inbox_chat swaps
+    #chat-panel), which removes the dialog along with the thread; the poll
+    only re-fetches #chat-messages, which this sits after. The Clientes
+    panel mounts the same dialog on its own page; the two are different
+    sections and core.views.section renders one per page, so the ids never
+    clash.
+  {% endcomment %}
+  {% if not window_open and active_conversation.channel == "whatsapp" %}
+    {% include "partials/plantillas/send_dialog.html" %}
   {% endif %}
 </div>

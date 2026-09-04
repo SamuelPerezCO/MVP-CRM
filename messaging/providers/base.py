@@ -44,7 +44,37 @@ class MessagingProvider(ABC):
     @abstractmethod
     def send_template(self, to: str, template_name: str, params: dict) -> str:
         """Send a pre-approved template message. The only way to reach someone
-        outside the 24-hour window. Returns the provider's message id."""
+        outside the 24-hour window. Returns the provider's message id.
+
+        ``params`` carries the body variables keyed by their number
+        (``{"1": "Ana"}``) plus two reserved keys every provider must
+        tolerate: ``_language`` (the template's language code) and ``_body``
+        (the caller's own rendering, variables already substituted). A
+        provider with a real template API sends the *name* and drops
+        ``_body``; one without a template mechanism sends ``_body`` as text.
+
+        How a call arrives. The one production caller is
+        ``messaging.services.send_template`` (the "Enviar plantilla" flow):
+        ``to`` is the conversation contact's phone, ``template_name`` is the
+        plantilla's ``MessageTemplate.name``, and ``params`` is built there as
+        ``{str(number): text}`` for every variable with a non-empty value,
+        then ``_language`` = the plantilla's ``language`` field and ``_body``
+        = the text ``core.plantillas.fill_body`` produced from the same
+        values. Variable keys are therefore strings (``"1"``, never ``1``).
+
+        How an implementation should treat it. Copy ``params``
+        (``dict(params or {})``) before popping the reserved keys, so the
+        caller's dict is left untouched -- Meta and Baileys both do, and a
+        Meta test pins it. Raise on any failure instead of returning a made-up
+        id: the caller catches every exception, marks the Message row FAILED
+        and zeroes its billed amount, so nothing is charged for a send the
+        provider never accepted. Today: Meta puts ``_language`` in the
+        payload's language code, drops ``_body`` and turns the remaining keys
+        into body parameters; Baileys drops ``_language`` and POSTs ``_body``
+        as plain text (substituting into the name when it is missing); the
+        fake provider logs the whole dict and returns a random id; Twilio
+        raises ``NotImplementedError``.
+        """
 
     @abstractmethod
     def parse_webhook(self, request) -> list[InboundEvent]:

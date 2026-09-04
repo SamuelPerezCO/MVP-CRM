@@ -623,6 +623,28 @@
 .msg__status { display: grid; place-items: center; }
 .msg__status .icon { width: 14px; height: 14px; }
 
+/* Which plantilla a message went out with, and what it cost -- the billed
+   sends stay recognisable in the thread long after the send dialog closed. */
+/* The <span class="msg__billed"> that chat_messages.html adds inside
+   .msg__meta for any message with a template_id: the plantilla's name and,
+   when billed_amount is set, the currency and amount. It sits in the meta
+   row's 10.5px type; the padding, pill radius and light --hover-bg fill make
+   it read as a tag beside the timestamp. The last four declarations work
+   together: the text may not wrap, anything past 220px is clipped, and the
+   clipped edge shows an ellipsis, so a long plantilla name never widens the
+   bubble's meta row. (text-overflow needs a block-level box; being a flex
+   item of .msg__meta gives the span one.) */
+.msg__billed {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--hover-bg);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
 /* Tick colours follow WhatsApp's language: gray until read, blue on read,
    red on failure, a muted clock while queued. */
 .msg__status--read   { color: var(--accent); }
@@ -779,6 +801,19 @@
 
 .composer__notice { margin: 0; line-height: 1.45; }
 .composer__notice a { color: var(--accent); }
+
+/* The way out of a closed window: sending a plantilla. Kept to the end of
+   the row so the notice reads first and the (billed) action second. */
+/* The "Enviar plantilla" <button class="btn-primary composer__template"> in
+   chat_thread.html's closed-window composer, WhatsApp threads only (the
+   same button carries data-dialog-open for shell.js and the hx-get that
+   loads the form). It is the last item of .composer--closed, which is a
+   .composer and therefore a flex row of icon, notice and button:
+   margin-inline-start: auto takes up all the free space to its left, which
+   is what pushes it to the row's end, and flex-shrink: 0 keeps the label in
+   one piece when the notice is long -- the notice gives way instead.
+   inline-start is the logical left, as elsewhere in this file. */
+.composer__template { margin-inline-start: auto; flex-shrink: 0; }
 
 /* --- Client details (column 5 with a conversation open) ------------------- */
 

@@ -10,6 +10,7 @@ MVP de un CRM omnicanal para comercios, inspirado en plataformas tipo Treble/Lea
 - **Automatizaciones** — flujos de chatbots y banner de Academy.
 - **Mi comercio** — catálogo de productos con creación e importación.
 - **Campañas, Estadísticas y Mensajería** — métricas de mensajería y plantillas de WhatsApp.
+- **Envío a clientes nuevos** — escribir primero con una plantilla desde la fila del cliente o desde el Inbox, con el precio del envío a la vista y el gasto del mes registrado.
 
 Las secciones sin pantalla propia todavía (Performance HUB, Integraciones, etc.) muestran un placeholder automáticamente; agregar una sección nueva es una línea en [core/nav.py](core/nav.py).
 
@@ -134,6 +135,53 @@ Cuando lleguen credenciales reales de Twilio o Meta:
 
 El webhook verifica la firma antes de tocar el payload (401 si es inválida), es idempotente por `provider_message_id` (los reintentos del proveedor no duplican mensajes) y siempre responde 200 tras autenticar, registrando errores en el log en lugar de provocar tormentas de reintentos. El envío de texto libre está bloqueado fuera de la ventana de 24 horas ([messaging/services.py](messaging/services.py)) — fuera de ella solo cabe `send_template`, igual que en la plataforma real.
 
+## Escribir primero a un cliente nuevo (y lo que cuesta)
+
+Un cliente nuevo nunca ha escrito, así que su ventana de 24 horas jamás
+estuvo abierta: WhatsApp solo entrega **plantillas** — las mismas que se
+crean en Configuración de mensajería › Plantillas de WhatsApp — y **cobra
+cada una**. Ese envío tiene dos entradas, las dos abren el mismo diálogo:
+
+- **CRM › Clientes** — el icono de mensaje en la fila del cliente. Aparece
+  para cualquiera con teléfono cuyo canal sea WhatsApp o esté en blanco (el
+  cliente que alguien acaba de escribir a mano), no para los que llegaron por
+  Instagram o Messenger: las plantillas son un mecanismo de WhatsApp.
+- **Inbox** — cuando la ventana está cerrada, el compositor se cambia por el
+  botón «Enviar plantilla» de esa misma conversación.
+
+El diálogo elige plantilla, rellena sus variables `{{n}}` (lo que se deje en
+blanco sale con el valor de ejemplo), muestra la vista previa y **el precio
+del envío en el propio botón**, junto al total gastado en el mes. Al enviar,
+si el cliente no tenía conversación, se le crea una — el mensaje y su
+eventual respuesta quedan en el mismo hilo del Inbox.
+
+El precio se congela en la fila del mensaje (`billed_amount`,
+`billed_category`, `billed_currency`), así que un cambio de tarifas nunca
+reescribe lo que costó el pasado, y el hilo etiqueta cada envío con su
+plantilla y su importe. Un envío fallido no cobra nada.
+
+### Tarifas y tope de gasto
+
+Las tarifas viven en el entorno, no en el código
+([messaging/pricing.py](messaging/pricing.py)):
+
+```
+MESSAGING_TEMPLATE_RATES={"CO": {"marketing": "0.0125", "utility": "0.0022", "authentication": "0.0077"}, "": {"marketing": "0.0500", ...}}
+MESSAGING_CURRENCY=USD
+MESSAGING_MONTHLY_BUDGET=0     # 0 = sin tope
+```
+
+País (ISO) → categoría → precio por mensaje; la fila `""` cubre los países
+sin tarifa propia y el país sale del campo del cliente o del prefijo del
+teléfono. **La lista que trae el código es un ejemplo, no la tarifa real de
+Meta**: copia la de tu cuenta (panel de Meta › WhatsApp Manager) antes de
+mostrarle precios a nadie. Una plantilla *utility* enviada con la ventana de
+24 horas abierta no se cobra — regla de WhatsApp, no una optimización.
+
+`MESSAGING_MONTHLY_BUDGET` es un techo por mes calendario: el envío que lo
+cruzaría se rechaza en [messaging/services.py](messaging/services.py), antes
+de llamar al proveedor, así que ni un bulk ni un POST a mano lo esquivan.
+
 ## Deploy en Vercel
 
 El proyecto usa el soporte nativo de Vercel para Django (detecta `manage.py` y el `WSGI_APPLICATION` de [config/settings.py](config/settings.py) automáticamente): conecta el repo en vercel.com o corre `vercel deploy` y no hace falta build script.
@@ -157,7 +205,7 @@ Los archivos estáticos (`static/`) se recolectan y sirven automáticamente desd
 python manage.py test
 ```
 
-Cada sección tiene su propio archivo de tests en [core/](core/) (`tests.py`, `tests_crm.py`, `tests_embudos.py`, etc.); la capa de mensajería (idempotencia del webhook, rechazo de firmas, ventana de 24h) se prueba en [messaging/tests.py](messaging/tests.py).
+Cada sección tiene su propio archivo de tests en [core/](core/) (`tests.py`, `tests_crm.py`, `tests_embudos.py`, etc.); la capa de mensajería (idempotencia del webhook, rechazo de firmas, ventana de 24h) se prueba en [messaging/tests.py](messaging/tests.py), y el envío de plantillas a clientes nuevos en [messaging/tests_pricing.py](messaging/tests_pricing.py) (tarifas y gasto), [messaging/tests_envio_plantillas.py](messaging/tests_envio_plantillas.py) (el envío en sí) y [core/tests_plantilla_envio.py](core/tests_plantilla_envio.py) (el diálogo).
 
 ## Estructura
 

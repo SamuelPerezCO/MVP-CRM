@@ -32,7 +32,9 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Count
 
-from messaging import services as messaging_services
+# pricing is read-only from here (the dialog's quote and month-to-date
+# spend); the billing itself happens in messaging_services.send_template.
+from messaging import pricing, services as messaging_services
 from messaging.models import Conversation, Tag
 
 from . import (
@@ -99,7 +101,16 @@ def _thread_context(conversation) -> dict:
     return {
         "active_conversation": conversation,
         "active_conversation_id": conversation.pk,
-        "chat_messages": conversation.messages.all(),
+        # select_related: the thread labels template sends with the
+        # plantilla's name, which would otherwise be a query per bubble.
+        # How: ``conversation.messages`` is the reverse side of
+        # Message.conversation (related_name="messages"), a lazy QuerySet in
+        # Message.Meta order (timestamp, id). select_related("template") adds
+        # a LEFT OUTER JOIN to the plantilla table on that one SELECT, so
+        # ``message.template.name`` in chat_messages.html reads an object
+        # already loaded instead of firing a query for every bubble that has
+        # a template_id. Nothing runs until the template's {% for %} iterates.
+        "chat_messages": conversation.messages.select_related("template"),
         "window_open": conversation.is_within_24h_window,
         # Options for the header's assignment dropdown -- everyone configured
         # in APP_AGENTS, whether or not they have logged in yet.
@@ -822,6 +833,349 @@ def inbox_quick_replies(request):
             request=request,
         )
     )
+
+
+# --- Enviar plantilla -------------------------------------------------------
+#
+# One dialog, two mounts: a row action in CRM > Clientes (reaching a client
+# nobody has written to yet -- the "clientes nuevos" case) and the Inbox
+# composer once the 24-hour window has closed. Both fetch the same form and
+# post to the same endpoint, so the price shown, the rules enforced and the
+# record kept are identical wherever the send starts.
+#
+# The flow, in order: an opener button carrying data-dialog-open (shell.js
+# shows the <dialog> from send_dialog.html) and hx-get (htmx GETs
+# plantilla_send_form into #plantilla-send-body) opens the form; the picker's
+# hx-get re-fetches that same view with ?template=<pk>; the form's hx-post
+# lands in plantilla_send, which answers with either the form again (an
+# error line on top) or send_sent.html (success). Of the four helpers before
+# the two views, _send_form_context (which calls _template_variables) and
+# _selected_template serve the GET and the POST alike, so both render from
+# one recipe; _posted_values is only needed on the POST.
+
+
+def _template_variables(template, values=None) -> list[dict]:
+    """One entry per {{n}} in the body: its number, what the agent typed and
+    the plantilla's own sample (shown in the field's label as the "ejemplo"
+    hint and carried in its data-sample attribute, and what the send falls
+    back to when the field is left empty).
+
+    ``values`` is the ``{number: text}`` map :func:`_posted_values` builds
+    (None on a fresh GET). Each dict feeds one turn of send_form.html's
+    ``{% for variable in variables %}``: ``number`` names the input
+    (``var_<n>``), ``value`` refills it after a refused send, ``sample``
+    becomes the input's ``data-sample`` attribute (shell.js reads it for the
+    live preview) and the label's "ejemplo" hint. Called only by
+    :func:`_send_form_context`.
+    """
+    # ``values or {}`` turns None into an empty dict so .get() below works.
+    values = values or {}
+    # body_sample_values is a JSON list; element i is the sample for {{i+1}}
+    # (the editor stores them in numeric order, see plantillas.model_kwargs).
+    # ``or []`` covers a row whose JSON is null.
+    samples = template.body_sample_values or []
+    return [
+        {
+            "number": number,
+            "value": values.get(number, ""),
+            # Guarded index: a body with more {{n}} than stored samples gets
+            # "" for the extras instead of an IndexError. ``number`` is never
+            # below 1 (plantillas.VARIABLE_RE), so number - 1 is never negative.
+            "sample": samples[number - 1] if number - 1 < len(samples) else "",
+        }
+        # body_variables() returns the distinct numbers in first-appearance
+        # order, so a {{1}} used twice yields one input, not two.
+        for number in plantillas.body_variables(template.body)
+    ]
+
+
+def _posted_values(post) -> dict:
+    """The variable values out of a POST: ``var_1``, ``var_2``... keyed by
+    number. Non-numeric suffixes are ignored rather than 500-ing.
+
+    ``post`` is ``request.POST``, a QueryDict; its ``items()`` yields one
+    (name, last value) pair per field, so the picker's ``template`` field
+    and the CSRF token fall out at the ``var_`` filter. Returns int keys
+    (``{1: "Andrés", 2: ""}``) -- the key type :func:`_template_variables`
+    and ``plantillas.fill_body`` look up, and what ``services.send_template``
+    later turns into the provider's string keys. Called only by
+    :func:`plantilla_send`.
+    """
+    values = {}
+    for key, value in post.items():
+        if not key.startswith("var_"):
+            continue
+        try:
+            # key[4:] is whatever follows "var_"; int() raises ValueError for
+            # anything that is not a whole number ("var_abc", a bare "var_").
+            # strip() means a whitespace-only field arrives as "", which
+            # fill_body treats as not supplied and swaps for the sample.
+            values[int(key[4:])] = value.strip()
+        except ValueError:
+            continue
+    return values
+
+
+def _send_form_context(client, template=None, values=None) -> dict:
+    """Everything the send dialog renders: the plantilla picker, the chosen
+    plantilla's variables and preview, and the money.
+
+    Deliberately does *not* create a conversation -- opening a dialog must
+    not litter the Inbox with empty threads. It only looks for an existing
+    one, because whether that thread's 24h window is open changes the price
+    (a utility plantilla inside the window is free).
+
+    Returns the dict send_form.html renders (its header comment lists the
+    keys); the ``error`` key is added by the caller when there is one.
+    ``template`` None means "nothing asked for", and the first plantilla the
+    picker offers is chosen so the dialog never opens on an empty form.
+    Called by :func:`plantilla_send_form` on every GET and by
+    :func:`plantilla_send` before it sends, so both render from one recipe.
+    """
+    # 1. What the picker offers. sendable_templates() is a lazy QuerySet;
+    #    list() runs it once here. It is ordered aceptadas first, then by
+    #    name, so sendable[0] is the best default when nothing was asked for.
+    sendable = list(messaging_services.sendable_templates())
+    if template is None:
+        template = sendable[0] if sendable else None
+
+    # 2. Look for an existing thread without creating one.
+    #    find_open_conversation is read-only (this client's open or pending
+    #    WhatsApp thread, or None). is_within_24h_window is True only when
+    #    the *client* wrote within the last 24 hours; a client with no thread
+    #    has no window at all, hence the False.
+    conversation = messaging_services.find_open_conversation(client)
+    window_open = conversation.is_within_24h_window if conversation else False
+
+    # 3. The base context. The [] / None defaults keep the template's
+    #    {% if %} blocks quiet when there is no plantilla to show (its
+    #    "Todavía no hay plantillas" branch). budget_state() queries this
+    #    month's billed Message rows and returns spent, the ceiling (None
+    #    when unset) and the currency, printed under the price.
+    context = {
+        "client": client,
+        "conversation": conversation,
+        "window_open": window_open,
+        "templates": sendable,
+        "template": template,
+        "variables": [],
+        "preview": None,
+        "quote": None,
+        "budget": pricing.budget_state(),
+    }
+    # 4. Only with a plantilla in hand: its inputs, the preview and the price.
+    if template is not None:
+        context["variables"] = _template_variables(template, values)
+        # The static-mode dict whatsapp_preview.html renders server-side
+        # (header_text, body, footer, buttons). fill_body swaps each {{n}}
+        # for the typed value, else the plantilla's sample, else leaves the
+        # literal {{n}} visible -- the same rule shell.js applies live while
+        # the agent types, and the same text send_template will send.
+        context["preview"] = {
+            "header_text": template.header_text,
+            "body": plantillas.fill_body(template, values),
+            "footer": template.footer,
+            "buttons": template.buttons,
+        }
+        # quote() prices by the plantilla's category and the client's
+        # country, and window_open is what makes a utility plantilla free.
+        # Amounts are Decimal, as everywhere money is handled here. This is
+        # the number the Enviar button shows; send_template calls quote()
+        # again when it bills, so the display is never the authority.
+        context["quote"] = pricing.quote(template, client, window_open=window_open)
+    return context
+
+
+def _selected_template(raw, sendable):
+    """The plantilla a request asked for, or None. Only ones the picker
+    actually offered are accepted -- an id from anywhere else is treated as
+    no selection rather than sent.
+
+    ``raw`` is the ``template`` field as it arrives in the query string or
+    the POST body (a string, or None when absent); ``sendable`` is the same
+    list :func:`_send_form_context` builds. Compared as strings because the
+    request value is text and ``pk`` is an int. Called by both views.
+    """
+    # Absent or empty: the dialog's first open (no ?template yet) or a POST
+    # with nothing picked. The caller decides what None means: the GET
+    # falls back to the first plantilla, the POST refuses.
+    if not raw:
+        return None
+    # next() over a generator, with None as the default: the first offered
+    # plantilla whose pk matches, or None when none does -- no exception and
+    # no query, since ``sendable`` is already a list.
+    return next((option for option in sendable if str(option.pk) == str(raw)), None)
+
+
+def plantilla_send_form(request, client_id: int):
+    """Render the send dialog's body for one client.
+
+    Fetched when the dialog opens and again whenever the plantilla picker
+    changes -- the second case is why this returns the whole form: a
+    different plantilla means different variables, a different preview and
+    (categories are priced apart) a different price.
+
+    Triggered by two ``hx-get`` attributes pointing at this URL: the opener
+    button (a client row, or the closed composer), which also carries
+    ``data-dialog-open`` so shell.js shows the <dialog> in the same click,
+    and the picker <select> in send_form.html with ``hx-trigger="change"``.
+    On a GET htmx sends the triggering element's own value, so the picker's
+    request arrives as ``?template=<pk>`` -- and only that: the typed
+    variables are not resent, which is fine because a different plantilla
+    has different ones. Both set ``hx-target="#plantilla-send-body"`` and
+    ``hx-swap="innerHTML"``, so the HTML returned here replaces the dialog
+    body's contents. Answers 200 with the fragment, 404 when ``client_id``
+    matches nobody.
+    """
+    # get_object_or_404 is Client.objects.get(pk=...) except that a miss
+    # raises Http404, which Django turns into a 404 response, not a crash.
+    client = get_object_or_404(Client, pk=client_id)
+    # The offered list, to validate the requested id against.
+    # _send_form_context runs the same query again for the picker; the list
+    # is small and it keeps that helper usable on its own.
+    sendable = list(messaging_services.sendable_templates())
+    # request.GET.get("template") is the picker's value, or None on first
+    # open; _send_form_context then falls back to the first offered one.
+    template = _selected_template(request.GET.get("template"), sendable)
+
+    # render_to_string loads the template file, renders it with the context
+    # and returns the HTML as a string. ``request=request`` is what lets
+    # {% csrf_token %} inside the form produce the token the later POST
+    # needs. Unlike section(), there is no full-page branch: this is only
+    # ever a fragment, wrapped in a plain 200 HttpResponse.
+    return HttpResponse(
+        render_to_string(
+            "partials/plantillas/send_form.html",
+            _send_form_context(client, template),
+            request=request,
+        )
+    )
+
+
+def plantilla_send(request, client_id: int):
+    """Send the chosen plantilla to the client, and report what it cost.
+
+    Every refusal (no plantilla picked, one that can't be sent, the monthly
+    budget, a provider error) comes back as the same form with an error line
+    -- the dialog stays open on the values the agent already typed.
+
+    On success the answer is the dialog's "enviado" state plus an
+    ``HX-Trigger``, which is what makes an open Inbox thread show the message
+    at once instead of on its next five-second poll.
+
+    Triggered by the form's ``hx-post`` in send_form.html, with the same
+    ``hx-target``/``hx-swap`` as the GET, so whatever comes back replaces
+    the dialog body. Inputs, all in ``request.POST``: ``template`` (the
+    picker's pk), the ``var_<n>`` fields and the CSRF token. Outputs: 405 on
+    anything but POST, 404 for an unknown client, otherwise 200 with either
+    send_form.html (refused, ``error`` set) or send_sent.html (sent, plus
+    the ``HX-Trigger`` header). The rules and the billing live in
+    ``messaging.services.send_template``; this view only decides which
+    thread to send in and how to report the outcome.
+    """
+    # 1. POST only. HttpResponseNotAllowed is a 405 with an Allow: POST
+    #    header; visiting the URL must never be a way to spend money.
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    # 2. Read the request. get_object_or_404 raises Http404 (a 404
+    #    response) for an unknown client; _selected_template accepts only a
+    #    pk the picker offered; _posted_values collects the var_<n> fields
+    #    under int keys.
+    client = get_object_or_404(Client, pk=client_id)
+    sendable = list(messaging_services.sendable_templates())
+    template = _selected_template(request.POST.get("template"), sendable)
+    values = _posted_values(request.POST)
+
+    # 3. Build the form context *before* sending, with the typed values in
+    #    it. Every refusal below re-renders send_form.html from this same
+    #    dict, which is how the dialog keeps what the agent already typed.
+    context = _send_form_context(client, template, values)
+    if template is None:
+        # No plantilla, or a pk outside the picker (rejected, switched off
+        # or made up): the same answer either way, and nothing is sent.
+        context["error"] = "Elige una plantilla para enviar."
+        return HttpResponse(
+            render_to_string(
+                "partials/plantillas/send_form.html", context, request=request
+            )
+        )
+
+    # Only now is a thread created: the send is really happening.
+    # 4. find_open_conversation only looks (read-only); on a miss,
+    #    conversation_for_client inserts a fresh WhatsApp Conversation row.
+    #    opened_thread remembers which of the two happened, for the cleanup
+    #    in step 5.
+    conversation = messaging_services.find_open_conversation(client)
+    opened_thread = conversation is None
+    if opened_thread:
+        conversation = messaging_services.conversation_for_client(client)
+
+    # 5. The send itself. send_template checks the plantilla, prices the
+    #    send, enforces the monthly ceiling, writes the Message row with the
+    #    frozen price and only then calls the provider -- in that order, so
+    #    the two exceptions caught first are raised before any row exists.
+    try:
+        message = messaging_services.send_template(
+            conversation, template, values, request.user
+        )
+    except (
+        messaging_services.TemplateNotSendable,
+        messaging_services.BudgetExceeded,
+    ) as exc:
+        # str(exc) is the Spanish sentence the service builds for exactly
+        # this line, so it goes on the form as is. TemplateNotSendable
+        # cannot be raised for a plantilla out of sendable_templates() --
+        # the picker already applies its two rules -- so in practice this
+        # branch is the budget refusal.
+        context["error"] = str(exc)
+        # Refused before anything left, so the thread opened a moment ago
+        # holds nothing: an empty conversation sitting in the Inbox would
+        # claim a client was written to when they were not. (A SendFailed
+        # is different -- it keeps its failed message, and the thread with
+        # it.)
+        if opened_thread:
+            # Model.delete() removes the row inserted in step 4; it has no
+            # messages yet, so nothing cascades with it.
+            conversation.delete()
+    except messaging_services.SendFailed:
+        # The provider said no after the row was written: send_template
+        # left it as status=failed with billed_amount zeroed, which is what
+        # "no se cobró nada" promises, and the thread keeps the attempt.
+        context["error"] = (
+            "WhatsApp no aceptó el envío. No se cobró nada; inténtalo de nuevo."
+        )
+
+    # 6. Any refusal: the same form again, error line on top. The success
+    #    path below therefore only runs when ``message`` was assigned.
+    if context.get("error"):
+        return HttpResponse(
+            render_to_string(
+                "partials/plantillas/send_form.html", context, request=request
+            )
+        )
+
+    # Re-read the money *after* the send, so the total includes it.
+    # 7. Success. The budget from step 3 predates the new Message row,
+    #    hence the second budget_state() call. ``conversation`` is replaced
+    #    too: the context's copy came from find_open_conversation and is
+    #    None when this send opened the thread, and send_sent.html links to
+    #    ?chat=<conversation.pk>.
+    context["budget"] = pricing.budget_state()
+    context["sent_message"] = message
+    context["conversation"] = conversation
+    response = HttpResponse(
+        render_to_string(
+            "partials/plantillas/send_sent.html", context, request=request
+        )
+    )
+    # A response header htmx reads. Before swapping the body in, htmx
+    # dispatches a DOM event named "plantilla-enviada" on the element that
+    # made the request (the form), and the event bubbles up to <body>. The
+    # thread's hx-trigger="every 5s, plantilla-enviada from:body"
+    # (chat_thread.html) listens there and re-fetches #chat-messages at once.
+    response["HX-Trigger"] = "plantilla-enviada"
+    return response
 
 
 # --- Assignment -------------------------------------------------------------

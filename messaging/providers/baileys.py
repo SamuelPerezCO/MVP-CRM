@@ -64,11 +64,43 @@ class BaileysProvider(MessagingProvider):
         return self._send(to, body)
 
     def send_template(self, to: str, template_name: str, params: dict) -> str:
-        # No real template mechanism outside the Cloud API/BSPs -- render
-        # params into the template name as a best-effort plain-text stand-in
-        # so callers written against the provider interface still work.
-        rendered = template_name
-        for key, value in (params or {}).items():
+        # Called by messaging.services.send_template (the "Enviar plantilla"
+        # flow) with ``to`` = the contact's E.164 phone, ``template_name`` =
+        # the plantilla's name and ``params`` = the filled variables keyed by
+        # number plus the reserved ``_language`` and ``_body`` (the contract is
+        # spelled out in base.py). Returns whatever ``_send`` returns: the
+        # sidecar's message id, or a local stand-in when it sends none.
+        # No real template mechanism outside the Cloud API/BSPs, so a
+        # template goes out as plain text. ``_body`` is the caller's own
+        # rendering of it (services.send_template always supplies one, with
+        # the variables already filled in) -- by far the best stand-in.
+        # Without it, fall back to substituting into the template name, which
+        # is all a caller written against the bare interface gives us.
+        # 1. Work on a shallow copy so the two pops below do not alter the
+        #    caller's dict (Meta does the same). ``params or {}`` also turns a
+        #    ``None`` into an empty dict, so the pops and the loop never touch
+        #    ``None``.
+        params = dict(params or {})
+        # 2. ``_language`` has no meaning for plain text (there is no template
+        #    language to choose over WhatsApp Web), so it is discarded before
+        #    the loop rather than being treated as one more ``{{...}}``
+        #    placeholder to substitute. The ``None`` default makes a missing
+        #    key a no-op.
+        params.pop("_language", None)
+        # 3. ``pop`` returns the value and removes the key in one step. The
+        #    ``or`` covers both a missing ``_body`` (default ``""``) and an
+        #    explicitly empty one: either way the template name itself becomes
+        #    the text to substitute into, which is why the Baileys tests pass
+        #    a full sentence with ``{{name}}`` placeholders as the *name*.
+        rendered = params.pop("_body", "") or template_name
+        # 4. Whatever is left in ``params`` is a variable: each ``{{key}}`` in
+        #    the text is replaced by its value (in the f-string, doubled braces
+        #    each escape to one literal brace, so the five on each side of
+        #    ``key`` come out as a literal ``{{key}}``). When ``_body`` came
+        #    from services.send_template the variables were already filled in
+        #    by core.plantillas.fill_body, so the loop normally has nothing
+        #    left to replace; it matters on the template-name fallback path.
+        for key, value in params.items():
             rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
         return self._send(to, rendered)
 

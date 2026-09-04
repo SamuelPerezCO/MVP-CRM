@@ -261,6 +261,42 @@ MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER',
 # Fake provider: the shared secret dev webhooks must send in X-Fake-Signature.
 MESSAGING_FAKE_SECRET = os.environ.get('MESSAGING_FAKE_SECRET', 'dev-secret')
 
+# Template pricing (messaging/pricing.py). Sending a plantilla to a client
+# outside the 24h window is billed per message, by category and country, so
+# the CRM quotes the price before sending and records what each send cost.
+#   MESSAGING_TEMPLATE_RATES -- your account's real price list, as JSON:
+#     {"CO": {"marketing": "0.0125", "utility": "0.0022"}, "": {...}}
+#     The "" row prices every country without one of its own. Unset means the
+#     placeholder list in messaging/pricing.py, which is NOT Meta's real one.
+#   MESSAGING_CURRENCY -- what those numbers are denominated in.
+#   MESSAGING_MONTHLY_BUDGET -- optional ceiling per calendar month; a send
+#     that would cross it is refused. 0 (the default) means no ceiling.
+#
+# How they are consumed. Environment variables are always strings, so all
+# three are stored here as strings and parsed only where they are used, in
+# messaging/pricing.py: rates() json.loads MESSAGING_TEMPLATE_RATES and
+# overlays it country row by country row onto DEFAULT_RATES; currency()
+# returns MESSAGING_CURRENCY, falling back to USD when it is empty; budget()
+# turns MESSAGING_MONTHLY_BUDGET into a Decimal. Parsing there rather than
+# here means a typo cannot stop Django from starting: a malformed price list
+# is logged and the shipped defaults are used, a malformed budget is logged
+# and treated as 0 (no ceiling).
+#
+# Those functions re-read django.conf.settings on every call and cache
+# nothing, so the tests pin these with override_settings (see
+# core.tests_plantilla_envio, messaging.tests_pricing and
+# messaging.tests_envio_plantillas) and the change takes effect at once.
+# Unlike MESSAGING_PROVIDER above, none of the three is forced to a value
+# under TESTING.
+#
+# os.environ.get(NAME, default) returns the variable's value, or the default
+# when it is unset; load_dotenv at the top of this file has already copied
+# BASE_DIR/.env into os.environ, so a value in .env counts as set. The
+# "Precio de las plantillas" block of .env.example documents all three.
+MESSAGING_TEMPLATE_RATES = os.environ.get('MESSAGING_TEMPLATE_RATES', '')
+MESSAGING_CURRENCY = os.environ.get('MESSAGING_CURRENCY', 'USD')
+MESSAGING_MONTHLY_BUDGET = os.environ.get('MESSAGING_MONTHLY_BUDGET', '0')
+
 # Twilio (unused until providers/twilio.py is implemented).
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')

@@ -217,25 +217,78 @@ def body_variables(body: str) -> list[int]:
     return numbers
 
 
+def fill_body(template, values=None) -> str:
+    """A template's body with each {{n}} replaced by the value for ``n``.
+
+    ``values`` is a ``{number: text}`` map -- what an agent typed into the
+    send dialog. Anything it doesn't cover falls back to the template's own
+    sample for that variable (element i of body_sample_values always pairs
+    with {{i+1}}, see the editor's save path below), and a variable with
+    neither keeps its literal {{n}} so the hole is visible instead of being
+    sent as an empty gap.
+
+    Three callers, all passing a ``core.models.MessageTemplate``:
+    ``core.views._send_form_context`` renders the send dialog's preview
+    bubble with it (shell.js then mirrors the same rule live as the agent
+    types), ``messaging.services.send_template`` calls it again on the
+    posted values to produce the text that actually goes out, and
+    :func:`render_body` below calls it with no values at all. The keys of
+    ``values`` must be ``int`` -- ``core.views._posted_values`` builds them
+    with ``int()`` -- because the lookup below uses the integer parsed out
+    of the ``{{n}}`` match; a string key would never be found and the sample
+    would win instead. Returns a new ``str``; the template row is not
+    modified.
+    """
+    # None (render_body's case) becomes an empty dict, so .get() below needs
+    # no special case.
+    values = values or {}
+    # The editor's list of sample strings, element i for {{i+1}}. The
+    # JSONField defaults to a list, but ``or []`` also covers a row holding
+    # null, so the length check below never sees None.
+    samples = template.body_sample_values or []
+
+    # Callback for re.sub below: called once per {{n}} found in the body,
+    # given the Match object; whatever it returns is spliced in place of
+    # that match.
+    def substitute(match) -> str:
+        # group(1) is VARIABLE_RE's capture group -- the digits between the
+        # braces -- so number is the n of this {{n}}.
+        number = int(match.group(1))
+        # 1. What the agent typed wins. str() tolerates a non-string value;
+        #    strip() means whitespace-only counts as empty and falls through.
+        supplied = str(values.get(number, "")).strip()
+        if supplied:
+            return supplied
+        # 2. Otherwise the plantilla's own sample. index cannot go negative
+        #    (VARIABLE_RE only matches n >= 1); the upper bound guards a body
+        #    with more variables than stored samples, and ``samples[index]``
+        #    in the condition treats an empty-string sample as missing.
+        index = number - 1
+        if 0 <= index < len(samples) and samples[index]:
+            return samples[index]
+        # 3. Neither: group(0) is the whole matched text, so the literal
+        #    {{n}} stays in the output.
+        return match.group(0)
+
+    # re.sub with a function replaces every non-overlapping match, so a
+    # variable repeated in the body is substituted at each occurrence.
+    return VARIABLE_RE.sub(substitute, template.body)
+
+
 def render_body(template) -> str:
-    """A template's body with each {{n}} replaced by its sample value --
-    element i of body_sample_values always pairs with {{i+1}} (see the
-    editor's save path below).
+    """A template's body filled in with nothing but its own sample values.
 
     This is what the Inbox's Respuestas rápidas picker drops into the
     composer: the samples make the text sendable as-is, and anything without
     a sample keeps its {{n}} so the agent sees there is a blank to fill
     rather than silently sending a hole.
+
+    Kept under its own name so ``core.views.inbox_quick_replies`` (its only
+    caller) and the RenderBodyTests did not have to change when the send
+    dialog arrived: it is :func:`fill_body` with no agent values, so every
+    variable takes the sample path or stays literal.
     """
-    samples = template.body_sample_values or []
-
-    def substitute(match) -> str:
-        index = int(match.group(1)) - 1
-        if 0 <= index < len(samples) and samples[index]:
-            return samples[index]
-        return match.group(0)
-
-    return VARIABLE_RE.sub(substitute, template.body)
+    return fill_body(template)
 
 
 def form_state(post=None) -> dict:

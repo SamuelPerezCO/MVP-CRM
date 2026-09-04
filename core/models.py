@@ -59,6 +59,30 @@ class Client(models.Model):
         return self.channel == "whatsapp"
 
     @property
+    def can_receive_template(self) -> bool:
+        """Whether the CRM can write *first* to this client with a plantilla.
+
+        Broader than :attr:`has_whatsapp` on purpose: that one asks where the
+        client came *from*, and a client typed into the CRM by hand -- the
+        new client this feature exists for -- has no channel at all yet.
+        A number is enough to try WhatsApp; a client who arrived on another
+        channel is excluded, since plantillas are a WhatsApp mechanism.
+
+        Read by the Clientes table (templates/partials/crm/client_table.html)
+        as ``{% if client.can_receive_template %}`` to decide whether the row
+        gets its "Enviar plantilla" button. Being a ``@property`` it is read
+        like a field, with no parentheses, in Python and in templates alike.
+        It is a display gate only: the send views
+        (``core.views.plantilla_send_form`` and ``plantilla_send``) look the
+        client up by id and do not re-check it. The Inbox's own button tests
+        the conversation's channel instead (chat_thread.html).
+        """
+        # phone has no blank=True, so forms require it, but a row can still
+        # hold "" and bool("") is False. channel is blank=True, so "" is
+        # exactly what a row holds when no channel was ever chosen.
+        return bool(self.phone) and self.channel in ("", "whatsapp")
+
+    @property
     def flag(self) -> str:
         """The country as a flag emoji, built from regional indicator symbols.
 

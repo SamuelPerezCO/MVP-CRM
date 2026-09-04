@@ -1,0 +1,319 @@
+{% comment %}
+  The Enviar plantilla dialog's body: pick a plantilla, fill its variables,
+  see what the send will cost, send.
+
+  What core.views.plantilla_send_form returns -- on first open and on every
+  change of the plantilla picker (a different plantilla means different
+  variables, a different preview and, since categories are priced apart, a
+  different price) -- and what core.views.plantilla_send returns instead of
+  send_sent.html when it refuses a send, with an error line on top.
+
+  The price is not decoration: outside the 24-hour window every one of these
+  is billed, so the amount sits on the submit button itself and the month's
+  running total sits beside it. The server prices the send again before it
+  goes out (messaging.services.send_template) -- this is the display, not the
+  authority.
+
+  shell.js keeps the preview bubble in step with the variable inputs
+  ([data-send-form] + data-send-body); with JS off the preview simply shows
+  what the last server render produced.
+
+  Context: client, conversation, window_open, templates, template, variables,
+           preview, quote, budget, error
+{% endcomment %}
+
+{% comment %}
+  How this fragment is produced and consumed, for a first read:
+
+  * Two views in core/views.py render it with render_to_string(...,
+    request=request): plantilla_send_form (GET -- on open, and on every
+    change of the picker) and plantilla_send (POST -- only when it refuses
+    the send and hands the form back with an error line). Passing request=
+    is what lets {% csrf_token %} below find the token. The result is a
+    bare fragment, no base.html around it, because htmx drops it straight
+    into #plantilla-send-body (send_dialog.html) with hx-swap="innerHTML".
+  * Both views build the context with core.views._send_form_context:
+      client        the core.models.Client the send is addressed to
+      conversation  the client's open/pending WhatsApp thread, or None.
+                    Looked up with messaging.services.find_open_conversation,
+                    which never creates one -- opening the dialog leaves no
+                    empty thread behind.
+      window_open   conversation.is_within_24h_window; False with no thread
+      templates     list(messaging.services.sendable_templates()): active
+                    plantillas WhatsApp has not rejected, aceptadas first
+      template      the one picked (?template=<pk> on GET, the posted field
+                    on POST), else the first sendable, else None
+      variables     one {number, value, sample} dict per {{n}} in the body
+                    (core.views._template_variables)
+      preview       {header_text, body, footer, buttons} for the bubble; the
+                    body already filled by core.plantillas.fill_body
+      quote         a messaging.pricing.Quote (frozen dataclass)
+      budget        messaging.pricing.budget_state(): currency, spent,
+                    budget (None when no cap is configured), remaining
+      error         a Spanish sentence, present only on a refused POST
+  * Django template syntax used here: {{ x }} prints a value, HTML-escaped;
+    {% tag %} is logic; |filter transforms a value before it is printed. A
+    dotted name (client.full_name, quote.is_free, budget.spent) is resolved
+    in order as dict key, then attribute (a callable attribute is called
+    with no arguments right there), then numeric index -- so a dict key, a
+    @property and a method all read the same way, with no parentheses.
+{% endcomment %}
+
+{# Same id as the placeholder heading in send_dialog.html, which this fragment replaces: the dialog's aria-labelledby keeps resolving. #}
+<h2 class="modal__title" id="plantilla-send-title">
+  Enviar plantilla a {{ client.full_name }}
+</h2>
+{# full_name is a @property on core.models.Client (first + last name); phone is the E.164 number the send goes to. #}
+<p class="modal__subtitle">{{ client.phone }}</p>
+
+{% comment %}
+  Nothing to offer: an empty list is falsy, so no form is rendered and the
+  agent is pointed at where to create a plantilla. The url tag below
+  reverses the route named "section" in core/urls.py (s/<slug:key>/) to
+  /s/mensajeria/ -- the same value reverse("section", args=["mensajeria"])
+  gives in the tests -- so a renamed path never leaves a dead link here.
+{% endcomment %}
+{% if not templates %}
+  <div class="send-form__empty">
+    <p class="send-form__empty-title">Todavía no hay plantillas para enviar.</p>
+    <p>
+      Fuera de la ventana de 24 horas WhatsApp solo entrega plantillas, así que
+      primero crea una en
+      <a href="{% url 'section' 'mensajeria' %}">Configuración de mensajería ›
+      Plantillas de WhatsApp</a>.
+    </p>
+  </div>
+
+{% else %}
+  {% comment %}
+    The form, attribute by attribute:
+    - data-send-form marks it for shell.js, whose document-level "input"
+      listener finds the nearest [data-send-form] of the field being typed
+      in and re-renders the preview bubble from it (syncSendPreview).
+    - data-send-body carries the plantilla's raw body, {{n}} tokens
+      included, for that script (form.dataset.sendBody). Django escapes
+      quotes and angle brackets when printing it into the attribute; the
+      braces pass through and are never re-parsed as template syntax --
+      they are plain data by the time this renders.
+    - hx-post: on submit, htmx cancels the browser's own form submission
+      and sends an AJAX POST with every field in the form (template, the
+      var_n inputs, csrfmiddlewaretoken) to the route named plantilla_send
+      (/plantillas/enviar/<client id>/confirmar/), which is
+      core.views.plantilla_send.
+    - hx-target + hx-swap="innerHTML": whatever that view answers replaces
+      the contents of the dialog body, this form included. On a refusal it
+      is this same template with error set and the typed values kept; on
+      success it is send_sent.html. htmx also activates the hx-* attributes
+      in the swapped-in markup, so the re-rendered form works with no extra
+      JavaScript.
+    Deliberately no data-close-on-success (the attribute shell.js uses to
+    close other dialogs once their request succeeds): the reply to a
+    successful send is the cost, and it should stay on screen.
+  {% endcomment %}
+  <form class="send-form"
+        data-send-form data-send-body="{{ template.body }}"
+        hx-post="{% url 'plantilla_send' client.pk %}"
+        hx-target="#plantilla-send-body"
+        hx-swap="innerHTML">
+    {% comment %}
+      Renders <input type="hidden" name="csrfmiddlewaretoken" value="...">.
+      Django's CsrfViewMiddleware answers 403 to any POST without a valid
+      token; htmx sends every field of the form with the hx-post, which is
+      why the tag has to sit inside <form>.
+    {% endcomment %}
+    {% csrf_token %}
+
+    {% comment %}
+      Present only after core.views.plantilla_send refused: no plantilla
+      picked, TemplateNotSendable or BudgetExceeded raised by
+      messaging.services.send_template, or a SendFailed from the provider.
+      On a GET the key is absent, and a missing variable counts as false in
+      {% if %}. role="alert" makes screen readers announce the line as soon
+      as it is swapped in.
+    {% endcomment %}
+    {% if error %}
+      <p class="send-form__error" role="alert">{{ error }}</p>
+    {% endif %}
+
+    {% comment %}
+      Which rule applies to this client. window_open is the existing
+      thread's is_within_24h_window (the customer wrote in the last 24h) and
+      False when no thread exists -- the new-client case. The include
+      inlines the info icon SVG from templates/icons as markup.
+    {% endcomment %}
+    <p class="send-form__window">
+      {% include "icons/info.svg" %}
+      {% if window_open %}
+        {{ client.first_name }} escribió hace menos de 24 horas: también puedes
+        responderle texto libre, y gratis, desde el Inbox.
+      {% else %}
+        {{ client.first_name }} no ha escrito en las últimas 24 horas. WhatsApp
+        solo entrega plantillas fuera de esa ventana, y cobra cada envío.
+      {% endif %}
+    </p>
+
+    <div class="send-form__grid">
+      <div class="send-form__fields">
+        {% comment %}
+          The plantilla picker. hx-trigger="change" fires the request when
+          the selection changes. Because the verb is GET, htmx sends only
+          this element's own named value, as the query string
+          ?template=<pk>; the var_n inputs are not included (htmx adds the
+          enclosing form's fields only for non-GET requests), so the
+          re-rendered form starts with empty variable inputs. The view
+          (core.views.plantilla_send_form) reads request.GET.get("template"),
+          accepts it only if it is one of the sendable ids
+          (core.views._selected_template) and answers with this whole
+          template again; hx-target/hx-swap then replace the dialog body, so
+          the new plantilla's variables, preview and price arrive in one go.
+          The label sits after the <select> in the markup: .ffield--select
+          (plantillas.css) uses flex-direction: column-reverse to draw it
+          above the control.
+        {% endcomment %}
+        <div class="ffield ffield--select">
+          <select class="ffield__input" name="template" id="send-template"
+                  hx-get="{% url 'plantilla_send_form' client.pk %}"
+                  hx-target="#plantilla-send-body"
+                  hx-swap="innerHTML"
+                  hx-trigger="change">
+            {% comment %}
+              One <option> per sendable plantilla, its value the primary
+              key; "selected" marks the one the context calls template.
+              get_category_display is the method Django generates for a
+              field declared with choices= (MessageTemplate.category): it
+              returns the Spanish label ("Autenticación") for the stored key.
+            {% endcomment %}
+            {% for option in templates %}
+              <option value="{{ option.pk }}"
+                      {% if option.pk == template.pk %}selected{% endif %}>
+                {{ option.name }} · {{ option.get_category_display }}
+              </option>
+            {% endfor %}
+          </select>
+          <label class="ffield__label" for="send-template">Plantilla</label>
+        </div>
+
+        {% comment %}
+          sendable_templates keeps pendientes in the list (this MVP has no
+          approval pipeline), so the badge says what a real account would
+          do. status is one of MessageTemplate.STATUS_CHOICES (pendiente /
+          aceptada / rechazada); rechazadas never reach the picker.
+        {% endcomment %}
+        {% if template.status == "pendiente" %}
+          <p class="send-form__note">
+            Esta plantilla sigue pendiente de aprobación. Con una cuenta real de
+            WhatsApp solo se entregan las aceptadas.
+          </p>
+        {% endif %}
+
+        {% comment %}
+          One text input per {{n}} in the body, in order. name="var_<n>" is
+          the contract with core.views._posted_values, which parses the
+          numeric suffix back into a {n: text} dict. value is empty on a
+          fresh open and holds what the agent typed when the form comes back
+          after a refusal. placeholder=" " (a single space) is what makes
+          the floating label work: the CSS in plantillas.css treats
+          :placeholder-shown as "empty" and keeps the label inside the box
+          until the field has focus or content. data-sample is read by
+          shell.js (input.dataset.sample) as the preview's fallback for an
+          empty field -- the same rule core.plantillas.fill_body applies on
+          the server to the text that is actually sent.
+        {% endcomment %}
+        {% for variable in variables %}
+          <div class="ffield">
+            <input class="ffield__input" type="text"
+                   name="var_{{ variable.number }}"
+                   id="send-var-{{ variable.number }}"
+                   value="{{ variable.value }}"
+                   placeholder=" " autocomplete="off"
+                   data-sample="{{ variable.sample }}">
+            <label class="ffield__label" for="send-var-{{ variable.number }}">
+              Variable {{ variable.number }}{% if variable.sample %} · ejemplo: {{ variable.sample }}{% endif %}
+            </label>
+          </div>
+        {% endfor %}
+
+        {# Only when there is something to leave blank; the fallback is fill_body's sample rule described above. #}
+        {% if variables %}
+          <p class="send-form__hint">
+            Lo que dejes en blanco se envía con el valor de ejemplo de la
+            plantilla.
+          </p>
+        {% endif %}
+
+        {% comment %}
+          The money. quote is a messaging.pricing.Quote: is_free is a
+          @property (amount == 0); amount is what this send costs and
+          unit_amount the list price for the category + country, both
+          decimal.Decimal (never float, so 0.0125 is exact). floatformat:4
+          prints four decimals, so Decimal("0.012500") shows as 0.0125.
+          country is "" when the client's country is unknown (the price
+          list's fallback row applies) and the parenthesis is then hidden.
+          free_reason is a Spanish sentence set only for a utility plantilla
+          inside an open 24h window -- the one case where pricing.quote
+          zeroes amount while unit_amount keeps the list price.
+          budget is the dict from pricing.budget_state(): spent is the
+          Decimal sum of billed_amount over this month's Message rows, and
+          budget is the MESSAGING_MONTHLY_BUDGET cap or None when unset,
+          which is what hides " de <cap>". Display only: the server prices
+          and checks again inside messaging.services.send_template.
+        {% endcomment %}
+        <div class="send-cost">
+          <p class="send-cost__row">
+            <span>Costo de este envío</span>
+            <strong>
+              {% if quote.is_free %}
+                Sin costo
+              {% else %}
+                {{ quote.currency }} {{ quote.amount|floatformat:4 }}
+              {% endif %}
+            </strong>
+          </p>
+          <p class="send-cost__meta">
+            {{ template.get_category_display }} · tarifa {{ quote.currency }}
+            {{ quote.unit_amount|floatformat:4 }} por mensaje{% if quote.country %} ({{ quote.country }}){% endif %}
+          </p>
+          {% if quote.free_reason %}
+            <p class="send-cost__meta">{{ quote.free_reason }}</p>
+          {% endif %}
+          <p class="send-cost__row send-cost__row--muted">
+            <span>Plantillas enviadas este mes</span>
+            <span>
+              {{ budget.currency }} {{ budget.spent|floatformat:4 }}{% if budget.budget %} de {{ budget.budget|floatformat:2 }}{% endif %}
+            </span>
+          </p>
+        </div>
+      </div>
+
+      {% comment %}
+        {% include %} renders whatsapp_preview.html here with this
+        template's context, so it sees preview (header_text, body, footer,
+        buttons from _send_form_context) and draws the bubble server-side.
+        Its body element carries data-wa-body; because the include sits
+        inside this <form>, shell.js reaches it with
+        form.querySelector("[data-wa-body]") and rewrites its textContent on
+        every keystroke in the var_n inputs.
+      {% endcomment %}
+      {# Static mode: the bubble renders server-side from ``preview``. #}
+      {% include "partials/plantillas/whatsapp_preview.html" %}
+    </div>
+
+    {% comment %}
+      Cancelar is type="button", so it never submits: shell.js sees
+      data-dialog-close and calls close() on the enclosing <dialog>; nothing
+      is posted. The submit button fires the form's hx-post; its label
+      repeats the amount so what the agent confirms is a price, not just a
+      verb (quote.is_free is the same @property as above).
+    {% endcomment %}
+    <div class="send-form__actions">
+      <button type="button" class="btn-ghost" data-dialog-close>Cancelar</button>
+      <button type="submit" class="btn-primary">
+        {% if quote.is_free %}
+          Enviar sin costo
+        {% else %}
+          Enviar por {{ quote.currency }} {{ quote.amount|floatformat:4 }}
+        {% endif %}
+      </button>
+    </div>
+  </form>
+{% endif %}

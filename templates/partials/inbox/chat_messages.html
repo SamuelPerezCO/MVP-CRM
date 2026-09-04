@@ -23,6 +23,34 @@
       {% if message.display_body %}{{ message.display_body|linebreaksbr }}{% endif %}
     </div>
     <div class="msg__meta">
+      {% comment %}
+        Template sends are the billed ones; saying so on the bubble is how the
+        cost of writing first stays visible after the dialog is gone.
+      {% endcomment %}
+      {% comment %}
+        How it renders. message.template is the ForeignKey Message.template
+        (messaging.models), filled only by messaging.services.send_template
+        and NULL for free-form and inbound messages. The guard reads
+        template_id, the integer column Django keeps beside the relation, so
+        a message with no plantilla costs no query. Every view that renders
+        this partial builds chat_messages through core.views._thread_context,
+        whose select_related("template") joins the plantilla into the same
+        query, so message.template.name fetches nothing extra either.
+
+        billed_amount is a Decimal, or None when nothing was billed. The
+        inner if is falsy for None and for a zero amount alike, so only a
+        real charge prints; floatformat:4 shows it with four decimals,
+        because per-message rates are fractions of a cent. Deleting a
+        plantilla sets template_id to NULL on its messages (the ForeignKey
+        is on_delete=SET_NULL), which removes this badge from them although
+        the billing columns stay. The .msg__billed pill is styled in
+        static/css/inbox.css.
+      {% endcomment %}
+      {% if message.template_id %}
+        <span class="msg__billed">
+          {{ message.template.name }}{% if message.billed_amount %} · {{ message.billed_currency }} {{ message.billed_amount|floatformat:4 }}{% endif %}
+        </span>
+      {% endif %}
       <time>{{ message.timestamp|chat_stamp }}</time>
       {% if message.is_outbound %}
         <span class="msg__status msg__status--{{ message.status }}"

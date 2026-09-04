@@ -15,7 +15,13 @@ CREDS = {"username": "tester", "password": "secret-pw"}
 
 
 @override_settings(
-    TESTING=False, APP_LOGIN_USERNAME="tester", APP_LOGIN_PASSWORD="secret-pw"
+    TESTING=False,
+    # APP_AGENTS wins over the legacy pair in core.agents, so it has to be
+    # cleared here too -- otherwise a developer whose own .env defines agents
+    # (the documented way to log in) fails these tests for no real reason.
+    APP_AGENTS="",
+    APP_LOGIN_USERNAME="tester",
+    APP_LOGIN_PASSWORD="secret-pw",
 )
 class LoginGateTests(TestCase):
     def test_unauthenticated_request_redirects_to_login(self):

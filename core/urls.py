@@ -90,6 +90,41 @@ urlpatterns = [
     ),
     # The client table region (rows + pager), fetched on its own when paging.
     path("crm/clientes/tabla/", views.clientes_table, name="clientes_table"),
+    # Enviar plantilla. Keyed by client, not by conversation, because the
+    # point is reaching someone who has no conversation yet; shared by the
+    # CRM's client rows and the Inbox's closed-window composer. The GET
+    # renders the dialog (and re-renders it when the plantilla picker
+    # changes), the POST sends and bills.
+    #
+    # How the two routes are wired. ``<int:client_id>`` matches one run of
+    # digits, converts it to an int and passes it to the view as the keyword
+    # argument ``client_id``; a non-numeric segment matches nothing, so
+    # Django answers 404 before any view runs. ``name=`` is what the rest of
+    # the code uses to build the URL instead of hard-coding it: the
+    # ``{% url 'plantilla_send_form' ... %}`` on the opener buttons in
+    # client_table.html and chat_thread.html, the picker's hx-get and the
+    # form's hx-post in send_form.html, and ``reverse(...)`` in
+    # core.tests_plantilla_envio. path() matches the whole path, not a
+    # prefix, so the "confirmar/" route is a separate exact match rather than
+    # a sub-route of the first. Neither view checks for an HTMX request:
+    # both always answer with the HTML fragment htmx swaps into
+    # #plantilla-send-body, never a full page. Like every route here except
+    # the exempt ones, both sit behind core.middleware.LoginRequiredMiddleware.
+    #
+    # Read-only: renders the form, never sends. Fetched by the opener button
+    # (no query string) and by the picker (``?template=<pk>``).
+    path(
+        "plantillas/enviar/<int:client_id>/",
+        views.plantilla_send_form,
+        name="plantilla_send_form",
+    ),
+    # The form's hx-post target. The view itself answers 405 to anything
+    # but POST, so this URL cannot send by being visited.
+    path(
+        "plantillas/enviar/<int:client_id>/confirmar/",
+        views.plantilla_send,
+        name="plantilla_send",
+    ),
     # Placeholder target for the "+ Crear lista" button.
     path("crm/listas/nueva/", views.lista_create, name="lista_create"),
     # Embudos column 3, fetched on its own when a secondary-nav page is picked.

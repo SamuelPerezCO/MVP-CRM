@@ -59,6 +59,56 @@
 
           <td class="table__actions-col">
             <div class="row-actions">
+              {% comment %}
+                Writing first to this client: opens the shared dialog and
+                loads the form for this row in the same click. Offered
+                whenever WhatsApp could reach them -- including the client
+                typed in by hand, who has no channel yet and is exactly who
+                this is for.
+              {% endcomment %}
+              {% comment %}
+                How the click works. The button carries two independent hooks
+                that fire on the same click:
+
+                - data-dialog-open="plantilla-send-dialog": shell.js keeps one
+                  click listener on the document that looks for this
+                  attribute, finds the <dialog> with that id (send_dialog.html,
+                  included once by panels/clientes.html) and calls showModal()
+                  on it. The dialog opens at once, showing whatever its body
+                  holds -- the "Cargando…" placeholder on first open, the
+                  previous row's form afterwards -- until the response below
+                  lands.
+                - hx-get: htmx (a button's default trigger is click) issues a
+                  GET in the background to the URL named plantilla_send_form
+                  in core/urls.py; the url tag reverses that name plus this
+                  row's client.pk into "/plantillas/enviar/<pk>/".
+                  core.views.plantilla_send_form answers with send_form.html
+                  rendered for this client. hx-target="#plantilla-send-body"
+                  is the element the answer lands in (an id selector, looked
+                  up in the whole document) and hx-swap="innerHTML" means it
+                  replaces that element's contents, not the element itself.
+
+                Rows that arrive through a paging swap behave the same: htmx
+                processes hx-* attributes on any content it swaps in, and the
+                shell.js listener sits on the document, so nothing is re-bound.
+
+                can_receive_template is a property on core.models.Client: a
+                phone number and a channel of "" or "whatsapp". The visible
+                button is only the inlined SVG icon, so aria-label names the
+                client for screen readers and title gives the mouse tooltip.
+              {% endcomment %}
+              {% if client.can_receive_template %}
+                <button type="button" class="icon-btn icon-btn--bare"
+                        aria-label="Enviar plantilla a {{ client.full_name }}"
+                        title="Enviar plantilla"
+                        data-dialog-open="plantilla-send-dialog"
+                        hx-get="{% url 'plantilla_send_form' client.pk %}"
+                        hx-target="#plantilla-send-body"
+                        hx-swap="innerHTML">
+                  {% include "icons/message-dots.svg" %}
+                </button>
+              {% endif %}
+
               <button type="button" class="icon-btn icon-btn--bare"
                       aria-label="Ver {{ client.full_name }}">
                 {% include "icons/eye.svg" %}
