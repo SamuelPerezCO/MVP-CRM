@@ -271,7 +271,7 @@
           </p>
           <p class="send-cost__meta">
             {{ template.get_category_display }} · tarifa {{ quote.currency }}
-            {{ quote.unit_amount|floatformat:4 }} por mensaje{% if quote.country %} ({{ quote.country }}){% endif %}
+            {{ quote.unit_amount|floatformat:4 }} por mensaje entregado{% if quote.market %} · {{ quote.market }}{% endif %}
           </p>
           {% if quote.free_reason %}
             <p class="send-cost__meta">{{ quote.free_reason }}</p>

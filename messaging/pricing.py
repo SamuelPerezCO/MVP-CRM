@@ -4,7 +4,9 @@ The 24-hour window rule has a price tag behind it. A free-form reply inside
 the window is free; reaching someone *outside* it -- a client who has never
 written, which is exactly the "clientes nuevos" case -- means sending an
 approved template, and WhatsApp bills every one of those per message, priced
-by the template's **category** and the recipient's **country**.
+by the template's **category** and the recipient's **market** -- Meta's own
+name for a country ("Colombia") or a regional bucket ("Rest of Latin
+America") on its rate card.
 
 So this module answers two questions, and nothing else touches them:
 
@@ -14,11 +16,23 @@ So this module answers two questions, and nothing else touches them:
 * :func:`month_to_date` / :func:`budget` -- what has been spent this month,
   and the optional ceiling that stops the sending once it is reached.
 
-Rates are *configuration*, not code. :data:`DEFAULT_RATES` below is a
-starting point in the shape Meta's price list has, not an authoritative copy
-of it: Meta publishes per-country rates that change over time, and each
-account sees its own. Put the real ones in ``MESSAGING_TEMPLATE_RATES``
-(JSON, see .env.example) before quoting money at anyone.
+The numbers are Meta's own. :mod:`messaging.meta_rates` holds the published
+rate card -- transcribed from the CSVs Meta links from its pricing docs, both
+the card in force and the one already announced -- and :func:`card_for` picks
+by date, so a quote switches over on the day a new card takes effect.
+``MESSAGING_TEMPLATE_RATES`` (JSON, see .env.example) still overlays it, per
+market row, because a rate card is ultimately per *account*: a BSP contract,
+a promotional rate or a currency other than USD.
+
+Every quote is an **estimate**, and the code says so wherever it matters:
+Meta charges when a template is *delivered*, not when it is sent, and it
+bills at the category *it* has assigned the template. The authority is the
+``pricing`` object Meta puts on the delivery webhook. Two known ways this
+estimate errs, both deliberately upward: volume tiers (which discount utility
+and authentication once a portfolio's monthly volume crosses a threshold this
+CRM cannot see) and the free entry point window (72 free hours after replying
+to a Click-to-WhatsApp ad, which needs the inbound ``referral`` object the
+CRM does not record yet).
 
 How the pieces connect, for a first read of this file:
 
@@ -41,8 +55,12 @@ How the pieces connect, for a first read of this file:
   ``override_settings`` in a test, or changed on the next deploy, takes
   effect at once.
 * Only the functions under the "Spend" heading query the database. The
-  pricing half is arithmetic over settings plus the ``category`` of a
+  pricing half is arithmetic over the shipped card plus the ``category`` of a
   MessageTemplate and the ``country``/``phone`` of a Client.
+* The market resolution is where the money is won or lost: see
+  :func:`market_for_phone` for the longest-prefix rule and the +1 trap that
+  bills Dominican, Jamaican and Puerto Rican numbers at roughly three times
+  the North American rate.
 """
 
 # Stores the type hints in this file as strings instead of evaluating them
@@ -67,6 +85,10 @@ from django.conf import settings
 # another).
 from django.utils import timezone
 
+# Meta's published rate card, market->country map and calling-code tables.
+# Data only, generated from Meta's own CSV downloads -- see that module.
+from . import meta_rates
+
 # Named after the module ("messaging.pricing"), so log filtering can single
 # out the two "ignoring malformed ..." messages this file emits.
 logger = logging.getLogger(__name__)
@@ -76,48 +98,20 @@ logger = logging.getLogger(__name__)
 #
 # CATEGORIES is used two ways: quote() prices anything outside this tuple
 # as "marketing", and rates() rejects an override naming a category that
-# is not in it.
+# is not in it. "authentication-international" is deliberately absent: it is
+# a *rate column* on Meta's card, not a category a plantilla can be created
+# with, and it only applies to accounts sending more than 750K out-of-window
+# messages in 30 days (see meta_rates.AUTHENTICATION_INTERNATIONAL_MARKETS).
 #: The billable categories -- the same keys as
 #: ``core.models.MessageTemplate.CATEGORY_CHOICES``, because a template's
 #: category *is* what it is billed as.
 CATEGORIES = ("marketing", "utility", "authentication")
 
-# Every lookup can end here: rate_for() reads this row when a country has
-# no row of its own, or has one that lacks the category asked for.
-#: Country key for "no specific rate": the fallback row of the price list.
-DEFAULT_COUNTRY = ""
-
-# Prices are built with Decimal("0.0125") -- from a *string* -- on purpose:
-# Decimal(0.0125) would copy the float literal's binary rounding error into
-# the price. rates() copies this table before overlaying the env override,
-# so the constant itself is never mutated.
-#: Placeholder price list, USD per template message. Structure is the point:
-#: country (ISO 3166-1 alpha-2) -> category -> price, plus a "" fallback row
-#: for every country without one of its own. Colombia is spelled out because
-#: it is this CRM's home market (the same +57 assumption the contact upsert
-#: makes); every other country falls back until someone adds it.
-#:
-#: These numbers are illustrative. Replace them with your account's real
-#: rates via MESSAGING_TEMPLATE_RATES rather than editing this file, so a
-#: price change is a redeploy variable and not a code change.
-DEFAULT_RATES = {
-    "CO": {
-        "marketing": Decimal("0.0125"),
-        "utility": Decimal("0.0022"),
-        "authentication": Decimal("0.0077"),
-    },
-    DEFAULT_COUNTRY: {
-        "marketing": Decimal("0.0500"),
-        "utility": Decimal("0.0100"),
-        "authentication": Decimal("0.0300"),
-    },
-}
-
-# Module-private (leading underscore); read only by country_for().
-#: Phone prefixes we can turn into a country when the Client row has none.
-#: Same stance as ``services._upsert_contact``: recognise +57, guess nothing
-#: else -- a wrong country here would quote the wrong price.
-_PREFIX_COUNTRIES = {"+57": "CO"}
+# Meta's card has no "everything else" row in the sense a default usually
+# means -- "Other" is a real row on it ("All other countries"), and it is
+# where a number we cannot place lands.
+#: The market that prices a recipient we cannot resolve to a country.
+DEFAULT_MARKET = "Other"
 
 
 # ``@dataclass(frozen=True)`` writes __init__/__repr__/__eq__ from the field
@@ -126,20 +120,27 @@ _PREFIX_COUNTRIES = {"+57": "CO"}
 # template or copied onto a Message row is exactly what quote() computed.
 @dataclass(frozen=True)
 class Quote:
-    """What one template send will be billed.
+    """What one template send is expected to be billed.
 
-    ``unit_amount`` is the list price for this category+country; ``amount``
-    is what this send actually costs, which is zero when a rule makes it
-    free (``free_reason`` says which). Both travel to the UI, so the dialog
-    can show "gratis" *and* what it would otherwise have cost.
+    ``unit_amount`` is Meta's list price for this category+market;
+    ``amount`` is what this send actually costs, which is zero when a rule
+    makes it free (``free_reason`` says which). Both travel to the UI, so
+    the dialog can show "gratis" *and* what it would otherwise have cost.
+
+    ``market`` is Meta's own name for the price row -- a country
+    ("Colombia") or one of its regional buckets ("Rest of Latin America") --
+    so what the dialog shows is the row the invoice will use.
+
+    An estimate until the delivery receipt: Meta charges on delivery, at the
+    category it has assigned the template. See :func:`quote`.
     """
 
     # Who reads what: send_form.html prints ``currency``, ``amount``,
-    # ``unit_amount``, ``country`` and ``free_reason``; services.send_template
+    # ``unit_amount``, ``market`` and ``free_reason``; services.send_template
     # copies ``category``/``amount``/``currency`` onto the Message row as
     # billed_category/billed_amount/billed_currency.
     category: str
-    country: str
+    market: str
     currency: str
     unit_amount: Decimal
     amount: Decimal
@@ -156,20 +157,45 @@ class Quote:
         return self.amount == 0
 
 
-def rates() -> dict[str, dict[str, Decimal]]:
-    """The active price list: :data:`DEFAULT_RATES` overlaid with whatever
-    ``MESSAGING_TEMPLATE_RATES`` holds.
+def card_for(when=None) -> dict:
+    """The rate card in force on ``when`` (today by default).
 
-    Overlay per country row, so an env that prices only Mexico keeps every
-    other country's defaults instead of blanking the list. A malformed value
-    is logged and ignored -- a typo in an env var must not take the app down,
-    and falling back to the shipped list is the conservative outcome (it
-    quotes *a* price rather than pretending the send is free).
+    Meta publishes the next card before it takes effect -- both live in
+    :data:`meta_rates.RATE_CARDS` -- so this picks the newest one whose
+    effective date has arrived and the CRM switches over on the day itself
+    with no deploy. Before the earliest card's date (only reachable by
+    asking about the past) the earliest card is used.
     """
-    # 1. Start from a copy -- new outer dict, new inner dicts -- so the
-    #    overlay below never mutates DEFAULT_RATES itself. A mutated constant
-    #    would leak one call's override (or one test's) into the next.
-    table = {country: dict(row) for country, row in DEFAULT_RATES.items()}
+    when = when or timezone.localdate()
+    active = [card for card in meta_rates.RATE_CARDS if card["effective"] <= when]
+    return active[-1] if active else meta_rates.RATE_CARDS[0]
+
+
+def rates(when=None) -> dict[str, dict[str, Decimal]]:
+    """The active card as ``{market: {category: Decimal}}``, with
+    ``MESSAGING_TEMPLATE_RATES`` laid over it.
+
+    Meta's published card is the starting point; the env override exists
+    because a rate card is per *account* (a BSP contract, a promotional rate,
+    a currency other than USD) and because Meta can change a price between
+    releases of this code. Overlay is per market row, so an env that prices
+    only Mexico leaves every other market on Meta's numbers.
+
+    A malformed value is logged and ignored -- a typo in an env var must not
+    take the app down, and falling back to Meta's published card is the
+    conservative outcome (it quotes *a* price rather than pretending the
+    send is free).
+    """
+    # 1. Meta's card, converted from the strings meta_rates stores (Decimal
+    #    cannot be a literal, and a float would already have lost 0.0008).
+    #    A fresh dict each call, so the overlay below never mutates the
+    #    module-level card -- a mutated constant would leak one call's
+    #    override, or one test's, into the next.
+    card = card_for(when)
+    table = {
+        market: {category: Decimal(price) for category, price in row.items()}
+        for market, row in card["rows"].items()
+    }
 
     # 2. The env override, or "" when unset or None. Read on every call: it
     #    is one small JSON parse, and it means a changed setting
@@ -178,17 +204,17 @@ def rates() -> dict[str, dict[str, Decimal]]:
     if not raw:
         return table
 
-    # 3. Merge row by row. ``setdefault`` returns the country's existing row,
-    #    or inserts an empty one for a country the defaults do not know, so
-    #    an override that prices only MX adds MX and leaves CO and "" alone.
-    #    An empty-string key becomes the fallback row. Values go through
-    #    str() before Decimal so a JSON number (0.0125) is read from its
-    #    short text form rather than from the float's binary expansion.
+    # 3. Merge row by row, keyed by Meta's market names ("Colombia", "Rest of
+    #    Latin America", "North America"...). ``setdefault`` returns the
+    #    market's existing row, or inserts an empty one for a market the card
+    #    does not know, so an override that prices only Mexico adds nothing
+    #    else. Values go through str() before Decimal so a JSON number
+    #    (0.0125) is read from its short text form rather than from the
+    #    float's binary expansion.
     try:
         override = json.loads(raw)
-        for country, row in override.items():
-            country = str(country).upper() if country else DEFAULT_COUNTRY
-            merged = table.setdefault(country, {})
+        for market, row in override.items():
+            merged = table.setdefault(str(market), {})
             for category, price in row.items():
                 if category not in CATEGORIES:
                     raise ValueError(f"unknown category {category!r}")
@@ -196,11 +222,14 @@ def rates() -> dict[str, dict[str, Decimal]]:
     # Anything wrong -- invalid JSON, a top-level value or row that is not
     # an object, a price that is not a number, an unknown category -- lands
     # here. The *whole* override is discarded: ``table`` may already be
-    # half-merged, so a fresh copy of the defaults is returned instead of
-    # it. logger.exception records the traceback at ERROR level.
+    # half-merged, so Meta's card is rebuilt clean and returned instead.
+    # logger.exception records the traceback at ERROR level.
     except Exception:
         logger.exception("ignoring malformed MESSAGING_TEMPLATE_RATES")
-        return {country: dict(row) for country, row in DEFAULT_RATES.items()}
+        return {
+            market: {category: Decimal(price) for category, price in row.items()}
+            for market, row in card["rows"].items()
+        }
 
     return table
 
@@ -208,65 +237,105 @@ def rates() -> dict[str, dict[str, Decimal]]:
 def currency() -> str:
     """The currency every amount in this module is expressed in."""
     # ``or "USD"`` also covers MESSAGING_CURRENCY set to an empty string.
-    # Called by quote() (it becomes Quote.currency) and by budget_state().
+    # Meta's shipped card is in USD; set MESSAGING_CURRENCY (and the matching
+    # MESSAGING_TEMPLATE_RATES) together if the WABA is billed in another of
+    # the 16 currencies Meta publishes.
     return getattr(settings, "MESSAGING_CURRENCY", "USD") or "USD"
 
 
-def country_for(client) -> str:
-    """The price-list country for a client: their stored country, else what
-    the phone prefix says, else "" (the fallback row)."""
-    # Called by quote(). ``client`` is a core.models.Client in practice, but
-    # only ``.country`` and ``.phone`` are read, via getattr with a default
-    # and ``or ""`` so a missing attribute and an empty value behave alike.
-    #
-    # 1. The stored country wins when it looks like an ISO alpha-2 code (two
-    #    letters) -- the same test Client.flag applies.
+def market_for_phone(phone: str) -> str:
+    """The Meta market a phone number bills at, or "" if it cannot be placed.
+
+    Meta prices by the recipient's country calling code, so this is the
+    resolution that decides the price. Two subtleties, both of them real
+    money:
+
+    * **Longest match wins.** "1" (North America), "51" (Peru) and "507"
+      (Panama) are all prefixes of some number; matching the longest code
+      first is what keeps +507 out of North America.
+    * **+1 is not one market.** Dominican Republic, Jamaica and Puerto Rico
+      share calling code 1 with the US and Canada but bill at "Rest of Latin
+      America" -- 0.0740 against 0.0250 for marketing. A +1 number is
+      resolved by its three-digit NANP area code first.
+    """
+    digits = "".join(character for character in phone or "" if character.isdigit())
+    if not digits:
+        return ""
+
+    # NANP first: +1 followed by the area code. Checked before the plain
+    # code table so 1-809 never reads as plain "1".
+    if digits.startswith("1") and len(digits) >= 4:
+        market = meta_rates.MARKET_BY_NANP_AREA.get(digits[1:4])
+        if market:
+            return market
+
+    # Meta's codes are 1-3 digits; try the longest first.
+    for length in (3, 2, 1):
+        market = meta_rates.MARKET_BY_CALLING_CODE.get(digits[:length])
+        if market:
+            return market
+    return ""
+
+
+def market_for(client) -> str:
+    """The Meta market that prices a send to this client.
+
+    Only ``.country`` and ``.phone`` are read, via getattr with a default so
+    a missing attribute and an empty value behave alike.
+
+    The stored ISO country wins when there is one, because it is what a human
+    entered; the phone number answers otherwise. Anything unplaceable falls
+    to "Other", which is a real row on Meta's card rather than a guess.
+    """
+    # 1. The stored country, when it looks like an ISO alpha-2 code -- the
+    #    same test Client.flag applies. A country Meta has no row for (say
+    #    "EC") maps to its regional bucket, not to a missing row.
     country = (getattr(client, "country", "") or "").upper()
     if len(country) == 2 and country.isalpha():
-        return country
+        market = meta_rates.MARKET_BY_ISO.get(country)
+        if market:
+            return market
 
-    # 2. Otherwise read the country off the phone prefix. Only +57 is known,
-    #    so e.g. a Mexican number with a blank country field ends at step 3.
-    phone = getattr(client, "phone", "") or ""
-    for prefix, code in _PREFIX_COUNTRIES.items():
-        if phone.startswith(prefix):
-            return code
-    # 3. Unknown: "" selects the fallback row of the price list. Note that
-    #    this function reports the client's country, not the row that will
-    #    price it -- a client stored as "MX" returns "MX" even though
-    #    rate_for() then falls back to "" for lack of an MX row.
-    return DEFAULT_COUNTRY
+    # 2. Otherwise the phone number decides.
+    market = market_for_phone(getattr(client, "phone", "") or "")
+    # 3. "Other" is Meta's own catch-all row ("All other countries").
+    return market or DEFAULT_MARKET
 
 
-def rate_for(country: str, category: str) -> Decimal:
-    """List price for one category in one country, falling back to the ""
-    row for countries with no rates of their own."""
-    # Called by quote() with the country country_for() chose. Re-reads the
+def rate_for(market: str, category: str, when=None) -> Decimal:
+    """List price for one category in one market, per delivered message."""
+    # Called by quote() with the market market_for() chose. Re-reads the
     # merged table on each call (see rates()).
-    table = rates()
-    # The country's own row, or the "" row. ``or`` (rather than get()'s
+    table = rates(when)
+    # The market's own row, or the "Other" row. ``or`` (rather than get()'s
     # default) means an *empty* row falls back too, not only a missing one.
-    row = table.get((country or "").upper()) or table.get(DEFAULT_COUNTRY, {})
+    row = table.get(market) or table.get(DEFAULT_MARKET, {})
     price = row.get(category)
-    # A country row may exist without this category (an override that priced
-    # only MX marketing): borrow the category's price from the fallback row.
-    # Decimal("0") is the last resort, reachable only for a category the
-    # shipped fallback row does not list -- which quote() never asks for.
+    # A row may exist without this category (an override that priced only
+    # Mexico's marketing): borrow the category's price from "Other".
     if price is None:
-        price = table.get(DEFAULT_COUNTRY, {}).get(category, Decimal("0"))
+        price = table.get(DEFAULT_MARKET, {}).get(category, Decimal("0"))
     # ``price`` is already a Decimal in every table this module builds; the
     # wrap is a type guarantee, not a conversion.
     return Decimal(price)
 
 
-def quote(template, client, window_open: bool = False) -> Quote:
+def quote(template, client, window_open: bool = False, when=None) -> Quote:
     """Price one template send to one client.
 
+    An *estimate*, always: Meta charges when a template message is
+    **delivered**, not when it is sent, and it bills at the category it has
+    assigned the template rather than the one stored here. The authority is
+    the ``pricing`` object on the delivery webhook; this is what the CRM can
+    know beforehand, which is what the agent needs to see before pressing
+    Enviar.
+
     ``window_open`` is the recipient's 24-hour service window. It matters
-    because of a real WhatsApp rule and not as an optimisation: a *utility*
-    template sent while that window is open rides the free service
-    conversation, whereas marketing and authentication are billed either
-    way. Getting this wrong would over-quote every follow-up utility send.
+    because of a real WhatsApp rule and not as an optimisation: "Utility
+    templates sent within an open customer service window are free"
+    (developers.facebook.com/documentation/business-messaging/whatsapp/pricing),
+    whereas marketing is billed on every delivery. Getting this wrong would
+    over-quote every follow-up utility send.
 
     Called from two places with the same two kinds of object:
     ``core.views._send_form_context`` (to show the price in the dialog
@@ -278,18 +347,28 @@ def quote(template, client, window_open: bool = False) -> Quote:
     """
     # 1. The billable category. A value outside CATEGORIES (there is none
     #    today -- the model's choices are the same three) is priced as
-    #    marketing, the dearest of the three in the shipped list, so a
-    #    surprise over-quotes rather than under-quotes.
+    #    marketing, which is the dearest column in every market on Meta's
+    #    card, so a surprise over-quotes rather than under-quotes.
     category = template.category if template.category in CATEGORIES else "marketing"
-    # 2. The recipient's country, then the list price for category+country.
-    country = country_for(client)
-    unit = rate_for(country, category)
+    # 2. The recipient's market, then Meta's list price for category+market.
+    #    Volume tiers can only discount utility and authentication below
+    #    this; the CRM cannot see the portfolio's monthly volume, so the
+    #    quote is the undiscounted rate and errs high, never low.
+    market = market_for(client)
+    unit = rate_for(market, category, when)
 
-    # 3. The one rule that makes a send free: a utility template inside an
-    #    open window. ``amount`` starts equal to the list price and is
-    #    zeroed only then; ``unit_amount`` keeps the list price either way
-    #    so the dialog can still show it. The reason is user-facing Spanish
-    #    because send_form.html prints it verbatim.
+    # 3. The one rule that makes a send free here: a utility template inside
+    #    an open window (Meta reports it back as pricing.type
+    #    "free_customer_service"). ``amount`` starts equal to the list price
+    #    and is zeroed only then; ``unit_amount`` keeps the list price either
+    #    way so the dialog can still show it. The reason is user-facing
+    #    Spanish because send_form.html prints it verbatim.
+    #
+    #    Not modelled: the free entry point window (72 hours of free
+    #    messages after replying to a Click-to-WhatsApp ad). The CRM does not
+    #    record the inbound `referral` object that opens one, so a send
+    #    inside such a window is quoted as billable and Meta reports it free.
+    #    Erring that way keeps the estimate above the invoice.
     free_reason = ""
     amount = unit
     if window_open and category == "utility":
@@ -300,7 +379,7 @@ def quote(template, client, window_open: bool = False) -> Quote:
     #    copies these fields onto the Message row as they are.
     return Quote(
         category=category,
-        country=country,
+        market=market,
         currency=currency(),
         unit_amount=unit,
         amount=amount,

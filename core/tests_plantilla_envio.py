@@ -71,7 +71,7 @@ HTMX = {"HX-Request": "true"}
 # reason pricing.DEFAULT_RATES uses Decimal("..."): a JSON number would be
 # parsed as a float first, and 0.0125 has no exact binary form.
 RATES = json.dumps(
-    {"CO": {"marketing": "0.0125", "utility": "0.0022", "authentication": "0.0077"}}
+    {"Colombia": {"marketing": "0.0125", "utility": "0.0022", "authentication": "0.0077"}}
 )
 
 

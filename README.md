@@ -160,23 +160,46 @@ El precio se congela en la fila del mensaje (`billed_amount`,
 reescribe lo que costó el pasado, y el hilo etiqueta cada envío con su
 plantilla y su importe. Un envío fallido no cobra nada.
 
-### Tarifas y tope de gasto
+### Tarifas: las de Meta, ya incluidas
 
-Las tarifas viven en el entorno, no en el código
-([messaging/pricing.py](messaging/pricing.py)):
+El precio sale de la tarifa **publicada por Meta**, no de una lista inventada:
+[messaging/meta_rates.py](messaging/meta_rates.py) trae las tablas que Meta
+descarga desde su documentación de precios — la vigente (1 de julio de 2026) y
+la ya anunciada (1 de octubre de 2026), 38 y 47 mercados. `card_for()` elige
+por fecha, así que el CRM cambia de tarifa solo el día que Meta la aplica.
+
+Meta cobra **por mensaje entregado**, según la **categoría** de la plantilla y
+el **mercado** del destinatario. Un mercado es un país con tarifa propia
+(Colombia: 0,0125 USD marketing) o un grupo regional: Ecuador, Panamá,
+Uruguay, República Dominicana y una docena más pagan «Rest of Latin America»
+(0,0740). El mercado se resuelve por el código telefónico, con dos trampas ya
+resueltas en [messaging/pricing.py](messaging/pricing.py):
+
+- **Gana el prefijo más largo.** +507 (Panamá) empieza por +50 y +51 es Perú.
+- **+1 no es un solo mercado.** República Dominicana, Jamaica y Puerto Rico
+  comparten +1 con Estados Unidos y Canadá pero pagan «Rest of Latin America»:
+  0,0740 contra 0,0250. Se resuelven por el código de área NANP.
+
+Reglas de gratuidad que el CRM aplica: una plantilla *utility* enviada con la
+ventana de 24 horas abierta no se cobra (regla de WhatsApp). Lo que todavía
+**no** modela, y por eso la cotización puede quedar por encima de la factura
+pero nunca por debajo: los descuentos por volumen (utility y authentication,
+según el volumen mensual de todo el portafolio) y la ventana de free entry
+point (72 horas gratis tras responder a un anuncio Click-to-WhatsApp).
+
+Toda cotización es una **estimación** hasta la entrega: Meta cobra al
+entregar y con la categoría que *ella* le asignó a la plantilla. La verdad
+final viene en el objeto `pricing` del webhook de entrega.
 
 ```
-MESSAGING_TEMPLATE_RATES={"CO": {"marketing": "0.0125", "utility": "0.0022", "authentication": "0.0077"}, "": {"marketing": "0.0500", ...}}
+MESSAGING_TEMPLATE_RATES=...   # opcional: superpone tus tarifas sobre las de Meta
 MESSAGING_CURRENCY=USD
 MESSAGING_MONTHLY_BUDGET=0     # 0 = sin tope
 ```
 
-País (ISO) → categoría → precio por mensaje; la fila `""` cubre los países
-sin tarifa propia y el país sale del campo del cliente o del prefijo del
-teléfono. **La lista que trae el código es un ejemplo, no la tarifa real de
-Meta**: copia la de tu cuenta (panel de Meta › WhatsApp Manager) antes de
-mostrarle precios a nadie. Una plantilla *utility* enviada con la ventana de
-24 horas abierta no se cobra — regla de WhatsApp, no una optimización.
+`MESSAGING_TEMPLATE_RATES` solo hace falta si tu cuenta paga otras tarifas
+(contrato con un BSP, precio promocional) o factura en otra moneda; es un JSON
+con los nombres de mercado de Meta y se superpone fila por fila.
 
 `MESSAGING_MONTHLY_BUDGET` es un techo por mes calendario: el envío que lo
 cruzaría se rechaza en [messaging/services.py](messaging/services.py), antes

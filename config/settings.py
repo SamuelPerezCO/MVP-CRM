@@ -264,10 +264,12 @@ MESSAGING_FAKE_SECRET = os.environ.get('MESSAGING_FAKE_SECRET', 'dev-secret')
 # Template pricing (messaging/pricing.py). Sending a plantilla to a client
 # outside the 24h window is billed per message, by category and country, so
 # the CRM quotes the price before sending and records what each send cost.
-#   MESSAGING_TEMPLATE_RATES -- your account's real price list, as JSON:
-#     {"CO": {"marketing": "0.0125", "utility": "0.0022"}, "": {...}}
-#     The "" row prices every country without one of its own. Unset means the
-#     placeholder list in messaging/pricing.py, which is NOT Meta's real one.
+#   MESSAGING_TEMPLATE_RATES -- an overlay on Meta's published card, as JSON
+#     keyed by Meta's market names:
+#     {"Colombia": {"marketing": "0.0125"}, "Rest of Latin America": {...}}
+#     Unset means Meta's card as published (messaging/meta_rates.py). Set it
+#     when your account is billed at other rates (a BSP contract, a
+#     promotional rate) or in another currency.
 #   MESSAGING_CURRENCY -- what those numbers are denominated in.
 #   MESSAGING_MONTHLY_BUDGET -- optional ceiling per calendar month; a send
 #     that would cross it is refused. 0 (the default) means no ceiling.
