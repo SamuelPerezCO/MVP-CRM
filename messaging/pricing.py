@@ -537,3 +537,74 @@ def would_exceed_budget(amount: Decimal, now=None) -> bool:
     #    same instant could both pass; the Message row each one then writes
     #    makes the next check see both.
     return month_to_date(now) + amount > cap
+
+
+# --- Meta's own ledger -------------------------------------------------------
+#
+# Everything above is the CRM's arithmetic. These read what *Meta* says the
+# account was charged, which is the only figure that can be compared with an
+# invoice -- and even then Meta calls it approximate.
+
+
+#: Meta spells a category three ways across its own surfaces: hyphenated and
+#: lower case in the status webhook (``authentication-international``),
+#: upper case with an underscore on the analytics endpoint
+#: (``AUTHENTICATION_INTERNATIONAL``). One canonical form here, so a webhook
+#: verdict and an analytics row about the same message compare equal.
+def canonical_category(value: str) -> str:
+    """Meta's category in one spelling: lower case, hyphen-separated."""
+    return (value or "").strip().lower().replace("_", "-")
+
+
+def crm_spend_by_category(start, end=None) -> dict:
+    """What the CRM's own ledger says it spent in a window, per category.
+
+    The counterpart to :func:`meta_spend_by_category`: same window, same
+    shape, so the two can be subtracted. Amounts are the ``billed_amount``
+    frozen on each Message and then corrected by Meta's delivery receipt
+    (``services._apply_pricing``), so this is already Meta-informed per
+    message -- the sweep exists to catch what per-message reconciliation
+    cannot see, such as a message the webhook never arrived for.
+    """
+    from django.db.models import Sum
+
+    from .models import Message
+
+    queryset = Message.objects.filter(
+        billed_amount__isnull=False, timestamp__gte=start
+    )
+    if end is not None:
+        queryset = queryset.filter(timestamp__lt=end)
+
+    totals = {}
+    rows = queryset.values("billed_category").annotate(total=Sum("billed_amount"))
+    for row in rows:
+        totals[canonical_category(row["billed_category"])] = row["total"] or Decimal("0")
+    return totals
+
+
+def meta_spend_by_category(data_points) -> dict:
+    """Meta's analytics data points folded into ``{category: cost}``.
+
+    ``cost`` is a float in Meta's payload; it becomes a Decimal via ``str``
+    so the value is read from its short text form rather than the float's
+    binary expansion. A point with no ``cost`` key is counted as unknown, not
+    as zero: Meta omits cost entirely for an account billed through a
+    solution partner's credit line, and reporting that as "spent nothing"
+    would be a lie the size of the whole invoice.
+
+    Returns ``{category: Decimal}`` plus two bookkeeping keys under
+    ``"_meta"``: how many points carried no cost, and the total volume.
+    """
+    totals, missing, volume = {}, 0, 0
+    for point in data_points or []:
+        volume += int(point.get("volume") or 0)
+        if "cost" not in point or point.get("cost") is None:
+            missing += 1
+            continue
+        category = canonical_category(point.get("pricing_category"))
+        totals[category] = totals.get(category, Decimal("0")) + Decimal(
+            str(point["cost"])
+        )
+    totals["_meta"] = {"points_without_cost": missing, "volume": volume}
+    return totals

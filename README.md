@@ -222,6 +222,30 @@ porque puede ser un borrador todavía sin enviar a revisión. Requiere
 `MESSAGING_PROVIDER=meta`, `META_WABA_ID` y un token con el permiso
 `whatsapp_business_management`.
 
+### Contrastar con la contabilidad de Meta
+
+```bash
+python manage.py meta_spend                # el mes en curso
+python manage.py meta_spend --month 2026-08
+```
+
+El CRM lleva su propio libro: un precio congelado en cada envío y corregido
+por el acuse de entrega. Eso es por mensaje, y solo ve los mensajes cuyo acuse
+llegó. Este barrido le pregunta a Meta (`pricing_analytics` sobre la WABA) qué
+cobró en toda una ventana y muestra la diferencia por categoría — así se nota
+un webhook perdido, un envío hecho fuera de este CRM o una tarifa mal puesta.
+
+```
+  categoría                             Meta           CRM          dif.
+  marketing                           0.0375        0.0125        0.0250
+  utility                             0.0008        0.0022       -0.0014
+```
+
+Dos salvedades que el propio comando imprime: Meta describe estas cifras como
+**aproximadas** (manda la factura), y a una cuenta facturada a través de un
+socio (BSP) Meta le **oculta el costo** — entonces el comando dice eso, con el
+volumen entregado, en vez de reportar cero.
+
 ### La verdad final: lo que Meta dice que cobró
 
 Con `MESSAGING_PROVIDER=meta`, cada acuse de entrega trae un objeto `pricing`

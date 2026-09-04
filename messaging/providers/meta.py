@@ -506,6 +506,91 @@ class MetaProvider(MessagingProvider):
             params = None
         return rows
 
+    def fetch_account(self) -> dict:
+        """The WABA's own billing-relevant fields.
+
+        ``currency`` matters because :meth:`fetch_pricing_analytics` reports
+        a bare ``cost`` number with no currency attached -- this is what it
+        is denominated in. ``is_shared_with_partners`` and ``ownership_type``
+        matter because Meta *withholds* cost entirely from an account billed
+        through a solution partner's credit line, so a report of zero there
+        means "not visible", not "nothing spent". ``timezone_id`` is the
+        timezone analytics buckets and monthly tier resets follow.
+        """
+        if not settings.META_ACCESS_TOKEN or not settings.META_WABA_ID:
+            raise RuntimeError(
+                "Meta analytics are not configured: set META_ACCESS_TOKEN and "
+                "META_WABA_ID (see .env.example)"
+            )
+        response = requests.get(
+            f"{_GRAPH_BASE}/{_GRAPH_API_VERSION}/{settings.META_WABA_ID}",
+            params={
+                "fields": "id,name,currency,timezone_id,ownership_type,"
+                          "is_shared_with_partners"
+            },
+            headers={"Authorization": f"Bearer {settings.META_ACCESS_TOKEN}"},
+            timeout=_REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def fetch_pricing_analytics(
+        self, start, end, granularity: str = "DAILY", dimensions=("PRICING_CATEGORY", "PRICING_TYPE")
+    ) -> list[dict]:
+        """What Meta says the account was charged, bucket by bucket.
+
+        ``GET /{WABA_ID}?fields=pricing_analytics.start(..).end(..)...`` --
+        a *field expression*, not a normal edge: the parameters go inside the
+        field name rather than in the query string, which is why this builds
+        a string instead of passing a params dict.
+
+        ``start``/``end`` are datetimes (converted to the unix seconds Meta
+        wants). Each returned data point carries ``volume`` (messages
+        delivered) and ``cost``, plus whichever of country/phone/
+        pricing_category/pricing_type/tier were asked for in ``dimensions``.
+
+        Two things to know about ``cost``. It is described by Meta as
+        *approximate* -- the invoice is the record of truth -- and it is
+        absent entirely when the account rides a solution partner's credit
+        line, in which case every point comes back without it. Callers must
+        treat a missing cost as unknown rather than as zero.
+        """
+        if not settings.META_ACCESS_TOKEN or not settings.META_WABA_ID:
+            raise RuntimeError(
+                "Meta analytics are not configured: set META_ACCESS_TOKEN and "
+                "META_WABA_ID (see .env.example)"
+            )
+
+        field = (
+            f"pricing_analytics.start({int(start.timestamp())})"
+            f".end({int(end.timestamp())})"
+            f".granularity({granularity})"
+            f".metric_types(COST,VOLUME)"
+        )
+        if dimensions:
+            field += f".dimensions({','.join(dimensions)})"
+
+        url = f"{_GRAPH_BASE}/{_GRAPH_API_VERSION}/{settings.META_WABA_ID}"
+        params = {"fields": field}
+        headers = {"Authorization": f"Bearer {settings.META_ACCESS_TOKEN}"}
+
+        points: list[dict] = []
+        while url:
+            response = requests.get(
+                url, params=params, headers=headers, timeout=_REQUEST_TIMEOUT
+            )
+            response.raise_for_status()
+            payload = response.json()
+            analytics = payload.get("pricing_analytics") or {}
+            # The envelope nests one level deeper than most edges: `data` is
+            # a list of result groups, each with its own `data_points`.
+            for group in analytics.get("data") or []:
+                points.extend(group.get("data_points") or [])
+            # Paging lives on the field, not the node, and may be absent.
+            url = ((analytics.get("paging") or {}).get("next")) or ""
+            params = None
+        return points
+
     def _fetch_and_store_media(self, media_id: str) -> str:
         """Trade a media id for a durable URL of our own.
 
