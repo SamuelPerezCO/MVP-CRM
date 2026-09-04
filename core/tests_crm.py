@@ -74,10 +74,11 @@ class CrmScreenTests(TestCase):
         self.assertContains(response, "+ Crear etiqueta")
 
     def test_still_placeholder_views_say_so(self):
+        # Exportaciones used to be the example here; it is a real page now.
         response = self.client.get(
-            reverse("section", args=["crm"]), {"view": "exportaciones"}
+            reverse("section", args=["crm"]), {"view": "campos-personalizados"}
         )
-        self.assertContains(response, "Exportaciones — próximamente")
+        self.assertContains(response, "Campos personalizados — próximamente")
 
     def test_unknown_view_falls_back_instead_of_404(self):
         response = self.client.get(reverse("section", args=["crm"]), {"view": "bogus"})
@@ -86,10 +87,10 @@ class CrmScreenTests(TestCase):
 
     def test_exactly_one_row_is_active(self):
         html = self.client.get(
-            reverse("section", args=["crm"]), {"view": "exportaciones"}
+            reverse("section", args=["crm"]), {"view": "campos-personalizados"}
         ).content.decode()
         self.assertEqual(html.count("side-nav__row--child is-active"), 1)
-        active = html.split('?view=exportaciones"')[0].rsplit("<a ", 1)[-1]
+        active = html.split('?view=campos-personalizados"')[0].rsplit("<a ", 1)[-1]
         self.assertIn("is-active", active)
 
     def test_toolbar_controls_render(self):

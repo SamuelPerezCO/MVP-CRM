@@ -395,3 +395,76 @@
   font-size: 13px;
   line-height: 1.45;
 }
+
+/* ==========================================================================
+   Exportaciones — one card per export, and the Acciones dropdown on the
+   Clientes toolbar that shortcuts to it.
+   ========================================================================== */
+
+.export-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 720px;
+}
+
+.export-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.export-card__icon {
+  display: inline-flex;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--hover-bg);
+  color: var(--accent);
+}
+
+.export-card__icon .icon { width: 22px; height: 22px; }
+
+.export-card__body { flex: 1; min-width: 0; }
+
+.export-card__title {
+  margin: 2px 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.export-card__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.export-card__columns {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.export-card__actions { flex-shrink: 0; }
+.export-card__actions .btn-primary .icon { width: 15px; height: 15px; }
+
+/* Nothing to export yet: the button stays visible so the page reads the
+   same, but it is inert (aria-disabled + tabindex on the element). */
+.btn-primary.is-disabled { opacity: 0.5; pointer-events: none; }
+
+/* The Acciones dropdown reuses the shared details.dropdown (tags.css); the
+   summary is the ghost button itself. */
+.crm-actions .dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-decoration: none;
+  color: var(--text);
+}
+.crm-actions .dropdown__item .icon { width: 15px; height: 15px; color: var(--muted); }

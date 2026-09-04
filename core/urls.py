@@ -92,6 +92,8 @@ urlpatterns = [
     # The client table region (rows + pager), fetched on its own when paging
     # and when the toolbar's search box changes.
     path("crm/clientes/tabla/", views.clientes_table, name="clientes_table"),
+    # The whole client base as an .xlsx download (CRM > Exportaciones).
+    path("crm/clientes/exportar/", views.clientes_export, name="clientes_export"),
     # Clientes CRUD. Each one answers with a fragment for the shared modal in
     # the Clientes panel; the saves additionally swap the table in out-of-band.
     path("crm/clientes/nuevo/", views.cliente_form, name="cliente_create"),
