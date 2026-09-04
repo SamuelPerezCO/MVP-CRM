@@ -58,17 +58,33 @@ Las cuentas fundacionales: existen antes de que nadie haya entrado, así que el
 equipo nunca puede quedar fuera por una base de datos a la que no llega.
 
 ```
-APP_AGENTS=Admin:cambia-esta-clave:Admin,Samuel:1234:Samuel
+APP_AGENTS=Admin:pbkdf2_sha256$1500000$SALT$HASH=:Admin
 ```
 
-Entradas separadas por coma, cada una `usuario:contraseña:Nombre` (el nombre
-visible es opcional y por defecto es el usuario). Las contraseñas no pueden
-llevar `:` ni `,`, que son los separadores. **Siempre son maestros**, siempre
-activos y de solo lectura dentro de la app: su fuente de verdad es el
-entorno, así que cambiarles la contraseña es editar la variable y volver a
-desplegar. Cada uno tiene un `User` espejo con contraseña inutilizable — existe
-para que `assigned_to` y `sent_by` tengan a quién apuntar, nunca para entrar
-por la base de datos.
+Entradas separadas por coma, cada una `usuario:hash:Nombre` (el nombre visible
+es opcional y por defecto es el usuario). El campo del medio es un **hash**, no
+una contraseña: genéralo con
+
+```bash
+python manage.py hashear_clave Admin
+```
+
+que pide la contraseña por teclado (no queda en el historial) e imprime la
+entrada completa lista para pegar. Así, quien pueda leer el entorno — el panel
+de Vercel, un log de CI, un `.env` compartido — encuentra un hash y no una
+credencial que funcione. Se verifica con `check_password`, la misma función y
+el mismo coste (PBKDF2) que la contraseña de una cuenta de la app.
+
+Una contraseña en texto plano ahí **sigue funcionando**, para que ningún
+despliegue anterior se quede fuera, pero está desaconsejada: `manage.py check`
+avisa por cada agente que siga así (`core.W001`).
+
+**Siempre son maestros**, siempre activos y de solo lectura dentro de la app:
+su fuente de verdad es el entorno, así que cambiarles la contraseña es editar
+la variable y volver a desplegar. Cada uno tiene un `User` espejo con
+contraseña inutilizable — existe para que `assigned_to` y `sent_by` tengan a
+quién apuntar, nunca para entrar por la base de datos, ni siquiera con el hash
+del entorno.
 
 Si `APP_AGENTS` no está definida se usa el par antiguo
 `APP_LOGIN_USERNAME`/`APP_LOGIN_PASSWORD` como lista de un solo agente, así que
@@ -77,7 +93,8 @@ un entorno anterior a esto sigue funcionando sin tocar nada.
 ### Cuentas de la app (CRM › Mi cuenta › Equipo › Usuarios)
 
 Un maestro crea el resto desde la app ([core/usuarios.py](core/usuarios.py)):
-usuario, nombre, contraseña (mínimo 8 caracteres, con hash de Django) y rol.
+usuario, nombre, contraseña (mínimo 8 caracteres; se guarda con el hash PBKDF2
+de Django, nunca en claro) y rol.
 Sobre ellas puede renombrar, cambiar el rol, poner una contraseña nueva,
 desactivar/reactivar y eliminar. La página solo aparece en la navegación de
 los maestros, y sus endpoints responden 403 a cualquier otro.
@@ -109,8 +126,10 @@ Usuarios ni en el desplegable de asignación. Si una instalación sin
 recuperación es la consola:
 
 ```bash
-python manage.py crear_master jefa --name "Jefa" --password 'una clave larga'
+python manage.py crear_master jefa --name "Jefa"
 ```
+
+(pide la contraseña por teclado; `--password` existe para scripts).
 
 En el Inbox, el desplegable junto al estado de la conversación ("Abierta")
 cambia el agente asignado y guarda al instante; "Sin asignar" la devuelve a la

@@ -25,17 +25,28 @@ managing users; an *agent* can do everything except that. Deliberately not
 ``is_staff`` -- masters are not Django-admin staff, and /admin stays closed to
 them.
 
-``APP_AGENTS`` format -- comma-separated ``username:password:Nombre`` entries::
+``APP_AGENTS`` format -- comma-separated ``username:hash:Nombre`` entries::
 
-    APP_AGENTS=Admin:sup3rsecret:Admin,Samuel:1234:Samuel
+    APP_AGENTS=Admin:pbkdf2_sha256$1500000$XbY...$vTh...=:Admin
 
-The display name is optional (``username:password`` falls back to the
-username). Colons and commas can't appear in a password, since they are the
-separators.
+The middle field is a **password hash**, not a password: generate one with
+``manage.py hashear_clave`` and paste it in. Verification goes through
+``django.contrib.auth.hashers.check_password``, the same function and the same
+PBKDF2 cost as a database account, so whoever can read the environment (a
+Vercel dashboard, a CI log, a shared .env) sees a hash rather than a working
+credential. The display name is optional (``username:hash`` falls back to the
+username). Colons and commas can't appear in the middle field, since they are
+the separators -- Django's default PBKDF2 hashes contain neither. (Argon2 does
+put commas in its parameters; it is not installed here, and
+``hashear_clave`` refuses to emit anything the parser would split.)
+
+A **plaintext** password is still accepted there, so an environment written
+before this existed keeps working, but it is deprecated: ``manage.py check``
+warns for every agent still configured that way (see :mod:`core.checks`).
 
 If ``APP_AGENTS`` is unset the older single pair
-(``APP_LOGIN_USERNAME``/``APP_LOGIN_PASSWORD``) is used as a one-agent list, so
-an environment that predates this module keeps working untouched.
+(``APP_LOGIN_USERNAME``/``APP_LOGIN_PASSWORD``) is used as a one-agent list --
+that password may equally be a hash.
 """
 
 from __future__ import annotations
@@ -46,7 +57,12 @@ from dataclasses import dataclass
 from django.conf import settings
 from django.contrib.auth import authenticate as django_authenticate
 from django.contrib.auth import get_user_model
-from django.contrib.auth.hashers import UNUSABLE_PASSWORD_PREFIX
+from django.contrib.auth.hashers import (
+    UNUSABLE_PASSWORD_PREFIX,
+    check_password,
+    get_hasher,
+    make_password,
+)
 from django.db.models.functions import Lower
 
 
@@ -55,8 +71,26 @@ class Agent:
     """One configured agent, straight from the environment."""
 
     username: str
-    password: str
+
+    secret: str
+    """This agent's password *hash* -- or, deprecated, a raw password.
+
+    Named for what it holds rather than what it is: :meth:`accepts` is what
+    knows the difference, and nothing else should have to.
+    """
+
     display_name: str
+
+    @property
+    def is_hashed(self) -> bool:
+        """Whether :attr:`secret` is a hash rather than a raw password."""
+        return _is_hash(self.secret)
+
+    def accepts(self, password: str) -> bool:
+        """Whether ``password`` is this agent's."""
+        if self.is_hashed:
+            return check_password(password, self.secret)
+        return _same(password, self.secret)
 
     @property
     def user(self):
@@ -69,7 +103,7 @@ def configured_agents() -> list[Agent]:
 
     Read at call time rather than import time so ``override_settings`` in the
     tests -- and a changed env var after a redeploy -- actually take effect.
-    Malformed entries (no colon, blank username or password) are skipped: a
+    Malformed entries (no colon, blank username or secret) are skipped: a
     typo should cost that one agent their login, not lock out the whole team.
     """
     raw = getattr(settings, "APP_AGENTS", "") or ""
@@ -83,21 +117,21 @@ def configured_agents() -> list[Agent]:
         parts = [part.strip() for part in entry.split(":", 2)]
         if len(parts) < 2:
             continue
-        username, password = parts[0], parts[1]
+        username, secret = parts[0], parts[1]
         display_name = parts[2] if len(parts) > 2 and parts[2] else username
-        if not username or not password or username in seen:
+        if not username or not secret or username in seen:
             continue
         seen.add(username)
-        agents.append(Agent(username, password, display_name))
+        agents.append(Agent(username, secret, display_name))
 
     if agents:
         return agents
 
     # Legacy single-pair fallback: whatever APP_LOGIN_* holds is the one agent.
     username = getattr(settings, "APP_LOGIN_USERNAME", "") or ""
-    password = getattr(settings, "APP_LOGIN_PASSWORD", "") or ""
-    if username and password:
-        return [Agent(username, password, username)]
+    secret = getattr(settings, "APP_LOGIN_PASSWORD", "") or ""
+    if username and secret:
+        return [Agent(username, secret, username)]
     return []
 
 
@@ -122,16 +156,30 @@ def is_master(user) -> bool:
 def authenticate(username: str, password: str) -> Agent | None:
     """Return the env agent these credentials belong to, or ``None``.
 
-    Every configured agent is compared against, without breaking out early, so
-    the time this takes doesn't leak which usernames exist; the comparison
-    itself is ``compare_digest`` for the same reason.
+    The username is compared against every configured agent without breaking
+    out early, and with ``compare_digest``, so the time this takes doesn't
+    leak which usernames exist. Then *one* password verification runs -- the
+    matched agent's, or a throwaway hash of the same cost when no username
+    matched, which is the trick ``ModelBackend`` uses for the same reason.
+    One verification rather than one per agent matters now that verifying is
+    deliberately expensive (PBKDF2).
+
+    The throwaway only runs when some agent is hashed. In an all-plaintext
+    (deprecated) configuration every comparison is cheap, and burning a
+    PBKDF2 on the no-match path would invert the very leak it prevents.
     """
+    configured = configured_agents()
+
     match: Agent | None = None
-    for agent in configured_agents():
-        ok = _same(username, agent.username) & _same(password, agent.password)
-        if ok and match is None:
+    for agent in configured:
+        if _same(username, agent.username) and match is None:
             match = agent
-    return match
+
+    if match is None:
+        if any(agent.is_hashed for agent in configured):
+            make_password(password)
+        return None
+    return match if match.accepts(password) else None
 
 
 def _same(a: str, b: str) -> bool:
@@ -139,6 +187,25 @@ def _same(a: str, b: str) -> bool:
     ``str`` raises TypeError for any non-ASCII character -- a login as "José"
     would 500 -- while bytes of unequal length simply compare False."""
     return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
+def _is_hash(secret: str) -> bool:
+    """Whether ``secret`` is an encoded password hash rather than a raw one.
+
+    A hash is ``<algorithm>$<rest>`` with an algorithm this project actually
+    has a hasher for. Deliberately stricter than ``identify_hasher``, which
+    reads any bare 32-character string as an unsalted MD5 digest -- and a
+    32-character passphrase is a perfectly ordinary thing to find in an env
+    var.
+    """
+    algorithm, separator, rest = secret.partition("$")
+    if not separator or not rest:
+        return False
+    try:
+        get_hasher(algorithm)
+    except ValueError:
+        return False
+    return True
 
 
 def authenticate_user(request, username: str, password: str):

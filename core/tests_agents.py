@@ -25,7 +25,7 @@ class ConfiguredAgentsTests(TestCase):
         parsed = agents.configured_agents()
         self.assertEqual([a.username for a in parsed], ["Admin", "Samuel"])
         self.assertEqual([a.display_name for a in parsed], ["Admin", "Samuel"])
-        self.assertEqual(parsed[1].password, "1234")
+        self.assertEqual(parsed[1].secret, "1234")
 
     def test_display_name_is_optional(self):
         with override_settings(APP_AGENTS="Samuel:1234"):
@@ -48,11 +48,11 @@ class ConfiguredAgentsTests(TestCase):
         with override_settings(APP_AGENTS="Samuel:first,Samuel:second"):
             parsed = agents.configured_agents()
             self.assertEqual(len(parsed), 1)
-            self.assertEqual(parsed[0].password, "first")
+            self.assertEqual(parsed[0].secret, "first")
 
     def test_password_may_contain_spaces(self):
         with override_settings(APP_AGENTS="Samuel:una clave larga"):
-            self.assertEqual(agents.configured_agents()[0].password, "una clave larga")
+            self.assertEqual(agents.configured_agents()[0].secret, "una clave larga")
 
     def test_authenticate_matches_the_right_agent(self):
         self.assertEqual(agents.authenticate("Samuel", "1234").display_name, "Samuel")

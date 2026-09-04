@@ -106,7 +106,7 @@ def bootstrap_master(username: str, name: str, password: str):
     if user is None:
         return create_user(None, username, name, password, "master")
     name = _clean_name(name or user.first_name or user.username)
-    _check_password(password, user.username)
+    validate_password(password, user.username)
     user.first_name = name
     user.is_superuser = True
     user.is_active = True
@@ -121,7 +121,7 @@ def create_user(actor, username: str, name: str, password: str, role: str):
     username = _clean_username(username)
     name = _clean_name(name)
     is_master = _role_to_master(role)
-    _check_password(password, username)
+    validate_password(password, username)
 
     User = get_user_model()
     user = User(username=username, first_name=name, is_superuser=is_master)
@@ -155,7 +155,7 @@ def set_password(actor, user, password: str) -> None:
     signed out on their next request and comes back in with the new one.
     """
     _guard_app_managed(user)
-    _check_password(password, user.username)
+    validate_password(password, user.username)
     user.set_password(password)
     user.save(update_fields=["password"])
 
@@ -289,9 +289,13 @@ def _role_to_master(role: str) -> bool:
         raise UserError("Elige un rol.")
 
 
-def _check_password(password: str, username: str) -> None:
+def validate_password(password: str, username: str) -> None:
     """A small, Spanish-worded floor -- the project's AUTH_PASSWORD_VALIDATORS
-    would say the same things in English, in an all-Spanish UI."""
+    would say the same things in English, in an all-Spanish UI.
+
+    Public because the management commands apply the same rule: a password
+    reaching APP_AGENTS as a hash should clear the same bar as one typed into
+    the Usuarios dialog."""
     password = password or ""
     if len(password) < MIN_PASSWORD_LENGTH:
         raise UserError(
