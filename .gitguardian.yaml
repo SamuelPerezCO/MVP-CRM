@@ -1,0 +1,22 @@
+# GitGuardian configuration.
+#
+# The scanner flags the passwords in this project's auth tests -- "clave-larga",
+# "admin-pw", "secreto123" and friends. They are fixtures: an authentication
+# test cannot be written without a password to authenticate with, and every one
+# of them is invented in the test that uses it. None is, or ever was, a real
+# credential: none appears outside a test file.
+#
+# Only test paths are ignored, and only for secret detection. A credential
+# hardcoded in shipped code -- settings, a provider, a management command --
+# still fails the check, which is the part worth keeping. Widening this to the
+# whole repository would have hidden the two real ones this project has already
+# had to remove (the committed MESSAGING_FAKE_SECRET and BAILEYS_SIDECAR_SECRET
+# defaults).
+version: 2
+
+secret:
+  ignored-paths:
+    - "core/tests*.py"
+    - "core/tests/**"
+    - "messaging/tests*.py"
+    - "messaging/tests/**"
