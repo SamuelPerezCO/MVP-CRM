@@ -23,6 +23,7 @@ from django.utils import timezone
 from core.calendario import CALENDAR_TZ
 from core.models import CalendarEvent, Client
 from messaging import services
+from messaging.management.local_only import require_local_database
 from messaging.models import Conversation, Message, Tag
 
 #: All seeded contacts share this prefix -- it is what --fresh deletes by.
@@ -251,6 +252,10 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        # Invented customers must never reach the production Inbox -- .env
+        # carries DATABASE_URL, so without this the command happily seeds it.
+        require_local_database("seed_conversations")
+
         if options["fresh"]:
             deleted, _ = Client.objects.filter(
                 phone__startswith=FAKE_PHONE_PREFIX

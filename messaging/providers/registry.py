@@ -41,3 +41,28 @@ def get_provider(name: str | None = None) -> MessagingProvider:
 
 def is_known_provider(name: str) -> bool:
     return name in _PROVIDERS
+
+
+def webhook_enabled(name: str) -> bool:
+    """May this provider's webhook answer on this deployment?
+
+    Every provider's webhook is a door into the database: it creates contacts,
+    conversations and messages, exempt from the login gate and from CSRF,
+    trusting a signature instead. For the real providers that signature is a
+    credential only Meta/Twilio/the sidecar holds. For the *fake* one it is
+    ``MESSAGING_FAKE_SECRET``, whose default (``dev-secret``) is published in
+    ``.env.example`` and the README -- so on a deployment that never set it,
+    anyone who knows this project could POST invented customers into a live
+    Inbox.
+
+    So the fake webhook answers only where fake data belongs: local
+    development and the test runner. ``MESSAGING_ALLOW_FAKE_WEBHOOK=True``
+    re-opens it for a staging deployment that wants the simulator.
+    """
+    if name != FakeProvider.name:
+        return True
+    return bool(
+        settings.DEBUG
+        or getattr(settings, "TESTING", False)
+        or getattr(settings, "MESSAGING_ALLOW_FAKE_WEBHOOK", False)
+    )

@@ -40,7 +40,28 @@ python manage.py simulate_inbound "+573000000001" "Hola, ¿sigue disponible?"
 
 `seed_conversations` crea un usuario `asesor` / `asesor123` y le asigna conversaciones de demo. `simulate_inbound` empuja un mensaje entrante por el **mismo** código del webhook (firma, parseo, idempotencia); con el Inbox abierto lo verás llegar solo en el siguiente poll.
 
-## Agentes (personas)
+Los dos **solo corren contra la base local (SQLite)**. Como `.env` define `DATABASE_URL`, sin esa barrera un `python manage.py seed_conversations` escribiría clientes inventados en la base de producción ([messaging/management/local_only.py](messaging/management/local_only.py)). Si tu `.env` apunta a Neon, pásales la base local:
+
+```bash
+DATABASE_URL= python manage.py seed_conversations
+```
+
+## Salir a producción: dejar el CRM vacío
+
+Antes de conectar el número real de WhatsApp, `go_live` vacía la aplicación y **conserva al equipo**: borra contactos, conversaciones, mensajes, etiquetas, eventos de calendario, listas, productos, plantillas, respuestas rápidas y las cuentas de prueba (las que solo existen como asignatario, p. ej. `asesor`), y deja intactas las cuentas que pueden iniciar sesión — las creadas en CRM > Equipo > Usuarios, las de `APP_AGENTS` y cualquier superusuario.
+
+```bash
+python manage.py go_live          # simulación: dice qué borraría y no toca nada
+python manage.py go_live --yes    # lo borra de verdad
+```
+
+Igual que `reset_conversations`: es simulación por defecto, nombra la base a la que apunta antes de tocarla y borra dentro de una sola transacción. `--keep-catalog` conserva productos, plantillas y respuestas rápidas (útil si las plantillas de WhatsApp ya están aprobadas por Meta). No borra los archivos ya subidos a Vercel Blob, solo las filas que apuntaban a ellos.
+
+Crea tu cuenta en **CRM > Equipo > Usuarios** *antes* de correrlo con `--yes`: si ninguna cuenta sobrevive, la simulación te avisa.
+
+`reset_conversations` sigue existiendo para lo de siempre — vaciar solo el Inbox (conversaciones, mensajes y contactos) sin tocar etiquetas, plantillas ni calendario.
+
+## Agentes (personas) y la pantalla Equipo
 
 Un **agente** es a la vez un login y un asignatario: la misma identidad que
 pasa la puerta de entrada es la que puede aparecer como responsable de una
@@ -96,6 +117,8 @@ MESSAGING_PROVIDER=twilio  # cuando haya credenciales de Twilio
 MESSAGING_PROVIDER=meta    # cuando Meta desbloquee la cuenta
 MESSAGING_PROVIDER=baileys # WhatsApp real ya, sin esperar a Meta (ver abajo)
 ```
+
+El webhook del proveedor `fake` (`/webhooks/messaging/fake/`) crea contactos y conversaciones y su única llave es `MESSAGING_FAKE_SECRET`, cuyo valor por defecto está publicado en este repositorio. Por eso solo responde donde los datos falsos tienen sentido: con `DEBUG=True` o bajo `manage.py test`. En un despliegue real devuelve 404, así que nadie puede meter clientes inventados en el Inbox ([messaging/providers/registry.py](messaging/providers/registry.py)). Los webhooks de Meta, Twilio y el sidecar no cambian.
 
 ### Mensajería real ya, sin esperar a Meta: `baileys`
 

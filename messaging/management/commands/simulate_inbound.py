@@ -18,6 +18,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.test import RequestFactory
 from django.utils import timezone
 
+from messaging.management.local_only import require_local_database
 from messaging.views import webhook
 
 
@@ -44,6 +45,9 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        # A simulated customer is still a row in whatever database is active.
+        require_local_database("simulate_inbound")
+
         payload = {
             "events": [
                 {

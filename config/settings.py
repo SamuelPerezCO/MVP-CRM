@@ -261,6 +261,15 @@ MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER',
 # Fake provider: the shared secret dev webhooks must send in X-Fake-Signature.
 MESSAGING_FAKE_SECRET = os.environ.get('MESSAGING_FAKE_SECRET', 'dev-secret')
 
+# The fake provider's webhook writes conversations straight into whatever
+# database is active, and the secret above defaults to a value published in
+# .env.example -- so it answers only where fake data belongs (DEBUG, or the
+# test runner). Set this to True on a staging deployment that wants the
+# simulator; never in production. See messaging.providers.registry.
+MESSAGING_ALLOW_FAKE_WEBHOOK = (
+    os.environ.get('MESSAGING_ALLOW_FAKE_WEBHOOK', 'False') == 'True'
+)
+
 # Twilio (unused until providers/twilio.py is implemented).
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')

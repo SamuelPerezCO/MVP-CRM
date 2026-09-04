@@ -24,7 +24,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from . import services
-from .providers.registry import get_provider, is_known_provider
+from .providers.registry import get_provider, is_known_provider, webhook_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,13 @@ def webhook(request, provider_name: str):
     if not is_known_provider(provider_name):
         # Not a provider retry -- a misconfigured URL. 404 is honest here.
         raise Http404(f"Unknown messaging provider: {provider_name!r}")
+    if not webhook_enabled(provider_name):
+        # The simulator's door, shut on real deployments -- see
+        # registry.webhook_enabled. 404 rather than 403: on this deployment
+        # the endpoint genuinely does not exist, and saying so tells a probe
+        # nothing about what it would have to forge.
+        logger.warning("rejected %s webhook: disabled on this deployment", provider_name)
+        raise Http404(f"Webhook disabled: {provider_name!r}")
     provider = get_provider(provider_name)
 
     if request.method == "GET":
