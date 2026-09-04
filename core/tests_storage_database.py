@@ -6,6 +6,8 @@ the bytes without a session -- because the thing it replaces failed silently
 in production for hours before anyone could see why.
 """
 
+from unittest import mock
+
 from django.core.files.base import ContentFile
 from django.test import Client, TestCase, override_settings
 
@@ -114,3 +116,49 @@ class QuickReplyThroughDatabaseStorageTests(TestCase):
         response = Client().get(reply.image.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"IMAGE")
+
+
+class BlobFallsBackToDatabaseTests(TestCase):
+    """Connecting a Blob store must not orphan what the database already holds.
+
+    Everything written while no Blob store existed lives in StoredFile. The
+    moment BLOB_READ_WRITE_TOKEN appears, VercelBlobStorage takes over for
+    *every* name, including those -- and it used to answer "no blob stored at
+    ..." for them, which 500s the page rendering the image rather than showing
+    it. Production had two such files when this was written.
+    """
+
+    def setUp(self):
+        from core.storage import VercelBlobStorage
+
+        # Write through the database backend, as a pre-Blob deployment did.
+        DatabaseStorage().save("respuestas/legacy.png", ContentFile(b"OLD"))
+        self.blob = VercelBlobStorage()
+        # Blob itself knows nothing: every lookup misses.
+        patcher = mock.patch.object(self.blob, "_resolve_url", return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_url_serves_the_database_copy_instead_of_raising(self):
+        self.assertIn(
+            StoredFile.objects.get(name="respuestas/legacy.png").token,
+            self.blob.url("respuestas/legacy.png"),
+        )
+
+    def test_exists_sees_it_so_a_new_upload_cannot_shadow_the_name(self):
+        self.assertTrue(self.blob.exists("respuestas/legacy.png"))
+        self.assertNotEqual(
+            self.blob.get_available_name("respuestas/legacy.png"),
+            "respuestas/legacy.png",
+        )
+
+    def test_open_reads_the_database_bytes(self):
+        self.assertEqual(self.blob._open("respuestas/legacy.png").read(), b"OLD")
+
+    def test_delete_removes_it_rather_than_leaving_it_readable(self):
+        self.blob.delete("respuestas/legacy.png")
+        self.assertFalse(StoredFile.objects.filter(name="respuestas/legacy.png").exists())
+
+    def test_a_name_in_neither_store_still_raises(self):
+        with self.assertRaises(ValueError):
+            self.blob.url("respuestas/never-existed.png")

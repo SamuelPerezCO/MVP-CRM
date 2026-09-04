@@ -58,24 +58,41 @@ class VercelBlobStorage(Storage):
         return name
 
     def _open(self, name: str, mode: str = "rb") -> ContentFile:
+        if self._resolve_url(name) is None and _database_has(name):
+            return DatabaseStorage()._open(name, mode)
         response = requests.get(self.url(name), timeout=_REQUEST_TIMEOUT)
         response.raise_for_status()
         return ContentFile(response.content, name=name)
 
     def exists(self, name: str) -> bool:
-        return self._resolve_url(name) is not None
+        # Also true for a file only the database holds, so get_available_name()
+        # cannot hand out a name that is already spoken for and shadow it.
+        return self._resolve_url(name) is not None or _database_has(name)
 
     def url(self, name: str) -> str:
         url = self._resolve_url(name)
-        if url is None:
-            raise ValueError(f"no blob stored at {name!r}")
-        return url
+        if url is not None:
+            return url
+        # Anything written while no Blob store was connected lives in the
+        # database (see DatabaseStorage). Connecting one later switches this
+        # backend on for *every* name, including those -- and answering
+        # "no blob stored at ..." for a file that plainly exists would 500 the
+        # page rendering it. Reads fall through; writes still go to Blob, so
+        # the database side is finite and shrinks to nothing as rows are
+        # replaced.
+        if _database_has(name):
+            return DatabaseStorage().url(name)
+        raise ValueError(f"no blob stored at {name!r}")
 
     def delete(self, name: str) -> None:
         url = self._resolve_url(name)
         if url is not None:
             vercel_blob.delete(url, timeout=_REQUEST_TIMEOUT)
             self._url_cache.pop(self._normalize(name), None)
+        # A pre-Blob file is deleted from where it actually is, or "delete"
+        # would silently leave it readable.
+        if _database_has(name):
+            DatabaseStorage().delete(name)
 
     def _resolve_url(self, name: str) -> str | None:
         name = self._normalize(name)
@@ -92,6 +109,20 @@ class VercelBlobStorage(Storage):
                 self._url_cache[name] = blob["url"]
                 return blob["url"]
         return None
+
+
+def _database_has(name: str) -> bool:
+    """Whether a file of this name is held in the database.
+
+    Lets VercelBlobStorage keep serving what DatabaseStorage wrote before a
+    Blob store existed. Imported inside the function because core.models
+    imports at module scope would be a circular import through settings.
+    """
+    from core.models import StoredFile
+
+    return StoredFile.objects.filter(
+        name=name.replace("\\", "/").lstrip("/")
+    ).exists()
 
 
 @deconstructible
