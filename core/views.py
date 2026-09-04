@@ -1594,6 +1594,8 @@ def usuario_form(request, user_id: int | None = None):
                     notice = f"Usuario actualizado: {saved.get_full_name() or saved.username}."
             except agents.UsernameTaken as exc:
                 errors["username"] = str(exc)
+            except agents.LastMaster as exc:
+                errors["master"] = str(exc)
             except ValueError as exc:
                 errors["username"] = str(exc)
             else:

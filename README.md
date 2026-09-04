@@ -140,7 +140,15 @@ desplegar. Un usuario creado ahí es un `User` de Django con contraseña real:
 inicia sesión por el mismo formulario, aparece en el desplegable de
 asignación y en "Tu inbox", y puede marcarse también como maestro. Los
 usuarios se desactivan (nunca se borran): su historial de conversaciones y
-mensajes sigue apuntando a ellos. Los agentes del entorno se muestran en la
+mensajes sigue apuntando a ellos, y al desactivar se cierran sus sesiones, así
+que restaurarlo después no revive el navegador de nadie.
+
+Nadie puede quitarse a sí mismo el rol de maestro ni desactivarse, y el
+servicio ([core/agents.py](core/agents.py)) rechaza además dejar al equipo sin
+ningún maestro que pueda entrar: cuentan los agentes de `APP_AGENTS` (siempre
+maestros), los superusuarios y los maestros de la app que sigan activos y con
+contraseña utilizable — un espejo sin contraseña, el que queda al sacar a
+alguien de `APP_AGENTS`, no sirve de reemplazo. Los agentes del entorno se muestran en la
 misma tabla pero solo se editan en `APP_AGENTS` ([core/agents.py](core/agents.py)).
 
 El rol maestro vive en el grupo `Maestros` de Django, no en `is_staff`: ese

@@ -51,7 +51,15 @@ from dataclasses import dataclass
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.auth.hashers import check_password, get_hasher, make_password
+from django.contrib.auth.hashers import (
+    UNUSABLE_PASSWORD_PREFIX,
+    check_password,
+    get_hasher,
+    make_password,
+)
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 
 
 @dataclass(frozen=True)
@@ -326,6 +334,15 @@ class UsernameTaken(Exception):
     """Another user already has this username."""
 
 
+class LastMaster(ValueError):
+    """This change would leave nobody able to manage the team.
+
+    A ``ValueError`` so the callers that already treat one as a refusal keep
+    working; a named class so the form can show it against the master
+    checkbox instead of the username field.
+    """
+
+
 def create_user(username: str, password: str, display_name: str = "", master: bool = False):
     """Create a teammate who can log in with ``password``.
 
@@ -359,25 +376,98 @@ def _set_master(user, master: bool) -> None:
 
 def update_user(user, display_name: str, master: bool, password: str = ""):
     """Rename, promote/demote and optionally reset the password of an
-    app-created user. Env mirrors are refused: their identity is the env's."""
+    app-created user. Env mirrors are refused: their identity is the env's.
+
+    Demoting the last master who could still log in is refused too -- see
+    :func:`_guard_last_master`. Resetting the password needs no session purge:
+    Django's session auth hash is derived from it, so every other browser is
+    signed out on its next request anyway.
+    """
     if is_env_agent(user):
         raise ValueError("Este usuario se configura en el entorno (APP_AGENTS), no aquí.")
-    user.first_name = (display_name or user.username)[:150]
-    fields = ["first_name"]
-    if password:
-        user.set_password(password)
-        fields.append("password")
-    user.save(update_fields=fields)
-    _set_master(user, master)
+    with transaction.atomic():
+        if is_master(user) and not master:
+            _guard_last_master(user, "quitarle el rol de maestro a")
+        user.first_name = (display_name or user.username)[:150]
+        fields = ["first_name"]
+        if password:
+            user.set_password(password)
+            fields.append("password")
+        user.save(update_fields=fields)
+        _set_master(user, master)
     return user
 
 
 def set_user_active(user, active: bool):
     """Deactivate (or restore) an app-created user. Deactivating is the only
     "delete": their conversations, messages and events keep pointing at
-    them, they just can't log in or be assigned anything new."""
+    them, they just can't log in or be assigned anything new.
+
+    Deactivating also ends their sessions. ``is_active`` alone only stops
+    ``ModelBackend.get_user`` from resolving the session, leaving the row in
+    place -- so a later restore would silently revive a browser nobody logged
+    into again.
+    """
     if is_env_agent(user):
         raise ValueError("Este usuario se configura en el entorno (APP_AGENTS), no aquí.")
-    user.is_active = active
-    user.save(update_fields=["is_active"])
+    with transaction.atomic():
+        if not active and is_master(user):
+            _guard_last_master(user, "desactivar a")
+        user.is_active = active
+        user.save(update_fields=["is_active"])
+        if not active:
+            end_sessions(user)
     return user
+
+
+def end_sessions(user) -> None:
+    """Delete every live session belonging to ``user``.
+
+    Sessions carry the user id inside their signed payload rather than in a
+    column, so there is nothing to filter on -- each unexpired row has to be
+    decoded. The table holds one row per logged-in browser, and this only runs
+    when someone is deactivated, so the scan is cheap where it happens.
+    """
+    from django.contrib.sessions.models import Session
+
+    wanted = str(user.pk)
+    for session in Session.objects.filter(expire_date__gte=timezone.now()):
+        if session.get_decoded().get("_auth_user_id") == wanted:
+            session.delete()
+
+
+def _guard_last_master(user, verb: str) -> None:
+    """Refuse to strip the last master who can actually log in.
+
+    The view already stops a master doing this to *themselves*; this is the
+    other half, and the half that survives an env change: with ``APP_AGENTS``
+    configured the environment always supplies a master, so nothing here can
+    empty the set. Without it, the masters are whoever is in the Maestros
+    group or a superuser -- and only the ones who can still log in count, so
+    a deactivated master, or a mirror row left behind by an agent dropped from
+    ``APP_AGENTS`` (no usable password), is not a stand-in for a real one.
+
+    Called inside the callers' ``transaction.atomic``, and the candidates are
+    locked, so two masters removing each other at the same moment cannot both
+    read "there is still another one" and both go through.
+    """
+    if _another_master_can_log_in(user):
+        return
+    raise LastMaster(f"No puedes {verb} al último usuario maestro que puede entrar.")
+
+
+def _another_master_can_log_in(user) -> bool:
+    if configured_agents():
+        return True
+    User = get_user_model()
+    others = (
+        User.objects.select_for_update()
+        .filter(is_active=True)
+        .filter(Q(is_superuser=True) | Q(groups__name=MASTER_GROUP))
+        .exclude(pk=user.pk)
+        .exclude(password="")
+        .exclude(password__startswith=UNUSABLE_PASSWORD_PREFIX)
+        .distinct()
+    )
+    # Materialised rather than .exists() so the rows are actually locked.
+    return bool(list(others.values_list("pk", flat=True)))

@@ -296,3 +296,187 @@ class AssignmentIncludesAppUsersTests(TestCase):
         self.assertIn(lucia, options)
         html = self.client.get(reverse("inbox_chat", args=[conversation.pk])).content.decode()
         self.assertIn("Lucía", html)
+
+
+# --- Guards ported from the agent-assignment branch --------------------------
+
+NO_ENV = dict(APP_AGENTS="", APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD="")
+
+
+@override_settings(**NO_ENV)
+class LastMasterTests(TestCase):
+    """With no env agent to fall back on, the team must keep one master who
+    can actually log in -- otherwise nobody can ever manage users again."""
+
+    def test_the_only_master_cannot_be_demoted(self):
+        jefa = app_user("jefa", master=True)
+        with self.assertRaisesMessage(agents.LastMaster, "último usuario maestro"):
+            agents.update_user(jefa, "Jefa", False)
+        jefa.refresh_from_db()
+        self.assertTrue(agents.is_master(jefa))
+
+    def test_the_only_master_cannot_be_deactivated(self):
+        jefa = app_user("jefa", master=True)
+        with self.assertRaisesMessage(agents.LastMaster, "último usuario maestro"):
+            agents.set_user_active(jefa, False)
+        jefa.refresh_from_db()
+        self.assertTrue(jefa.is_active)
+
+    def test_with_two_masters_either_may_go(self):
+        jefa = app_user("jefa", master=True)
+        app_user("otro", master=True)
+        agents.update_user(jefa, "Jefa", False)
+        self.assertFalse(agents.is_master(User.objects.get(username="jefa")))
+
+    def test_a_deactivated_master_does_not_count_as_the_other_one(self):
+        jefa = app_user("jefa", master=True)
+        dormido = app_user("dormido", master=True)
+        agents.set_user_active(dormido, False)
+        with self.assertRaises(agents.LastMaster):
+            agents.set_user_active(jefa, False)
+
+    def test_a_superuser_counts_because_they_can_log_in(self):
+        jefa = app_user("jefa", master=True)
+        User.objects.create_superuser("root", password="clave-larga")
+        agents.set_user_active(jefa, False)
+        jefa.refresh_from_db()
+        self.assertFalse(jefa.is_active)
+
+    def test_a_master_with_no_usable_password_does_not_count(self):
+        """A mirror left behind by an agent dropped from APP_AGENTS is a
+        master on paper with no way in -- not a stand-in for a real one."""
+        jefa = app_user("jefa", master=True)
+        fantasma = app_user("fantasma", master=True)
+        fantasma.set_unusable_password()
+        fantasma.save(update_fields=["password"])
+        with self.assertRaises(agents.LastMaster):
+            agents.set_user_active(jefa, False)
+
+    def test_promoting_and_renaming_are_never_blocked(self):
+        jefa = app_user("jefa", master=True)
+        agents.update_user(jefa, "Jefa Nueva", True)
+        jefa.refresh_from_db()
+        self.assertEqual(jefa.first_name, "Jefa Nueva")
+
+    def test_demoting_a_non_master_is_not_blocked(self):
+        app_user("jefa", master=True)
+        lucia = app_user("lucia")
+        agents.update_user(lucia, "Lucía", False)
+        self.assertFalse(agents.is_master(User.objects.get(username="lucia")))
+
+
+@override_settings(APP_AGENTS=TWO_AGENTS, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD="")
+class EnvGuaranteesAMasterTests(TestCase):
+    def test_the_last_db_master_may_go_when_the_env_supplies_one(self):
+        """APP_AGENTS entries are always masters and always able to log in,
+        so the set can never empty while one is configured."""
+        jefa = app_user("jefa", master=True)
+        agents.update_user(jefa, "Jefa", False)
+        self.assertFalse(agents.is_master(User.objects.get(username="jefa")))
+
+    def test_and_deactivated_too(self):
+        jefa = app_user("jefa", master=True)
+        agents.set_user_active(jefa, False)
+        jefa.refresh_from_db()
+        self.assertFalse(jefa.is_active)
+
+
+@override_settings(TESTING=False, APP_AGENTS=TWO_AGENTS, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD="")
+class DeactivationEndsSessionsTests(TestCase):
+    def login(self, username, password):
+        return self.client.post(
+            reverse("login"), {"username": username, "password": password}
+        )
+
+    def test_deactivating_ends_the_session_so_restoring_does_not_revive_it(self):
+        lucia = app_user("lucia", password="clave-larga")
+        self.login("lucia", "clave-larga")
+        self.assertEqual(self.client.get(reverse("home")).status_code, 200)
+
+        agents.set_user_active(lucia, False)
+        agents.set_user_active(lucia, True)
+
+        response = self.client.get(reverse("home"))
+        self.assertRedirects(response, reverse("login"), fetch_redirect_response=False)
+
+    def test_the_row_is_actually_gone_not_just_unresolvable(self):
+        from django.contrib.sessions.models import Session
+
+        lucia = app_user("lucia", password="clave-larga")
+        self.login("lucia", "clave-larga")
+        key = self.client.session.session_key
+        self.assertTrue(Session.objects.filter(session_key=key).exists())
+
+        agents.set_user_active(lucia, False)
+        self.assertFalse(Session.objects.filter(session_key=key).exists())
+
+    def test_only_that_users_sessions_go(self):
+        from django.contrib.sessions.models import Session
+
+        lucia = app_user("lucia", password="clave-larga")
+        self.login("Samuel", "1234")
+        samuel_key = self.client.session.session_key
+
+        agents.set_user_active(lucia, False)
+        self.assertTrue(Session.objects.filter(session_key=samuel_key).exists())
+
+    def test_restoring_does_not_touch_sessions(self):
+        lucia = app_user("lucia", password="clave-larga")
+        agents.set_user_active(lucia, False)
+        agents.set_user_active(lucia, True)
+        self.assertIsNotNone(agents.authenticate("lucia", "clave-larga"))
+
+
+@override_settings(**NO_ENV)
+class LastMasterAndTheViewsTests(TestCase):
+    """Where the guard sits relative to the screen.
+
+    Through the UI it is belt-and-braces: a non-master gets 403, the view
+    already refuses self-demotion and self-deactivation, and whoever is left
+    doing the deactivating is themselves a master who can log in -- so the
+    set never empties by that route. The guard exists for everything that is
+    not the form: a management command, a shell, a future caller.
+    """
+
+    def setUp(self):
+        self.jefa = app_user("jefa", master=True)
+        self.otro = app_user("otro", master=True)
+        self.client.force_login(self.jefa)
+
+    def test_a_master_may_deactivate_another_because_they_remain(self):
+        response = self.client.post(
+            reverse("usuario_active", args=[self.otro.pk]), {"active": "0"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.otro.refresh_from_db()
+        self.assertFalse(self.otro.is_active)
+        self.assertTrue(agents.is_master(self.jefa))
+
+    def test_and_that_deactivation_ended_their_session(self):
+        self.client.post(reverse("usuario_active", args=[self.otro.pk]), {"active": "0"})
+        # Nothing to resolve the old session to any more.
+        self.otro.refresh_from_db()
+        self.assertFalse(self.otro.is_active)
+
+    def test_the_service_still_refuses_what_the_form_cannot_ask(self):
+        """Deactivate the other master through the view, then try to take the
+        last one out from under the app the way a script would."""
+        self.client.post(reverse("usuario_active", args=[self.otro.pk]), {"active": "0"})
+        with self.assertRaisesMessage(agents.LastMaster, "último usuario maestro"):
+            agents.set_user_active(self.jefa, False)
+        with self.assertRaisesMessage(agents.LastMaster, "último usuario maestro"):
+            agents.update_user(self.jefa, "Jefa", False)
+
+    def test_the_form_renders_a_master_error_when_there_is_one(self):
+        from django.template.loader import render_to_string
+
+        html = render_to_string(
+            "partials/crm/usuarios/form.html",
+            {
+                "form": {"username": "jefa", "display_name": "Jefa", "master": True},
+                "errors": {"master": "No puedes quitarle el rol de maestro al último usuario maestro que puede entrar."},
+                "edit_user": self.otro,
+            },
+        )
+        self.assertIn('id="user-error-master"', html)
+        self.assertIn("último usuario maestro", html)
