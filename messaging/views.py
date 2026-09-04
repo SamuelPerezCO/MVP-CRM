@@ -51,7 +51,9 @@ def webhook(request, provider_name: str):
         challenge = provider.handshake(request)
         if challenge is None:
             return HttpResponse("verification failed", status=403)
-        return HttpResponse(challenge)
+        # text/plain: the challenge is caller-supplied, and reflecting it as
+        # HTML would be a scripting hole on the deployment's own origin.
+        return HttpResponse(challenge, content_type="text/plain; charset=utf-8")
 
     if not provider.verify_signature(request):
         logger.warning("rejected %s webhook: bad signature", provider_name)

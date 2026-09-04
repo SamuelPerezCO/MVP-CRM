@@ -60,9 +60,12 @@
           <td class="table__muted">{{ client.email|default:"" }}</td>
 
           <td>
+            {# The icon comes from Client.icon_template, which answers "" for a
+               channel we have no mark for, rather than naming a file that does
+               not exist. The label is still shown in that case. #}
             {% if client.channel %}
               <span class="channel">
-                {% include "icons/brands/"|add:client.channel|add:".svg" %}
+                {% if client.icon_template %}{% include client.icon_template %}{% endif %}
                 <span>{{ client.get_channel_display }}</span>
               </span>
             {% endif %}
