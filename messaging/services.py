@@ -165,7 +165,7 @@ def send_template(conversation: Conversation, template, values: dict, user=None)
     provider = get_provider()
     params = {str(key): str(value) for key, value in values.items()}
     params["_language"] = template.language
-    # For providers with no template catalogue (Baileys), so they send the
+    # For providers with no template catalogue, so they send the
     # message rather than the template's name -- see MessagingProvider.
     params["_rendered"] = body
     try:

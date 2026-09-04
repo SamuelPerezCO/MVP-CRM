@@ -148,7 +148,6 @@ Toda la integración con WhatsApp vive en [messaging/](messaging/) detrás de un
 ```
 MESSAGING_PROVIDER=twilio  # cuando haya credenciales de Twilio
 MESSAGING_PROVIDER=meta    # cuando Meta desbloquee la cuenta
-MESSAGING_PROVIDER=baileys # WhatsApp real ya, sin esperar a Meta (ver abajo)
 MESSAGING_PROVIDER=fake    # solo desarrollo local: simula envíos y recibos
 ```
 
@@ -158,56 +157,7 @@ corría feliz sobre el simulador -- palomitas moviéndose en pantalla, nada
 llegando a un teléfono. Producción es clientes reales; no debe poder caer en
 el simulador por accidente.
 
-El webhook del proveedor `fake` (`/webhooks/messaging/fake/`) crea contactos y conversaciones y su única llave es `MESSAGING_FAKE_SECRET`, cuyo valor por defecto está publicado en este repositorio. Por eso solo responde donde los datos falsos tienen sentido: con `DEBUG=True` o bajo `manage.py test`. En un despliegue real devuelve 404, así que nadie puede meter clientes inventados en el Inbox ([messaging/providers/registry.py](messaging/providers/registry.py)). Los webhooks de Meta, Twilio y el sidecar no cambian.
-
-### Mensajería real ya, sin esperar a Meta: `baileys`
-
-Mientras Meta Developers esté bloqueado (verificación de negocio, revisión de
-app, etc.), `MESSAGING_PROVIDER=baileys` conecta el Inbox a un número de
-WhatsApp real hoy mismo, sin ninguna cuenta de Meta Developers: usa
-[Baileys](https://github.com/WhiskeySockets/Baileys) para hablar el mismo
-protocolo que WhatsApp Web/Desktop -- se conecta escaneando un código QR
-desde el teléfono, no por API oficial.
-
-**Esto no es la Cloud API oficial.** Es útil para levantar una demo o un MVP
-en minutos, pero va contra los Términos de Servicio de WhatsApp y Meta puede
-suspender el número sin aviso -- no lo dejes así para producción. En cuanto
-Meta desbloquee la cuenta, cambia `MESSAGING_PROVIDER` a `meta` (o `twilio`)
-y apaga el sidecar; el resto del código no cambia.
-
-Requiere levantar un proceso aparte, el sidecar de Node en
-[whatsapp-sidecar/](whatsapp-sidecar/):
-
-```powershell
-cd whatsapp-sidecar
-npm install
-cp .env.example .env
-npm start
-```
-
-Escanea el código QR que aparece en la terminal desde **WhatsApp > Ajustes >
-Dispositivos vinculados > Vincular un dispositivo**, con el número que quieres
-usar para el CRM. La sesión queda guardada en el directorio `auth/` del sidecar,
-así que no hay que volver a escanear en cada reinicio.
-
-Luego, en el `.env` de Django:
-
-```
-MESSAGING_PROVIDER=baileys
-BAILEYS_SIDECAR_URL=http://localhost:4000
-BAILEYS_SIDECAR_SECRET=   # genera un valor largo y aleatorio; debe coincidir con el .env del sidecar
-```
-
-`BAILEYS_SIDECAR_SECRET` no tiene valor por defecto y mientras esté vacío el
-webhook rechaza todo. Genera uno propio (`openssl rand -hex 32`) en vez de
-copiar un ejemplo: el slug `/webhooks/messaging/baileys/` responde en todos
-los despliegues, así que ese secreto es lo único que impide que cualquiera
-escriba mensajes en la base de datos.
-
-Arranca Django normalmente (`python manage.py runserver`) -- los mensajes que
-lleguen al número vinculado aparecen en el Inbox, y las respuestas enviadas
-desde el Inbox salen por WhatsApp real a través del sidecar. Ver
-[whatsapp-sidecar/README.md](whatsapp-sidecar/README.md) para más detalle.
+El webhook del proveedor `fake` (`/webhooks/messaging/fake/`) crea contactos y conversaciones y su única llave es `MESSAGING_FAKE_SECRET`, cuyo valor por defecto está publicado en este repositorio. Por eso solo responde donde los datos falsos tienen sentido: con `DEBUG=True` o bajo `manage.py test`. En un despliegue real devuelve 404, así que nadie puede meter clientes inventados en el Inbox ([messaging/providers/registry.py](messaging/providers/registry.py)). Los webhooks de Meta y Twilio no cambian.
 
 Cuando lleguen credenciales reales de Twilio o Meta:
 
@@ -319,7 +269,7 @@ En el dashboard del proyecto (Settings → Environment Variables) define, como m
 
 - `SECRET_KEY` — cualquier string largo y aleatorio (sin esto usa un valor de desarrollo inseguro).
 - `DEBUG=False`
-- `MESSAGING_PROVIDER` — **obligatorio**, y en producción nunca `fake`: `twilio`, `meta` o `baileys`, con las credenciales del proveedor elegido. Sin esta variable el despliegue falla al arrancar, a propósito.
+- `MESSAGING_PROVIDER` — **obligatorio**, y en producción nunca `fake`: `twilio` o `meta`, con las credenciales del proveedor elegido. Sin esta variable el despliegue falla al arrancar, a propósito.
 - `DATABASE_URL` — Postgres (por ejemplo Vercel Postgres o Neon, desde la pestaña Storage). SQLite no sirve en producción porque las funciones serverless no tienen disco persistente.
 - `ALLOWED_HOSTS` — opcional; el dominio del deploy y el alias de producción se confían automáticamente vía `VERCEL_URL` y `VERCEL_PROJECT_PRODUCTION_URL`, agrega aquí solo dominios propios (custom domains).
 
@@ -327,14 +277,14 @@ Con `DATABASE_URL` configurado, corre las migraciones contra la base de producci
 
 Los archivos estáticos (`static/`) se recolectan y sirven automáticamente desde el CDN de Vercel — no requiere WhiteNoise ni configuración adicional. Los uploads de usuario (`media/`, ej. cabeceras de plantillas) sí requieren almacenamiento externo (Vercel Blob, S3, etc.) porque el filesystem de las funciones no persiste entre requests; sin eso, esa funcionalidad puntual no sobrevive en producción.
 
-El conector Baileys ([repo aparte](https://github.com/SamuelPerezCO/whatsapp-sidecar), ya no vive en este árbol) es un proceso Node de larga duración con una conexión WebSocket persistente a WhatsApp — no corre en funciones serverless. Para producción con `MESSAGING_PROVIDER=baileys`, despliégalo en un host con procesos persistentes (Railway, Fly.io, un VPS, etc.). En Vercel los que funcionan tal cual son `twilio` y `meta`; `fake` no es una opción de producción — simula los envíos y no manda nada a ningún teléfono.
+En Vercel los proveedores que funcionan tal cual son `twilio` y `meta`; `fake` no es una opción de producción — simula los envíos y no manda nada a ningún teléfono.
 
 ### Seguridad del webhook
 
 La URL del webhook nombra al proveedor (`/webhooks/messaging/<proveedor>/`) para que, durante una migración, un callback de Twilio se siga interpretando como Twilio aunque el proveedor activo ya sea Meta. Dos consecuencias que conviene tener presentes:
 
 - El endpoint del proveedor `fake` **solo responde donde `MESSAGING_PROVIDER=fake`**. En un despliegue real devuelve 404: sin ese candado sería una forma anónima de escribir clientes inventados en la base de datos de producción, indistinguibles después de los reales.
-- Cada proveedor real *sí* sigue siendo alcanzable siempre, así que su secreto es lo único que lo protege. Ninguno tiene valor por defecto: `META_APP_SECRET`, `BAILEYS_SIDECAR_SECRET` y `MESSAGING_FAKE_SECRET` rechazan todo mientras estén vacíos. Un secreto escrito en el repositorio no protege nada.
+- Cada proveedor real *sí* sigue siendo alcanzable siempre, así que su secreto es lo único que lo protege. Ninguno tiene valor por defecto: `META_APP_SECRET` y `MESSAGING_FAKE_SECRET` rechazan todo mientras estén vacíos. Un secreto escrito en el repositorio no protege nada.
 
 ## Tests
 

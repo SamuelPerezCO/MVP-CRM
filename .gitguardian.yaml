@@ -8,10 +8,18 @@
 #
 # Only test paths are ignored, and only for secret detection. A credential
 # hardcoded in shipped code -- settings, a provider, a management command --
-# still fails the check, which is the part worth keeping. Widening this to the
-# whole repository would have hidden the two real ones this project has already
-# had to remove (the committed MESSAGING_FAKE_SECRET and BAILEYS_SIDECAR_SECRET
-# defaults).
+# still fails, which is the part worth keeping. Widening this to the whole
+# repository would have hidden the two real ones this project has already had
+# to remove: webhook secrets that shipped with a default value committed here,
+# which is the same as having no secret at all.
+#
+# SCOPE, measured rather than assumed: this file is read by ggshield -- the
+# CLI and the pre-commit hook. The GitGuardian GitHub App does NOT read it;
+# adding this file left its check reporting the same 16 findings on the very
+# commit that introduced it. The App's ignores live in the GitGuardian
+# dashboard, so silencing those 16 on pull requests means triaging them there
+# as false positives. Kept anyway: it is what makes a local `ggshield scan`
+# usable, and it records which paths were judged fixtures and why.
 version: 2
 
 secret:
