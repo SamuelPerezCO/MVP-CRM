@@ -159,6 +159,11 @@ class Quote:
     unit_amount: Decimal
     amount: Decimal
     free_reason: str = ""
+    #: Priced at the market's Service rate rather than the category's own --
+    #: a utility template inside an open window. ``services.send_template``
+    #: copies it onto the Message row, which is what the monthly free
+    #: allowance is counted from.
+    billed_as_service: bool = False
 
     @property
     def is_free(self) -> bool:
@@ -345,7 +350,7 @@ def rate_for(market: str, category: str, when=None) -> Decimal:
     return Decimal(price)
 
 
-def quote(template, client, window_open: bool = False, when=None) -> Quote:
+def quote(template, client, window_open: bool = False, when=None, service_used: int | None = None) -> Quote:
     """Price one template send to one client.
 
     An *estimate*, always: Meta charges when a template message is
@@ -407,16 +412,39 @@ def quote(template, client, window_open: bool = False, when=None) -> Quote:
     #    free. Erring that way keeps the estimate above the invoice.
     free_reason = ""
     amount = unit
+    billed_as_service = False
     if window_open and category == "utility":
+        billed_as_service = True
         amount = rate_for(market, "service", when)
         if amount == 0:
+            # The card in force prices Service as "n/a": in-window messaging
+            # is simply free, and the allowance below has nothing to meter.
             free_reason = (
                 "Ventana de 24 horas abierta: las plantillas de servicio no se cobran."
             )
         else:
-            free_reason = (
-                "Ventana de 24 horas abierta: se cobra la tarifa de servicio."
-            )
+            # Service is priced, so the monthly free allowance decides.
+            # ``service_used`` is how many service-rate sends this month has
+            # already had; callers pass it (see service_used_this_month) so a
+            # dialog listing ten plantillas counts once rather than ten
+            # times. None means "unknown", and an unknown allowance is
+            # treated as spent -- quoting a price nobody is charged is a
+            # smaller error than promising free and billing for it.
+            allowance = service_allowance()
+            used = service_used if service_used is not None else allowance
+            if used < allowance:
+                amount = Decimal("0")
+                free_reason = (
+                    "Ventana de 24 horas abierta: entra en los "
+                    f"{allowance} mensajes de servicio gratis del mes "
+                    f"({used} usados)."
+                )
+            else:
+                free_reason = (
+                    f"Ventana de 24 horas abierta: agotados los {allowance} "
+                    "mensajes de servicio gratis del mes, se cobra la tarifa "
+                    "de servicio."
+                )
 
     # 4. Freeze the answer. Nothing downstream recomputes it: send_template
     #    copies these fields onto the Message row as they are.
@@ -427,6 +455,7 @@ def quote(template, client, window_open: bool = False, when=None) -> Quote:
         unit_amount=unit,
         amount=amount,
         free_reason=free_reason,
+        billed_as_service=billed_as_service,
     )
 
 
@@ -491,6 +520,61 @@ def month_to_date(now=None) -> Decimal:
     # No ``end``: everything from the 1st onward counts. Called by
     # budget_state() (for display) and would_exceed_budget() (for the guard).
     return spent_between(month_start(now))
+
+
+def service_allowance() -> int:
+    """How many service messages a phone number gets free each month.
+
+    From 2026-10-01 Meta charges for service messages -- everything sent
+    inside an open 24-hour window, template or not -- and gives each business
+    phone number a monthly allowance before the meter starts. The published
+    figure is 1,000, and it does not roll over.
+
+    Configurable, and deliberately so: the allowance is the least
+    well-corroborated part of the October change (Meta's own pricing page is
+    the single source; several BSP write-ups of the same change omit it
+    entirely). Set MESSAGING_SERVICE_FREE_ALLOWANCE to 0 to bill every
+    service message from the first, which is what an account that turns out
+    not to have the allowance should do.
+
+    "Per phone number" matches "per account" here: the CRM sends from one
+    number (META_PHONE_NUMBER_ID). A second line would need the count split
+    per number, which the Message table cannot do -- it does not record which
+    number a message left from.
+    """
+    raw = getattr(settings, "MESSAGING_SERVICE_FREE_ALLOWANCE", "1000")
+    try:
+        value = int(str(raw))
+    except (TypeError, ValueError):
+        logger.warning(
+            "ignoring malformed MESSAGING_SERVICE_FREE_ALLOWANCE %r", raw
+        )
+        return 1000
+    return max(value, 0)
+
+
+def service_used_this_month(now=None) -> int:
+    """Service-rate sends already made this calendar month.
+
+    Counted from ``Message.billed_as_service``, which ``send_template``
+    stamps at send time and the delivery receipt never rewrites. Failed sends
+    are excluded: Meta bills on delivery, so a message that never left does
+    not eat the allowance.
+
+    One query, and callers are meant to make it once and hand the number to
+    :func:`quote` -- the send dialog prices every plantilla on the list, and
+    counting per plantilla would be one query per row.
+    """
+    from .models import Message
+    from .providers.types import MessageStatus
+
+    return (
+        Message.objects.filter(
+            billed_as_service=True, timestamp__gte=month_start(now)
+        )
+        .exclude(status=MessageStatus.FAILED.value)
+        .count()
+    )
 
 
 def budget() -> Decimal:

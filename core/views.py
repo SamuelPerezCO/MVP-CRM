@@ -1000,6 +1000,9 @@ def _template_send_body_context(conversation, selected=None, values=None, error=
     # every entry, and it changes the price (a utility plantilla inside an
     # open window is billed as a service message).
     window_open = conversation.is_within_24h_window
+    # Likewise counted once. Every entry is priced against the same month, so
+    # asking per plantilla would be one query per row of the picker.
+    service_used = pricing.service_used_this_month() if window_open else 0
     return {
         "active_conversation": conversation,
         "entries": [
@@ -1009,7 +1012,10 @@ def _template_send_body_context(conversation, selected=None, values=None, error=
                     template, values if selected == template else None
                 ),
                 "quote": pricing.quote(
-                    template, conversation.contact, window_open=window_open
+                    template,
+                    conversation.contact,
+                    window_open=window_open,
+                    service_used=service_used,
                 ),
             }
             for template in templates
