@@ -249,12 +249,12 @@ MAILERS = {
 
 
 # Messaging
-# Which provider backs sending and webhooks: 'fake' | 'twilio' | 'meta' | 'baileys'.
+# Which provider backs sending and webhooks: 'fake' | 'twilio' | 'meta'.
 # Swapping to a real provider is this one variable plus its credentials below
 # (see .env.example). Values come from the environment so no credential ever
 # lands in this file. `manage.py test` always forces 'fake' (see TESTING
 # above), even when a developer's own .env is set to a real provider -- tests
-# must not depend on a live sidecar/Twilio/Meta connection to pass.
+# must not depend on a live Twilio/Meta connection to pass.
 
 MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER', 'fake')
 
@@ -320,8 +320,3 @@ META_WABA_ID = os.environ.get('META_WABA_ID', '')
 META_APP_SECRET = os.environ.get('META_APP_SECRET', '')
 META_VERIFY_TOKEN = os.environ.get('META_VERIFY_TOKEN', '')
 
-# Baileys (unofficial WhatsApp Web/Desktop connection via a Node sidecar --
-# see whatsapp-sidecar/. QR-code pairing, no Meta Developers app needed; good
-# for demos, not for production -- see whatsapp-sidecar/README.md).
-BAILEYS_SIDECAR_URL = os.environ.get('BAILEYS_SIDECAR_URL', 'http://localhost:4000')
-BAILEYS_SIDECAR_SECRET = os.environ.get('BAILEYS_SIDECAR_SECRET', 'dev-sidecar-secret')

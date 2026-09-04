@@ -201,12 +201,12 @@ class SendTemplateTests(TestCase):
         # Numbers arrive as int keys and reach the provider as strings.
         self.assertEqual(kwargs["params"]["1"], "Andrés")
         # A reserved key of the provider contract, from MessageTemplate.language
-        # (default "es"). Meta puts it in its payload; Baileys ignores it.
+        # (default "es"). The Meta provider puts it in its payload.
         self.assertEqual(kwargs["params"]["_language"], "es")
-        # Providers with no template mechanism (Baileys) send this verbatim.
-        self.assertEqual(
-            kwargs["params"]["_body"], "Hola Andrés, gracias por escribirnos."
-        )
+        # Nothing else rides along: every remaining key is a body variable
+        # to the provider, so a stray one would ship to Meta as a parameter
+        # the approved template never declared.
+        self.assertEqual(set(kwargs["params"]), {"1", "_language"})
 
     # --- Money ------------------------------------------------------------
 

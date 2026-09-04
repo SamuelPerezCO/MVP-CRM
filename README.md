@@ -81,51 +81,7 @@ Toda la integración con WhatsApp vive en [messaging/](messaging/) detrás de un
 MESSAGING_PROVIDER=fake    # hoy
 MESSAGING_PROVIDER=twilio  # cuando haya credenciales de Twilio
 MESSAGING_PROVIDER=meta    # cuando Meta desbloquee la cuenta
-MESSAGING_PROVIDER=baileys # WhatsApp real ya, sin esperar a Meta (ver abajo)
 ```
-
-### Mensajería real ya, sin esperar a Meta: `baileys`
-
-Mientras Meta Developers esté bloqueado (verificación de negocio, revisión de
-app, etc.), `MESSAGING_PROVIDER=baileys` conecta el Inbox a un número de
-WhatsApp real hoy mismo, sin ninguna cuenta de Meta Developers: usa
-[Baileys](https://github.com/WhiskeySockets/Baileys) para hablar el mismo
-protocolo que WhatsApp Web/Desktop -- se conecta escaneando un código QR
-desde el teléfono, no por API oficial.
-
-**Esto no es la Cloud API oficial.** Es útil para levantar una demo o un MVP
-en minutos, pero va contra los Términos de Servicio de WhatsApp y Meta puede
-suspender el número sin aviso -- no lo dejes así para producción. En cuanto
-Meta desbloquee la cuenta, cambia `MESSAGING_PROVIDER` a `meta` (o `twilio`)
-y apaga el sidecar; el resto del código no cambia.
-
-Requiere levantar un proceso aparte, el sidecar de Node en
-[whatsapp-sidecar/](whatsapp-sidecar/):
-
-```powershell
-cd whatsapp-sidecar
-npm install
-cp .env.example .env
-npm start
-```
-
-Escanea el código QR que aparece en la terminal desde **WhatsApp > Ajustes >
-Dispositivos vinculados > Vincular un dispositivo**, con el número que quieres
-usar para el CRM. La sesión queda guardada en `whatsapp-sidecar/auth/`, así
-que no hay que volver a escanear en cada reinicio.
-
-Luego, en el `.env` de Django:
-
-```
-MESSAGING_PROVIDER=baileys
-BAILEYS_SIDECAR_URL=http://localhost:4000
-BAILEYS_SIDECAR_SECRET=dev-sidecar-secret   # debe coincidir con el .env del sidecar
-```
-
-Arranca Django normalmente (`python manage.py runserver`) -- los mensajes que
-lleguen al número vinculado aparecen en el Inbox, y las respuestas enviadas
-desde el Inbox salen por WhatsApp real a través del sidecar. Ver
-[whatsapp-sidecar/README.md](whatsapp-sidecar/README.md) para más detalle.
 
 Cuando lleguen credenciales reales de Twilio o Meta:
 
@@ -264,8 +220,8 @@ estimación** en [messaging/services.py](messaging/services.py):
   `referral_conversion`) se registra pero no se re-tarifa.
 
 `Message.cost_is_confirmed` distingue un importe confirmado por Meta de uno
-que sigue siendo la estimación del CRM (todo lo enviado por `fake` o
-`baileys`, que no reportan facturación).
+que sigue siendo la estimación del CRM (todo lo enviado por el proveedor
+`fake`, que no reporta facturación).
 
 Limitación conocida y anotada en el código: de los números +1, Meta solo
 publica el desvío de República Dominicana, Jamaica y Puerto Rico, así que el
@@ -300,8 +256,6 @@ En el dashboard del proyecto (Settings → Environment Variables) define, como m
 Con `DATABASE_URL` configurado, corre las migraciones contra la base de producción (por ejemplo con `vercel env pull` + `python manage.py migrate` localmente, o desde una shell con las mismas variables).
 
 Los archivos estáticos (`static/`) se recolectan y sirven automáticamente desde el CDN de Vercel — no requiere WhiteNoise ni configuración adicional. Los uploads de usuario (`media/`, ej. cabeceras de plantillas) sí requieren almacenamiento externo (Vercel Blob, S3, etc.) porque el filesystem de las funciones no persiste entre requests; sin eso, esa funcionalidad puntual no sobrevive en producción.
-
-`whatsapp-sidecar/` (el conector Baileys) es un proceso Node de larga duración con una conexión WebSocket persistente a WhatsApp — no corre en funciones serverless. Para producción con `MESSAGING_PROVIDER=baileys`, despliégalo aparte en un host con procesos persistentes (Railway, Fly.io, un VPS, etc.); para Vercel, `fake`, `twilio` o `meta` son los proveedores que funcionan tal cual.
 
 ## Tests
 

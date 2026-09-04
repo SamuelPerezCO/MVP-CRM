@@ -252,7 +252,7 @@ class MessageTemplate(models.Model):
     #
     # Filled in by ``messaging.services.sync_templates`` from
     # GET /{WABA_ID}/message_templates. Until that runs (no Meta account, or
-    # the Baileys/fake providers) they stay blank and the CRM's own
+    # the fake provider) they stay blank and the CRM's own
     # ``status``/``category`` above are all there is.
     #
     # Why they are separate columns rather than overwriting: ``meta_status``

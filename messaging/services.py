@@ -246,12 +246,8 @@ def send_template(
     # whose text is empty are dropped.
     params = {str(number): text for number, text in (values or {}).items() if text}
     # Reserved key: the template's language code (es, en_US...). The Meta
-    # provider puts it in its payload as template.language.code; Baileys
-    # discards it.
+    # provider puts it in its payload as template.language.code.
     params["_language"] = template.language
-    # The rendered text, for providers with no template mechanism of their
-    # own (Baileys); ones with a real template API drop it.
-    params["_body"] = body
     # send_template returns the provider's own message id (a string) on
     # success and raises on anything else; that id is all we need back.
     try:

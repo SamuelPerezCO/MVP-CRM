@@ -10,7 +10,6 @@ from __future__ import annotations
 from django.conf import settings
 
 from .base import MessagingProvider
-from .baileys import BaileysProvider
 from .fake import FakeProvider
 from .meta import MetaProvider
 from .twilio import TwilioProvider
@@ -19,7 +18,6 @@ _PROVIDERS: dict[str, type[MessagingProvider]] = {
     FakeProvider.name: FakeProvider,
     TwilioProvider.name: TwilioProvider,
     MetaProvider.name: MetaProvider,
-    BaileysProvider.name: BaileysProvider,
 }
 
 
