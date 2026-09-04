@@ -25,3 +25,9 @@ db.sqlite3
 
 # Intermediate files assemble.py writes next to the PDF it renders.
 docs/generar/*.final.json
+
+# Stale git lock files that tooling parks here when it recovers from an
+# interrupted operation (index.lock.stale, locks/.git_HEAD.lock.<pid>). They
+# are always empty and always disposable; ignored so a re-run does not commit
+# them back into the tree.
+/_to_delete/
