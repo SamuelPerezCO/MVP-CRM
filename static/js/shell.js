@@ -262,6 +262,17 @@
     }
   });
 
+  // A dialog marked [data-dialog-autoshow] opens itself once its body has
+  // been filled by a load-triggered fetch -- how ?nuevo=<client> on the
+  // Inbox lands straight in the Nuevo chat modal. One-shot: the attribute
+  // comes off so later swaps into the same body don't reopen it.
+  document.addEventListener("htmx:afterSwap", function (event) {
+    var dialog = event.detail.target.closest && event.detail.target.closest("dialog[data-dialog-autoshow]");
+    if (!dialog) return;
+    dialog.removeAttribute("data-dialog-autoshow");
+    if (!dialog.open) dialog.showModal();
+  });
+
   // The other way a dialog closes: the *response* says so. A fragment
   // carrying [data-dialog-dismiss] means the server is done with the modal
   // (the Clientes CRUD answers a successful save with one, alongside the
@@ -659,16 +670,59 @@
   });
 
   /* -------------------------------------------------------------------------
-   * Respuestas rápidas: the composer's plantillas picker.
+   * Filterable <select> ([data-select-filter]): typing in the
+   * [data-select-filter-input] narrows the options of the
+   * [data-select-filter-target] select in the same container. The option
+   * list is REBUILT (not hidden) because Safari's native picker ignores
+   * hidden/display on <option>; the current selection always stays listed.
+   * Used by the Nuevo chat modal's client list; the calendar has its own
+   * copy scoped to its panel. Delegated on input, so it works on fetched
+   * modal bodies.
+   * ---------------------------------------------------------------------- */
+
+  document.addEventListener("input", function (event) {
+    var input = event.target.closest && event.target.closest("[data-select-filter-input]");
+    if (!input) return;
+    var box = input.closest("[data-select-filter]");
+    var select = box && box.querySelector("[data-select-filter-target]");
+    if (!select) return;
+    if (!select.__allOptions) {
+      select.__allOptions = Array.prototype.slice.call(select.options).map(function (o) {
+        return { value: o.value, label: o.textContent.trim(), disabled: o.disabled };
+      });
+    }
+    var query = input.value.trim().toLowerCase();
+    var selected = select.value;
+    var shown = 0;
+    while (select.options.length) select.remove(0);
+    select.__allOptions.forEach(function (entry) {
+      var matches = query === "" || entry.label.toLowerCase().indexOf(query) !== -1;
+      if (!matches && entry.value !== selected) return;
+      var option = document.createElement("option");
+      option.value = entry.value;
+      option.textContent = entry.label;
+      option.disabled = entry.disabled;
+      select.appendChild(option);
+      if (matches) shown += 1;
+    });
+    select.value = selected;
+    // With one match, pick it: the agent typed enough to mean that one.
+    if (query !== "" && shown === 1) select.selectedIndex = 0;
+    var status = box.querySelector("[data-select-filter-status]");
+    if (status) {
+      status.textContent = query === "" ? "" :
+        shown === 0 ? "Sin resultados" : shown + (shown === 1 ? " cliente" : " clientes");
+    }
+  });
+
+  /* -------------------------------------------------------------------------
+   * Respuestas rápidas: the composer's quick-reply picker.
    *
    * A [data-quick-send] entry posts itself to inbox_send (its own hx-post,
    * see quick_replies.html), so the reply appears in the thread on the
    * click -- nothing here does the sending, this only gets the popover out
-   * of the way. A [data-quick-body] entry is the other case: its body still
-   * has a {{n}} to fill, so it loads the composer and waits for Enviar.
-   *
-   * All listeners are document-level delegation, so the picker keeps
-   * working across every chat_thread re-render.
+   * of the way. All listeners are document-level delegation, so the picker
+   * keeps working across every chat_thread re-render.
    * ---------------------------------------------------------------------- */
 
   function closeQuickReplies(except) {
@@ -678,19 +732,6 @@
   }
 
   document.addEventListener("click", function (event) {
-    var item = event.target.closest("[data-quick-body]");
-    if (item) {
-      var composer = item.closest(".composer");
-      var input = composer && composer.querySelector(".composer__input");
-      if (input) {
-        input.value = item.dataset.quickBody;
-        input.focus();
-        // Cursor at the end -- ready to append, or to spot a {{n}} to fill.
-        input.setSelectionRange(input.value.length, input.value.length);
-      }
-      closeQuickReplies();
-      return;
-    }
     // HTMX has already fired the send off this same click; just close up.
     if (event.target.closest("[data-quick-send]")) {
       closeQuickReplies();

@@ -4,12 +4,12 @@ MVP de un CRM omnicanal para comercios, inspirado en plataformas tipo Treble/Lea
 
 ## Funcionalidades
 
-- **Inbox** — conversaciones reales filtradas por canal y asignación, con lista, chat en vivo (polling htmx), compositor con la regla de 24 horas de WhatsApp, respuestas rápidas que se envían de un clic y panel de detalles del cliente.
-- **CRM** — clientes con alta, edición, ficha y baja desde la tabla (nombre, teléfono con bandera de país, mail, canal), buscador y listas de clientes.
+- **Inbox** — conversaciones reales filtradas por canal y asignación, con lista, chat en vivo (polling htmx), compositor con la regla de 24 horas de WhatsApp (fuera de la ventana ofrece enviar una plantilla), **Nuevo chat** para escribirle primero a un cliente, respuestas rápidas (texto o imagen) que se envían de un clic y panel de detalles del cliente.
+- **CRM** — clientes con alta, edición, ficha y baja desde la tabla (nombre, teléfono con bandera de país, mail, canal), buscador, exportación a Excel, listas de clientes y calendario con el cliente visible en cada evento.
 - **Embudos** — panel de embudos de venta con creación de nuevos embudos.
 - **Automatizaciones** — flujos de chatbots y banner de Academy.
 - **Mi comercio** — catálogo de productos con creación e importación.
-- **Campañas, Estadísticas y Mensajería** — métricas de mensajería y plantillas de WhatsApp.
+- **Campañas, Estadísticas y Mensajería** — métricas de mensajería, plantillas de WhatsApp y respuestas rápidas propias (texto e imagen) para el compositor.
 
 Las secciones sin pantalla propia todavía (Performance HUB, Integraciones, etc.) muestran un placeholder automáticamente; agregar una sección nueva es una línea en [core/nav.py](core/nav.py).
 
@@ -65,12 +65,7 @@ funcione y que cada mensaje enviado registre quién lo escribió.
 
 En el Inbox, el desplegable junto al estado de la conversación ("Abierta")
 cambia el agente asignado y guarda al instante; "Sin asignar" la devuelve a la
-bandeja común. Todos los agentes tienen las mismas capacidades por ahora — no
-hay roles.
-
-Si `APP_AGENTS` no está definida se usa el par antiguo
-`APP_LOGIN_USERNAME`/`APP_LOGIN_PASSWORD` como lista de un solo agente, así que
-un entorno anterior a esto sigue funcionando sin tocar nada.
+bandeja común.
 
 ## Mensajería: cambiar de proveedor
 

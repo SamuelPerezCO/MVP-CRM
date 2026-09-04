@@ -1,0 +1,90 @@
+{% comment %}
+  The quick replies table -- the swappable region inside #reply-table,
+  re-rendered by every save, delete and active toggle.
+
+  Inactive replies stay listed (muted, below the active ones) so a text
+  taken out of the picker isn't lost; the switch puts it back.
+
+  Context: replies
+{% endcomment %}
+
+{% if replies %}
+  <div class="product-card">
+    <div class="product-card__scroll">
+      <table class="table reply-table">
+        <thead>
+          <tr>
+            <th scope="col">Título</th>
+            <th scope="col">Texto</th>
+            <th scope="col">Imagen</th>
+            <th scope="col">Creada por</th>
+            <th scope="col">Activa</th>
+            <th scope="col" class="table__actions-col">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for reply in replies %}
+            <tr{% if not reply.is_active %} class="reply-row--off"{% endif %}>
+              <td class="table__name">{{ reply.title }}</td>
+              <td class="reply-table__text">{{ reply.body|default:"—"|truncatechars:90 }}</td>
+              <td>
+                {% if reply.has_image %}
+                  <a class="reply-thumb" href="{{ reply.image.url }}" target="_blank" rel="noopener">
+                    <img src="{{ reply.image.url }}" alt="Imagen de {{ reply.title }}" loading="lazy">
+                  </a>
+                {% else %}
+                  <span class="table__muted">—</span>
+                {% endif %}
+              </td>
+              <td class="table__muted">
+                {% if reply.created_by %}
+                  {{ reply.created_by.get_full_name|default:reply.created_by.username }}
+                {% else %}—{% endif %}
+              </td>
+              <td>
+                {# One-click switch; the region re-renders with the new state. #}
+                <button type="button"
+                        class="switch{% if reply.is_active %} is-on{% endif %}"
+                        role="switch" aria-checked="{{ reply.is_active|yesno:'true,false' }}"
+                        aria-label="{% if reply.is_active %}Desactivar{% else %}Activar{% endif %} {{ reply.title }}"
+                        hx-post="{% url 'respuesta_toggle' reply.pk %}"
+                        hx-vals='{"active": "{% if reply.is_active %}0{% else %}1{% endif %}"}'
+                        hx-target="#reply-table"
+                        hx-swap="innerHTML">
+                  <span class="switch__knob"></span>
+                </button>
+              </td>
+              <td class="table__actions-col">
+                <div class="row-actions"
+                     hx-target="#reply-modal-body"
+                     hx-swap="innerHTML">
+                  <button type="button" class="icon-btn icon-btn--bare"
+                          data-dialog-open="reply-modal"
+                          hx-get="{% url 'respuesta_update' reply.pk %}"
+                          aria-label="Editar {{ reply.title }}">
+                    {% include "icons/pencil.svg" %}
+                  </button>
+                  <button type="button" class="icon-btn icon-btn--bare icon-btn--danger"
+                          data-dialog-open="reply-modal"
+                          hx-get="{% url 'respuesta_delete' reply.pk %}"
+                          aria-label="Eliminar {{ reply.title }}">
+                    {% include "icons/trash.svg" %}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% else %}
+  <div class="empty empty--panel">
+    <div class="empty__icon">{% include "icons/zap.svg" %}</div>
+    <p class="empty__title">Aún no hay respuestas rápidas</p>
+    <p class="empty__text">
+      Crea la primera con «+ Crear respuesta»: un texto, una imagen o ambos.
+      Aparecerá en el compositor del Inbox.
+    </p>
+  </div>
+{% endif %}

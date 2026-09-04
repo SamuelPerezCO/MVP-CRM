@@ -7,8 +7,11 @@ Two entry points matter:
   without touching the endpoint: the view would enqueue the normalized events
   instead of calling this directly. There is no queue today (requirements.txt
   is Django only), so it runs synchronously.
-* :func:`send_message` -- the only way the app sends a free-form text. It is
-  where the 24-hour window rule lives.
+* :func:`send_message` -- the only way the app sends a free-form text (or
+  a quick reply's image). It is where the 24-hour window rule lives.
+* :func:`send_template` -- the one send allowed outside that window: a
+  pre-approved plantilla, which is how a conversation is started from our
+  side (see :func:`start_conversation`).
 """
 
 from __future__ import annotations
@@ -44,8 +47,19 @@ class SendFailed(Exception):
 # --- Sending ---------------------------------------------------------------
 
 
-def send_message(conversation: Conversation, body: str, user=None) -> Message:
-    """Send a free-form text in ``conversation`` and record it.
+def send_message(
+    conversation: Conversation,
+    body: str,
+    user=None,
+    *,
+    image_url: str = "",
+) -> Message:
+    """Send a free-form message in ``conversation`` and record it.
+
+    Text by default; with ``image_url`` (a public URL -- a quick reply's
+    stored picture) the provider ships the image and ``body`` rides along as
+    its caption. Either way it is a free-form send, bound by the same 24h
+    window: media is no more allowed outside it than text is.
 
     The Message row is created *before* the provider call (status ``queued``)
     so a crash mid-send leaves evidence rather than losing the message; the
@@ -66,13 +80,20 @@ def send_message(conversation: Conversation, body: str, user=None) -> Message:
         conversation=conversation,
         direction=Message.OUTBOUND,
         body=body,
+        media_url=image_url,
+        media_type="image" if image_url else "",
         status=MessageStatus.QUEUED.value,
         sent_by=user if getattr(user, "is_authenticated", False) else None,
     )
 
     provider = get_provider()
     try:
-        provider_id = provider.send_text(to=conversation.contact.phone, body=body)
+        if image_url:
+            provider_id = provider.send_image(
+                to=conversation.contact.phone, image_url=image_url, caption=body
+            )
+        else:
+            provider_id = provider.send_text(to=conversation.contact.phone, body=body)
     except Exception as exc:
         message.status = MessageStatus.FAILED.value
         message.save(update_fields=["status"])
@@ -85,6 +106,63 @@ def send_message(conversation: Conversation, body: str, user=None) -> Message:
     conversation.last_message_at = message.timestamp
     conversation.save(update_fields=["last_message_at"])
     return message
+
+
+def send_template(conversation: Conversation, template, user=None) -> Message:
+    """Send a WhatsApp plantilla in ``conversation`` and record it.
+
+    The one send that works *outside* the 24h window -- it is how a
+    conversation starts (a client who has never written in) or restarts (one
+    who went quiet). The rendered body (samples substituted for {{n}}, see
+    core.plantillas.render_body) is what the thread shows; the provider gets
+    the template's name and its parameters, which is what Meta actually
+    delivers. Providers without a template mechanism render the same text.
+
+    No window check on purpose; that is the point of a template. Raises
+    :class:`SendFailed` when the provider errors (row kept as ``failed``).
+    """
+    from core import plantillas  # local: core imports messaging, not the reverse
+
+    body = plantillas.render_body(template)
+    message = Message.objects.create(
+        conversation=conversation,
+        direction=Message.OUTBOUND,
+        body=body,
+        status=MessageStatus.QUEUED.value,
+        sent_by=user if getattr(user, "is_authenticated", False) else None,
+    )
+
+    samples = template.body_sample_values or []
+    params = {str(index + 1): value for index, value in enumerate(samples) if value}
+    params["_language"] = template.language
+    # For providers with no template mechanism (Baileys), so they send the
+    # message rather than the template's name -- see MessagingProvider.
+    params["_rendered"] = body
+
+    provider = get_provider()
+    try:
+        provider_id = provider.send_template(
+            to=conversation.contact.phone, template_name=template.name, params=params
+        )
+    except Exception as exc:
+        message.status = MessageStatus.FAILED.value
+        message.save(update_fields=["status"])
+        logger.exception("send_template failed for conversation %s", conversation.pk)
+        raise SendFailed(str(exc)) from exc
+
+    message.provider_message_id = provider_id
+    message.save(update_fields=["provider_message_id"])
+
+    conversation.last_message_at = message.timestamp
+    conversation.save(update_fields=["last_message_at"])
+    return message
+
+
+def start_conversation(contact: Client, channel: str = "whatsapp") -> Conversation:
+    """The thread to send a first message in: the contact's open one on that
+    channel, or a fresh row. Same rule as inbound routing, so an agent
+    starting a chat and a customer writing in land in the same place."""
+    return _get_or_create_open_conversation(contact, channel)
 
 
 # --- Inbound processing -----------------------------------------------------

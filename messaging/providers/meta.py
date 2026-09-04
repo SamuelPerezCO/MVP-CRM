@@ -165,6 +165,23 @@ class MetaProvider(MessagingProvider):
             }
         )
 
+    def send_image(self, to: str, image_url: str, caption: str = "") -> str:
+        """An image by public link -- Meta fetches it, so the URL must be
+        reachable from the internet (Vercel Blob is; a local MEDIA_ROOT is
+        not, which is fine: the fake provider is what runs locally)."""
+        image = {"link": image_url}
+        if caption:
+            image["caption"] = caption
+        return self._post_message(
+            {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": to,
+                "type": "image",
+                "image": image,
+            }
+        )
+
     def send_template(self, to: str, template_name: str, params: dict) -> str:
         """Send a pre-approved template -- the only way out of the 24h window.
 
@@ -177,6 +194,9 @@ class MetaProvider(MessagingProvider):
         """
         params = dict(params or {})
         language = str(params.pop("_language", _DEFAULT_TEMPLATE_LANGUAGE))
+        # Meta renders the template itself from its own approved copy; the
+        # CRM's pre-rendered body is only for text-only providers.
+        params.pop("_rendered", None)
 
         payload = {
             "messaging_product": "whatsapp",

@@ -85,14 +85,33 @@
       <button type="submit" class="btn-primary">Enviar</button>
     </form>
   {% else %}
-    {# WhatsApp's 24h rule, surfaced instead of a send that would bounce. #}
+    {% comment %}
+      WhatsApp's 24h rule, surfaced as the one thing that IS allowed: a
+      plantilla, picked and sent right here (core.views.inbox_send_template).
+      The customer's reply is what reopens the window and brings the normal
+      composer back on the next poll/click.
+    {% endcomment %}
     <div class="composer composer--closed">
-      {% include "icons/info.svg" %}
-      <p class="composer__notice">
-        La ventana de 24 horas está cerrada: solo puedes reabrir esta
-        conversación con una
-        <a href="{% url 'section' 'mensajeria' %}">plantilla aprobada</a>.
-      </p>
+      <div class="composer__notice">
+        {% include "icons/info.svg" %}
+        <p>
+          La ventana de 24 horas está cerrada. Puedes retomar la conversación
+          enviando una plantilla aprobada; cuando el cliente responda, vuelve
+          el chat libre.
+        </p>
+      </div>
+      <form class="composer__template"
+            hx-post="{% url 'inbox_send_template' active_conversation.pk %}"
+            hx-target="#chat-messages"
+            hx-swap="innerHTML">
+        {% csrf_token %}
+        {% include "partials/inbox/template_list.html" %}
+        {% if template_options %}
+          <div class="composer__template-actions">
+            <button type="submit" class="btn-primary">Enviar plantilla</button>
+          </div>
+        {% endif %}
+      </form>
     </div>
   {% endif %}
 </div>

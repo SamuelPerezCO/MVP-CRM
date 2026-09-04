@@ -1,0 +1,53 @@
+{% comment %}
+  Column 3 -- the Respuestas rápidas page: the team's canned answers, each
+  sendable from the Inbox composer in one click.
+
+  Toolbar (title + Crear), the swappable table, and the one shared modal the
+  create/edit/delete screens render into -- the same shape as the Clientes
+  panel (partials/crm/panels/clientes.html), for the same reasons.
+
+  #reply-table carries the CSRF token as hx-headers for the toggle buttons
+  inside it; the modal forms carry their own {% csrf_token %}.
+
+  Context: replies
+{% endcomment %}
+
+<div class="plantillas respuestas">
+
+  <header class="plantillas__head respuestas__head">
+    <div class="respuestas__intro">
+      <h1 class="respuestas__title">Respuestas rápidas</h1>
+      <p class="respuestas__hint">
+        Textos e imágenes que el equipo envía con un clic desde el chat
+        (botón «Respuestas rápidas» del compositor).
+      </p>
+    </div>
+    <div class="plantillas__toolbar">
+      <button type="button" class="btn-primary plantillas__create"
+              data-dialog-open="reply-modal"
+              hx-get="{% url 'respuesta_create' %}"
+              hx-target="#reply-modal-body"
+              hx-swap="innerHTML">
+        + Crear respuesta
+      </button>
+    </div>
+  </header>
+
+  {# HTMX swap target for every save, delete and toggle. #}
+  <div id="reply-table" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+    {% include "partials/mensajeria/respuestas/table.html" %}
+  </div>
+
+  <p id="reply-notice" class="sr-only" role="status"></p>
+
+  <dialog class="modal modal--client" id="reply-modal"
+          aria-labelledby="reply-modal-title"
+          data-dialog-backdrop-close>
+    <button type="button" class="modal__close" data-dialog-close aria-label="Cerrar">
+      {% include "icons/x.svg" %}
+    </button>
+    <div class="modal__body" id="reply-modal-body">
+      <p class="table__muted">Cargando…</p>
+    </div>
+  </dialog>
+</div>

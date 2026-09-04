@@ -64,19 +64,33 @@ class BaileysProvider(MessagingProvider):
         return self._send(to, body)
 
     def send_template(self, to: str, template_name: str, params: dict) -> str:
-        # No real template mechanism outside the Cloud API/BSPs -- render
-        # params into the template name as a best-effort plain-text stand-in
-        # so callers written against the provider interface still work.
-        rendered = template_name
-        for key, value in (params or {}).items():
-            rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
+        # No real template mechanism outside the Cloud API/BSPs, so this
+        # sends plain text. The caller passes the already-rendered body as
+        # params["_rendered"] (see MessagingProvider.send_template); without
+        # it, fall back to substituting into the name, which is all an older
+        # caller supplied.
+        params = dict(params or {})
+        rendered = params.pop("_rendered", "")
+        params.pop("_language", None)
+        if not rendered:
+            rendered = template_name
+            for key, value in params.items():
+                rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
         return self._send(to, rendered)
 
-    def _send(self, to: str, body: str) -> str:
+    def send_image(self, to: str, image_url: str, caption: str = "") -> str:
+        # The sidecar's /send takes an optional image_url; a build that
+        # predates it ignores the key and delivers the caption as text.
+        return self._send(to, caption, image_url=image_url)
+
+    def _send(self, to: str, body: str, image_url: str = "") -> str:
         url = f"{settings.BAILEYS_SIDECAR_URL.rstrip('/')}/send"
+        payload = {"to": to, "body": body}
+        if image_url:
+            payload["image_url"] = image_url
         response = requests.post(
             url,
-            json={"to": to, "body": body},
+            json=payload,
             headers={"X-Sidecar-Secret": settings.BAILEYS_SIDECAR_SECRET},
             timeout=_REQUEST_TIMEOUT,
         )

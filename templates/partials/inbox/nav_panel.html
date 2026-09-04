@@ -12,11 +12,40 @@
 <nav class="inbox-nav" aria-label="Filtros de conversaciones">
 
   <div class="inbox-nav__head">
-    <button type="button" class="btn-primary btn-primary--block">
+    {# Opens the shared modal below and fetches its body (core.views.inbox_new_chat). #}
+    <button type="button" class="btn-primary btn-primary--block"
+            data-dialog-open="newchat-modal"
+            hx-get="{% url 'inbox_new_chat' %}"
+            hx-target="#newchat-modal-body"
+            hx-swap="innerHTML">
       {% include "icons/pencil.svg" %}
       <span>Nuevo Chat</span>
     </button>
   </div>
+
+  {% comment %}
+    The Nuevo chat modal. Lives in this column (rendered once per Inbox
+    load, never swapped by the list/chat polls) so it survives everything
+    the rest of the screen does. With ?nuevo=<client id> in the URL -- the
+    CRM's client card links here -- the body loads on its own and shell.js
+    opens the dialog once it lands (data-dialog-autoshow).
+  {% endcomment %}
+  <dialog class="modal modal--client modal--newchat" id="newchat-modal"
+          aria-labelledby="newchat-modal-title"
+          data-dialog-backdrop-close
+          {% if new_chat_client_id %}data-dialog-autoshow{% endif %}>
+    <button type="button" class="modal__close" data-dialog-close aria-label="Cerrar">
+      {% include "icons/x.svg" %}
+    </button>
+    <div class="modal__body" id="newchat-modal-body"
+         {% if new_chat_client_id %}
+           hx-get="{% url 'inbox_new_chat' %}?cliente={{ new_chat_client_id }}"
+           hx-trigger="load"
+           hx-swap="innerHTML"
+         {% endif %}>
+      <p class="table__muted">Cargando…</p>
+    </div>
+  </dialog>
 
   {# data-nav-group scopes the active-pill behaviour in shell.js to this list. #}
   <div class="inbox-nav__scroll" data-nav-group>

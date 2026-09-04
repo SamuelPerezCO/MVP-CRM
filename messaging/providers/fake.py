@@ -59,6 +59,14 @@ class FakeProvider(MessagingProvider):
         )
         return message_id
 
+    def send_image(self, to: str, image_url: str, caption: str = "") -> str:
+        message_id = f"fake-{uuid.uuid4().hex}"
+        logger.info(
+            "[fake] send_image to=%s id=%s url=%s caption=%r",
+            to, message_id, image_url, caption,
+        )
+        return message_id
+
     # --- Webhook -----------------------------------------------------------
 
     def verify_signature(self, request) -> bool:
