@@ -276,7 +276,7 @@ class ConversationAssignmentTests(TestCase):
         response = self.client.get(reverse("inbox_chat", args=[self.conversation.pk]))
         html = response.content.decode()
         self.assertIn("Respuestas rápidas", html)
-        self.assertIn(reverse("inbox_quick_replies"), html)
+        self.assertIn(reverse("inbox_quick_replies", args=[self.conversation.pk]), html)
 
 
 @override_settings(APP_AGENTS=TWO_AGENTS, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD="")

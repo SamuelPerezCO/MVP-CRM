@@ -40,8 +40,9 @@ urlpatterns = [
         name="inbox_assign",
     ),
     # The composer's Respuestas rápidas popover, fetched when first opened.
+    # Conversation-scoped because each entry posts itself to inbox_send.
     path(
-        "inbox/respuestas-rapidas/",
+        "inbox/chat/<int:conversation_id>/respuestas-rapidas/",
         views.inbox_quick_replies,
         name="inbox_quick_replies",
     ),

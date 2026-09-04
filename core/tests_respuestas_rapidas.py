@@ -51,17 +51,57 @@ class RenderBodyTests(TestCase):
         self.assertEqual(plantillas.render_body(entry), "Gracias por escribirnos.")
 
 
+def conversation(phone="+573000000777"):
+    """An open conversation -- the picker is scoped to one, since every
+    entry posts itself into that thread."""
+    contact = Client.objects.create(first_name="Camila", last_name="Test", phone=phone)
+    return Conversation.objects.create(
+        contact=contact,
+        channel="whatsapp",
+        last_inbound_at=timezone.now() - timedelta(hours=1),
+    )
+
+
 class QuickRepliesEndpointTests(TestCase):
+    def setUp(self):
+        self.conversation = conversation()
+
     def get(self):
-        return self.client.get(reverse("inbox_quick_replies"))
+        return self.client.get(
+            reverse("inbox_quick_replies", args=[self.conversation.pk])
+        )
 
     def test_lists_approved_active_templates_with_rendered_bodies(self):
         template(name="saludo_inicial", samples=["Camila"])
         html = self.get().content.decode()
         self.assertIn("saludo_inicial", html)
         self.assertIn("Hola Camila", html)
-        # The picker carries the body in the attribute shell.js reads.
+
+    def test_a_sendable_entry_posts_itself_into_the_open_chat(self):
+        # The whole point of a quick reply: one click puts it in the thread.
+        template(name="saludo_inicial", samples=["Camila"])
+        html = self.get().content.decode()
+        self.assertIn(
+            f'hx-post="{reverse("inbox_send", args=[self.conversation.pk])}"', html
+        )
+        self.assertIn('hx-target="#chat-messages"', html)
+        self.assertIn("data-quick-send", html)
+        # The body travels as JSON in hx-vals, entity-escaped for the attribute.
+        self.assertIn("&quot;Hola Camila, ¿en qué te ayudo?&quot;", html)
+
+    def test_an_entry_with_a_blank_left_loads_the_composer_instead(self):
+        # Sending it would put a literal "{{2}}" in front of the customer.
+        template(name="con_hueco", body="Hola {{1}}, código {{2}}", samples=["Camila"])
+        html = self.get().content.decode()
         self.assertIn("data-quick-body", html)
+        self.assertNotIn("data-quick-send", html)
+        self.assertIn("Completar", html)
+
+    def test_an_unknown_conversation_is_404(self):
+        self.assertEqual(
+            self.client.get(reverse("inbox_quick_replies", args=[999999])).status_code,
+            404,
+        )
 
     def test_rejected_and_inactive_templates_are_not_offered(self):
         template(name="rechazada_ya", status="rechazada")
@@ -80,7 +120,7 @@ class QuickRepliesEndpointTests(TestCase):
         self.assertIn("recien_creada", html)
         self.assertIn("Pendiente", html)
 
-    def test_an_accepted_template_carries_no_badge(self):
+    def test_an_accepted_sendable_template_carries_no_badge(self):
         template(name="ya_aprobada", status="aceptada")
         html = self.get().content.decode()
         self.assertIn("ya_aprobada", html)
@@ -117,5 +157,24 @@ class ComposerHookupTests(TestCase):
         )
         html = response.content.decode()
         self.assertIn("data-quickreplies", html)
-        self.assertIn(reverse("inbox_quick_replies"), html)
+        self.assertIn(
+            reverse("inbox_quick_replies", args=[self.conversation.pk]), html
+        )
         self.assertIn('hx-trigger="toggle once"', html)
+
+    def test_the_picker_carries_the_csrf_token_its_entries_post_with(self):
+        # The entries are buttons, not this form's submit, so they inherit
+        # the token from hx-headers on the <details> rather than {% csrf_token %}.
+        html = self.client.get(
+            reverse("inbox_chat", args=[self.conversation.pk])
+        ).content.decode()
+        self.assertIn("X-CSRFToken", html)
+
+    def test_picking_a_quick_reply_lands_the_message_in_the_thread(self):
+        # End to end over the same route the popover button posts to.
+        response = self.client.post(
+            reverse("inbox_send", args=[self.conversation.pk]),
+            {"body": "Hola Camila, ¿en qué te ayudo?"},
+        )
+        self.assertContains(response, "Hola Camila, ¿en qué te ayudo?")
+        self.assertEqual(self.conversation.messages.count(), 1)

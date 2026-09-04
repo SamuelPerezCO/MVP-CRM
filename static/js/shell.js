@@ -648,9 +648,13 @@
   /* -------------------------------------------------------------------------
    * Respuestas rápidas: the composer's plantillas picker.
    *
-   * Picking an entry FILLS the input rather than sending -- the agent
-   * reviews (a sample value may need replacing) and Enviar stays the only
-   * send. All listeners are document-level delegation, so the picker keeps
+   * A [data-quick-send] entry posts itself to inbox_send (its own hx-post,
+   * see quick_replies.html), so the reply appears in the thread on the
+   * click -- nothing here does the sending, this only gets the popover out
+   * of the way. A [data-quick-body] entry is the other case: its body still
+   * has a {{n}} to fill, so it loads the composer and waits for Enviar.
+   *
+   * All listeners are document-level delegation, so the picker keeps
    * working across every chat_thread re-render.
    * ---------------------------------------------------------------------- */
 
@@ -671,6 +675,11 @@
         // Cursor at the end -- ready to append, or to spot a {{n}} to fill.
         input.setSelectionRange(input.value.length, input.value.length);
       }
+      closeQuickReplies();
+      return;
+    }
+    // HTMX has already fired the send off this same click; just close up.
+    if (event.target.closest("[data-quick-send]")) {
       closeQuickReplies();
       return;
     }

@@ -2,12 +2,22 @@
   The Respuestas rápidas list -- what core.views.inbox_quick_replies drops
   into the composer's popover the first time it opens.
 
-  Each row is a button carrying its plantilla's rendered body (samples
-  already substituted for {{n}}); shell.js copies data-quick-body into the
-  composer input on click, so the agent reviews the text and presses Enviar.
-  Nothing here sends by itself.
+  Picking an entry SENDS it: the button posts the plantilla's rendered body
+  (samples already substituted for {{n}}) straight to inbox_send and the
+  refreshed thread comes back into #chat-messages, so the quick reply lands
+  in the chat in one click -- which is the whole point of a quick reply.
 
-  Context: entries -- [{template, body}], active and not rechazada
+  The exception is an entry flagged ``needs_input``: its body still carries
+  an unfilled {{n}} because no sample was given for that variable, and
+  sending it would show the customer a literal "{{2}}". Those carry
+  data-quick-body instead, which shell.js copies into the composer for the
+  agent to finish -- the send stays behind Enviar there.
+
+  The CSRF token for these posts is inherited from the hx-headers on the
+  <details> in chat_thread.html.
+
+  Context: entries -- [{template, body, needs_input, body_json}], active and
+  not rechazada; conversation -- the chat the sends post to
 {% endcomment %}
 
 {% if entries %}
@@ -15,12 +25,25 @@
   <ul class="quickreplies__list">
     {% for entry in entries %}
       <li>
-        <button type="button" class="quickreplies__item"
-                data-quick-body="{{ entry.body }}">
+        <button type="button"
+                class="quickreplies__item{% if entry.needs_input %} quickreplies__item--fill{% endif %}"
+                {% if entry.needs_input %}
+                  data-quick-body="{{ entry.body }}"
+                  title="Completa los datos entre llaves antes de enviar"
+                {% else %}
+                  data-quick-send
+                  hx-post="{% url 'inbox_send' conversation.pk %}"
+                  hx-vals='{"body": {{ entry.body_json }}}'
+                  hx-target="#chat-messages"
+                  hx-swap="innerHTML"
+                {% endif %}>
           <span class="quickreplies__name">
             {{ entry.template.name }}
             {% if entry.template.status == "pendiente" %}
               <span class="quickreplies__badge">Pendiente</span>
+            {% endif %}
+            {% if entry.needs_input %}
+              <span class="quickreplies__badge quickreplies__badge--fill">Completar</span>
             {% endif %}
           </span>
           <span class="quickreplies__preview">{{ entry.body|truncatechars:90 }}</span>
