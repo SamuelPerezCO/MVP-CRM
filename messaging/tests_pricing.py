@@ -17,7 +17,7 @@ failure there means the shipped card is out of date, not that the code broke.
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 
 from django.test import TestCase, override_settings
@@ -276,6 +276,23 @@ class SpendTests(TestCase):
         self.bill("5.00", when=pricing.month_start() - timedelta(days=1))
         self.bill("0.0125")
         self.assertEqual(pricing.month_to_date(), Decimal("0.0125"))
+
+    def test_the_month_ends_on_the_bogota_clock_not_utc(self):
+        # This project runs on TIME_ZONE="UTC" while every "today" it shows an
+        # agent is the Bogotá wall clock (core.calendario.CALENDAR_TZ, reused
+        # by core.estadisticas_volumen as REPORT_TZ). Bucketing spend in UTC
+        # instead would move the last five hours of each month -- 19:00 to
+        # midnight in Bogotá -- into the next month's total, and enforce the
+        # ceiling against a month the sender does not recognise.
+        late = datetime(2026, 8, 31, 20, 0, tzinfo=pricing.BILLING_TZ)
+        self.assertEqual(late.astimezone(dt_timezone.utc).month, 9)  # UTC says September
+        self.assertEqual(pricing.month_start(late).month, 8)         # billing says August
+
+        # And it counts in that month's spend, not the next one's.
+        self.bill("0.0125", when=late)
+        self.assertEqual(pricing.month_to_date(late), Decimal("0.0125"))
+        first_of_september = datetime(2026, 9, 1, 9, 0, tzinfo=pricing.BILLING_TZ)
+        self.assertEqual(pricing.month_to_date(first_of_september), Decimal("0"))
 
     @override_settings(MESSAGING_MONTHLY_BUDGET="0.02")
     def test_the_budget_stops_the_send_that_would_cross_it(self):
