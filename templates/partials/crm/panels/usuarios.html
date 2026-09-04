@@ -1,0 +1,41 @@
+{% comment %}
+  CRM column 3 -- the Usuarios page: who can log in, managed by masters.
+
+  This is what core.views.crm_panel returns when "Usuarios" is picked in the
+  secondary nav (the row only shows to masters, and the view 403s anyone
+  else). Only #user-table below is replaced by the create / edit / password /
+  status / delete actions -- the header and the create dialog stay put, the
+  same shape as the Etiquetas page.
+
+  hx-headers on #user-table supplies the CSRF token to the bare hx-post
+  buttons inside the swappable region (activate / deactivate); the dialog
+  forms carry their own token.
+
+  Context: users (see core.usuarios.list_users), role_choices, user_error
+{% endcomment %}
+
+<div class="crm-panel">
+
+  <header class="crm-panel__head">
+    <h1 class="crm-panel__title">
+      Usuarios
+      <span class="info-dot" role="img"
+            aria-label="Los usuarios del entorno (APP_AGENTS) se gestionan fuera de la app">
+        {% include "icons/info.svg" %}
+      </span>
+    </h1>
+
+    <div class="crm-panel__toolbar">
+      <button type="button" class="btn-primary" data-dialog-open="user-dialog-create">
+        + Crear usuario
+      </button>
+    </div>
+  </header>
+
+  {# HTMX swap target for every user mutation. #}
+  <div id="user-table" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+    {% include "partials/crm/user_table.html" %}
+  </div>
+
+  {% include "partials/crm/user_dialog.html" with managed=None title="Crear usuario" submit_label="Crear usuario" %}
+</div>

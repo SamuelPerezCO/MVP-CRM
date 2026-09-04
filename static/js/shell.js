@@ -254,6 +254,12 @@
   document.addEventListener("htmx:afterRequest", function (event) {
     var el = event.target.closest && event.target.closest("[data-close-on-success]");
     if (!el || !event.detail.successful) return;
+    // A 2xx can still carry a validation error (the Usuarios dialogs answer
+    // «Ese usuario ya existe» that way, with the message swapped into the
+    // dialog out-of-band). The X-Form-Error header keeps the dialog open so
+    // the person fixes one field instead of retyping four.
+    var xhr = event.detail.xhr;
+    if (xhr && xhr.getResponseHeader && xhr.getResponseHeader("X-Form-Error")) return;
     var dialog = el.closest("dialog");
     if (dialog && dialog.open) dialog.close();
     if (el.tagName === "FORM") {

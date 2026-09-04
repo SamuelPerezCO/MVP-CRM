@@ -247,3 +247,132 @@
   font-size: 14px;
   color: var(--text);
 }
+
+/* ==========================================================================
+   Usuarios (Mi cuenta › Equipo)
+   The table reuses .table / .row-actions / .icon-btn--bare above; the
+   dialogs get their own compact skin, a sibling of .tag-dialog (tags.css)
+   rather than the wide .modal shell -- a four-field form doesn't want 700px.
+   ========================================================================== */
+
+.user-row--inactive td { color: var(--muted); }
+.user-row--inactive .user-name { text-decoration: line-through; }
+
+.user-name { font-weight: 600; }
+
+/* Role / origin pills. Quiet by default; the master one borrows the accent
+   so the people who can do everything stand out at a glance. */
+.user-badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--hover-bg);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.user-badge--master { background: var(--accent-soft); color: var(--accent); }
+.user-badge--env    { background: #fdf3e0; color: #b97a12; }
+
+/* Red on hover only: a row of grey icons where one is permanently red
+   reads as "this row has a problem", not "this button deletes". */
+.icon-btn--danger:hover { color: var(--error-text, #c73e3e); background: #fdecec; }
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--error-text, #c73e3e);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--speed) ease;
+}
+
+.btn-danger:hover { background: #a93131; }
+.btn-danger:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+/* --- Dialog ---------------------------------------------------------------- */
+
+.user-dialog {
+  width: 380px;
+  padding: 20px;
+  border: 0;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgb(15 30 50 / 25%);
+}
+
+.user-dialog::backdrop { background: rgb(15 30 50 / 35%); }
+
+.user-dialog__title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.user-dialog__label {
+  display: block;
+  margin: 12px 0 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+/* The dialog's text inputs are the Inbox search field minus its icon inset. */
+.user-dialog .field__input { padding-inline-start: 10px; height: 36px; }
+
+.user-dialog__hint {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.user-dialog__hint strong { color: var(--text); }
+
+.user-dialog__error { margin: 8px 0 0; }
+
+.user-roles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.user-roles legend { padding: 0; }
+
+.user-role {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color var(--speed) ease, background-color var(--speed) ease;
+}
+
+.user-role:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.user-role:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.user-role input { margin: 3px 0 0; accent-color: var(--accent); }
+
+.user-role__body { display: flex; flex-direction: column; gap: 1px; }
+.user-role__name { font-size: 13px; font-weight: 600; }
+.user-role__help { font-size: 12px; color: var(--muted); }
+
+.user-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-block-start: 18px;
+}

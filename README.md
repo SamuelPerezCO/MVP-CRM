@@ -38,15 +38,24 @@ python manage.py seed_conversations       # contactos y conversaciones de demo (
 python manage.py simulate_inbound "+573000000001" "Hola, ¿sigue disponible?"
 ```
 
-`seed_conversations` crea un usuario `asesor` / `asesor123` y le asigna conversaciones de demo. `simulate_inbound` empuja un mensaje entrante por el **mismo** código del webhook (firma, parseo, idempotencia); con el Inbox abierto lo verás llegar solo en el siguiente poll.
+`seed_conversations` crea un usuario `asesor` (solo asignatario: sin contraseña, no puede iniciar sesión) y le asigna conversaciones de demo. `simulate_inbound` empuja un mensaje entrante por el **mismo** código del webhook (firma, parseo, idempotencia); con el Inbox abierto lo verás llegar solo en el siguiente poll.
 
-## Agentes (personas)
+## Agentes y usuarios
 
 Un **agente** es a la vez un login y un asignatario: la misma identidad que
 pasa la puerta de entrada es la que puede aparecer como responsable de una
-conversación en el Inbox. La lista vive en el entorno, no en la base de datos
-— agregar un compañero es editar una variable y volver a desplegar, sin
-pantalla de gestión de usuarios ni registro:
+conversación en el Inbox. Hay dos roles:
+
+- **Maestro** — hace todo, incluido crear y gestionar usuarios.
+- **Agente** — hace todo *excepto* gestionar usuarios.
+
+Y dos orígenes de cuentas, ambas sobre el mismo `User` de Django
+([core/agents.py](core/agents.py)):
+
+### Cuentas del entorno (`APP_AGENTS`)
+
+Las cuentas fundacionales: existen antes de que nadie haya entrado, así que el
+equipo nunca puede quedar fuera por una base de datos a la que no llega.
 
 ```
 APP_AGENTS=Admin:cambia-esta-clave:Admin,Samuel:1234:Samuel
@@ -54,23 +63,58 @@ APP_AGENTS=Admin:cambia-esta-clave:Admin,Samuel:1234:Samuel
 
 Entradas separadas por coma, cada una `usuario:contraseña:Nombre` (el nombre
 visible es opcional y por defecto es el usuario). Las contraseñas no pueden
-llevar `:` ni `,`, que son los separadores.
-
-Al iniciar sesión se abre una sesión real de `django.contrib.auth` contra un
-`User` espejo de ese agente ([core/agents.py](core/agents.py)), creado bajo
-demanda y con contraseña inutilizable: existe para que `assigned_to` y
-`sent_by` tengan a quién apuntar, nunca para autenticar — el entorno sigue
-siendo la única vía de entrada. Eso es lo que hace que el filtro "Tu inbox"
-funcione y que cada mensaje enviado registre quién lo escribió.
-
-En el Inbox, el desplegable junto al estado de la conversación ("Abierta")
-cambia el agente asignado y guarda al instante; "Sin asignar" la devuelve a la
-bandeja común. Todos los agentes tienen las mismas capacidades por ahora — no
-hay roles.
+llevar `:` ni `,`, que son los separadores. **Siempre son maestros**, siempre
+activos y de solo lectura dentro de la app: su fuente de verdad es el
+entorno, así que cambiarles la contraseña es editar la variable y volver a
+desplegar. Cada uno tiene un `User` espejo con contraseña inutilizable — existe
+para que `assigned_to` y `sent_by` tengan a quién apuntar, nunca para entrar
+por la base de datos.
 
 Si `APP_AGENTS` no está definida se usa el par antiguo
 `APP_LOGIN_USERNAME`/`APP_LOGIN_PASSWORD` como lista de un solo agente, así que
 un entorno anterior a esto sigue funcionando sin tocar nada.
+
+### Cuentas de la app (CRM › Mi cuenta › Equipo › Usuarios)
+
+Un maestro crea el resto desde la app ([core/usuarios.py](core/usuarios.py)):
+usuario, nombre, contraseña (mínimo 8 caracteres, con hash de Django) y rol.
+Sobre ellas puede renombrar, cambiar el rol, poner una contraseña nueva,
+desactivar/reactivar y eliminar. La página solo aparece en la navegación de
+los maestros, y sus endpoints responden 403 a cualquier otro.
+
+Reglas que impiden que el equipo se deje fuera a sí mismo:
+
+- Nadie puede quitarse a sí mismo el rol de maestro, desactivarse ni
+  eliminarse.
+- No se puede quitar el último maestro que pueda entrar, salvo que el entorno
+  garantice uno (con cualquier `APP_AGENTS` configurado, siempre lo hay).
+- Un usuario nuevo no puede llamarse como una cuenta del entorno ni como una
+  existente (sin distinguir mayúsculas).
+
+**Desactivar** deja al usuario fuera en su siguiente petición, lo saca del
+desplegable de asignación y conserva su nombre en las conversaciones que
+atendió; es la opción reversible. **Eliminar** borra la cuenta: sus
+conversaciones, mensajes, etiquetas y eventos se conservan, pero dejan de
+mostrar su nombre (todas las FK a `User` son `SET_NULL`). Cambiar la
+contraseña de alguien cierra su sesión actual.
+
+Si quitas un agente de `APP_AGENTS`, su `User` espejo queda como cuenta de la
+app sin contraseña ("Sin contraseña" en la tabla): asígnale una para
+adoptarlo como cuenta de la app, o elimínalo.
+
+Las cuentas de staff de Django (`is_staff`, las de `createsuperuser` y
+`/admin`) no son cuentas de la app: no entran por `/login/`, no aparecen en
+Usuarios ni en el desplegable de asignación. Si una instalación sin
+`APP_AGENTS` se queda sin ningún maestro que pueda entrar, la puerta de
+recuperación es la consola:
+
+```bash
+python manage.py crear_master jefa --name "Jefa" --password 'una clave larga'
+```
+
+En el Inbox, el desplegable junto al estado de la conversación ("Abierta")
+cambia el agente asignado y guarda al instante; "Sin asignar" la devuelve a la
+bandeja común.
 
 ## Mensajería: cambiar de proveedor
 

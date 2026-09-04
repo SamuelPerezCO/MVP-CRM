@@ -28,10 +28,10 @@ from messaging.models import Conversation, Message, Tag
 #: All seeded contacts share this prefix -- it is what --fresh deletes by.
 FAKE_PHONE_PREFIX = "+5730000000"
 
-#: Demo advisor whose "Tu inbox" gets conversations. Password printed on
-#: creation so /admin login works out of the box.
+#: Demo advisor some conversations are assigned to. An assignee only: no
+#: password and not staff, so it can log into neither the app nor /admin --
+#: a seed's fixed credentials in a public repo would be a standing login.
 DEMO_USERNAME = "asesor"
-DEMO_PASSWORD = "asesor123"
 
 IN, OUT = Message.INBOUND, Message.OUTBOUND
 
@@ -338,11 +338,10 @@ class Command(BaseCommand):
                 f"Estadísticas charts."
             ))
         self.stdout.write(
-            f"Some conversations are assigned to {DEMO_USERNAME!r} "
-            f"(/admin password {DEMO_PASSWORD!r}). To see them under "
-            f"'Tu inbox' in the app, log in as an agent from APP_AGENTS "
-            f"(see core/agents.py) and reassign a chat to yourself with the "
-            f"dropdown in the chat header."
+            f"Some conversations are assigned to {DEMO_USERNAME!r}, an "
+            f"assignee-only account that cannot log in. Log in as an agent "
+            f"from APP_AGENTS and reassign a chat to yourself from the chat "
+            f"header to see it under 'Tu inbox'."
         )
 
     def _seed_events(self, demo_user) -> int:
@@ -488,13 +487,19 @@ class Command(BaseCommand):
         return tags
 
     def _demo_user(self):
-        """The 'asesor' user some conversations are assigned to."""
+        """The 'asesor' user some conversations are assigned to.
+
+        Assignee only. Older seeds gave it is_staff and a fixed password, so
+        a re-run also neutralizes an existing row rather than trusting the
+        defaults -- get_or_create doesn't touch a row it found.
+        """
         User = get_user_model()
         user, created = User.objects.get_or_create(
             username=DEMO_USERNAME,
-            defaults={"first_name": "Asesor", "last_name": "Demo", "is_staff": True},
+            defaults={"first_name": "Asesor", "last_name": "Demo"},
         )
-        if created:
-            user.set_password(DEMO_PASSWORD)
+        if created or user.is_staff or user.has_usable_password():
+            user.is_staff = False
+            user.set_unusable_password()
             user.save()
         return user

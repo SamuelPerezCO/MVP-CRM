@@ -1,0 +1,137 @@
+{% comment %}
+  The user table -- the swappable region inside #user-table, re-rendered by
+  every create / edit / password / status / delete action.
+
+  Two kinds of row. Env-managed users (APP_AGENTS) show an "Entorno" badge
+  and no actions: they are defined outside the app, so nothing here could
+  change them and the buttons would only lie. DB users get the full set --
+  edit, new password, deactivate/reactivate, delete -- except that the row
+  for *you* has no deactivate or delete, since locking yourself out is never
+  what anyone meant.
+
+  Deactivated users stay listed (muted, below the active ones) because they
+  still name the conversations they answered; "Reactivar" brings them back.
+  A third state, "Sin contraseña", is a ghost: an agent removed from
+  APP_AGENTS whose mirror row remains. Setting a password adopts it as a
+  database account; deleting it is the other way out.
+
+  Context: users (core.usuarios.list_users rows), role_choices,
+           user_error (optional)
+{% endcomment %}
+
+{% if user_error %}
+  <p class="tag-error" role="alert">{{ user_error }}</p>
+{% endif %}
+
+{% if users %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">Usuario</th>
+        <th scope="col">Nombre</th>
+        <th scope="col">Rol</th>
+        <th scope="col">Estado</th>
+        <th scope="col">Origen</th>
+        <th scope="col" class="table__actions-col">Acciones</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for managed in users %}
+        <tr{% if not managed.is_active %} class="user-row--inactive"{% endif %}>
+          <td>
+            <span class="user-name">{{ managed.username }}</span>
+            {% if managed.pk == request.user.pk %}<span class="table__muted"> · tú</span>{% endif %}
+          </td>
+
+          <td>{{ managed.first_name|default:"—" }}</td>
+
+          <td>
+            {% if managed.is_superuser %}
+              <span class="user-badge user-badge--master">Maestro</span>
+            {% else %}
+              <span class="user-badge">Agente</span>
+            {% endif %}
+          </td>
+
+          <td class="table__muted">
+            {% if not managed.is_active %}
+              Desactivado
+            {% elif managed.managed_by_env or managed.has_usable_password %}
+              Activo
+            {% else %}
+              {# A ghost: was in APP_AGENTS, isn't any more. Give it a password to adopt it, or delete it. #}
+              <span title="Estuvo en APP_AGENTS; asígnale una contraseña para que pueda entrar, o elimínalo.">Sin contraseña</span>
+            {% endif %}
+          </td>
+
+          <td class="table__muted">
+            {% if managed.managed_by_env %}
+              <span class="user-badge user-badge--env" title="Definido en APP_AGENTS">Entorno</span>
+            {% else %}
+              App
+            {% endif %}
+          </td>
+
+          <td class="table__actions-col">
+            {% if managed.managed_by_env %}
+              <span class="table__muted">—</span>
+            {% else %}
+              <div class="row-actions">
+                <button type="button" class="icon-btn icon-btn--bare"
+                        data-dialog-open="user-dialog-{{ managed.pk }}"
+                        aria-label="Editar {{ managed.username }}">
+                  {% include "icons/pencil.svg" %}
+                </button>
+                <button type="button" class="icon-btn icon-btn--bare"
+                        data-dialog-open="user-password-{{ managed.pk }}"
+                        aria-label="Cambiar contraseña de {{ managed.username }}">
+                  {% include "icons/key.svg" %}
+                </button>
+                {% if managed.pk != request.user.pk %}
+                  {% if managed.is_active %}
+                    <button type="button" class="icon-btn icon-btn--bare"
+                            hx-post="{% url 'user_set_active' managed.pk %}"
+                            hx-vals='{"active": "0"}'
+                            hx-target="#user-table"
+                            hx-swap="innerHTML"
+                            aria-label="Desactivar {{ managed.username }}">
+                      {% include "icons/archive.svg" %}
+                    </button>
+                  {% else %}
+                    <button type="button" class="icon-btn icon-btn--bare"
+                            hx-post="{% url 'user_set_active' managed.pk %}"
+                            hx-vals='{"active": "1"}'
+                            hx-target="#user-table"
+                            hx-swap="innerHTML"
+                            aria-label="Reactivar {{ managed.username }}">
+                      {% include "icons/history.svg" %}
+                    </button>
+                  {% endif %}
+                  <button type="button" class="icon-btn icon-btn--bare icon-btn--danger"
+                          data-dialog-open="user-delete-{{ managed.pk }}"
+                          aria-label="Eliminar {{ managed.username }}">
+                    {% include "icons/trash.svg" %}
+                  </button>
+                {% endif %}
+              </div>
+
+              {% include "partials/crm/user_dialog.html" with title="Editar usuario" submit_label="Guardar cambios" %}
+              {% include "partials/crm/user_password_dialog.html" %}
+              {% if managed.pk != request.user.pk %}
+                {% include "partials/crm/user_delete_dialog.html" %}
+              {% endif %}
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+{% else %}
+  <div class="empty empty--list">
+    <div class="empty__icon">{% include "icons/circle-user.svg" %}</div>
+    <p class="empty__title">Aún no hay usuarios</p>
+    <p class="empty__text">Crea el primero con «+ Crear usuario».</p>
+  </div>
+{% endif %}

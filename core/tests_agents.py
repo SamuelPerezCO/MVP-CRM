@@ -115,6 +115,8 @@ class AgentUserMirrorTests(TestCase):
         self.assertFalse(user.check_password("1234"))
 
     def test_an_agent_dropped_from_the_env_stops_being_listed(self):
+        """Their mirror row has no usable password, so nobody can log in as
+        them any more -- a ghost, not an assignee."""
         agents.agent_users()
         with override_settings(APP_AGENTS="Admin:admin-pw:Admin"):
             self.assertEqual([u.username for u in agents.agent_users()], ["Admin"])
@@ -202,9 +204,12 @@ class ConversationAssignmentTests(TestCase):
         self.conversation.refresh_from_db()
         self.assertEqual(self.conversation.assigned_to, self.admin)
 
-    def test_a_user_who_is_not_a_configured_agent_is_rejected(self):
-        """The dropdown is a fixed list, so anything else is a crafted POST."""
-        outsider = get_user_model().objects.create_user("intruso", password="x")
+    def test_a_user_who_cannot_be_assigned_is_rejected(self):
+        """The dropdown is a fixed list, so anything else is a crafted POST --
+        here a deactivated account, which the dropdown never offers."""
+        outsider = get_user_model().objects.create_user(
+            "intruso", password="x", is_active=False
+        )
         response = self.client.post(self.url(), {"agent": str(outsider.pk)})
         self.assertEqual(response.status_code, 400)
         self.conversation.refresh_from_db()
@@ -261,9 +266,9 @@ class ConversationAssignmentTests(TestCase):
     def test_reassigning_away_drops_a_non_agent_from_the_options(self):
         """The old assignee is only listed to keep them visible while they
         hold the chat -- once they don't, they shouldn't linger in the list."""
-        outsider = get_user_model().objects.create_user("asesor", password="x")
-        outsider.first_name = "Asesor Demo"
-        outsider.save()
+        outsider = get_user_model().objects.create_user(
+            "asesor", password="x", first_name="Asesor Demo", is_active=False
+        )
         self.conversation.assigned_to = outsider
         self.conversation.save(update_fields=["assigned_to"])
 

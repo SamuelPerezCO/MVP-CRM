@@ -48,6 +48,21 @@ urlpatterns = [
     path("crm/etiquetas/nueva/", views.tag_create, name="tag_create"),
     path("crm/etiquetas/<int:tag_id>/editar/", views.tag_update, name="tag_update"),
     path("crm/etiquetas/<int:tag_id>/archivo/", views.tag_archive, name="tag_archive"),
+    # Usuarios (CRM > Mi cuenta > Equipo) mutations, masters only; all answer
+    # with the re-rendered #user-table region.
+    path("crm/usuarios/nuevo/", views.user_create, name="user_create"),
+    path("crm/usuarios/<int:user_id>/editar/", views.user_update, name="user_update"),
+    path(
+        "crm/usuarios/<int:user_id>/clave/",
+        views.user_set_password,
+        name="user_set_password",
+    ),
+    path(
+        "crm/usuarios/<int:user_id>/estado/",
+        views.user_set_active,
+        name="user_set_active",
+    ),
+    path("crm/usuarios/<int:user_id>/eliminar/", views.user_delete, name="user_delete"),
     # CRM column 3, fetched on its own when a secondary-nav page is picked.
     path("crm/panel/<slug:view_key>/", views.crm_panel, name="crm_panel"),
     # Mi calendario: the grid's JSON feed plus event/preference mutations,

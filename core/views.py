@@ -16,7 +16,13 @@ Sections that need their own data register a context builder in
 section: it is the shell at rest, with no sidebar icon selected.
 """
 
-from django.http import Http404, HttpResponse, HttpResponseNotAllowed, JsonResponse
+from django.http import (
+    Http404,
+    HttpResponse,
+    HttpResponseForbidden,
+    HttpResponseNotAllowed,
+    JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect
 from django.template import TemplateDoesNotExist
 from django.template.loader import get_template, render_to_string
@@ -27,6 +33,7 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth import login as auth_login, logout as auth_logout
+from django.contrib.auth import update_session_auth_hash
 from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Count
@@ -46,6 +53,7 @@ from . import (
     inbox,
     mensajeria,
     plantillas,
+    usuarios,
 )
 from .middleware import SESSION_KEY
 from .models import CalendarEvent, Client, ClientList, MessageTemplate
@@ -203,24 +211,35 @@ def _etiquetas_context(request) -> dict:
 
 
 def _mi_calendario_context(request) -> dict:
-    """Data for the Mi calendario panel: the sidebar preferences (session-
-    kept until real users/auth exist) and the event modal's option lists."""
+    """Data for the Mi calendario panel: the sidebar preferences (still
+    session-kept, per browser rather than per account) and the event modal's
+    option lists. Advisors are the same team the Inbox assigns to -- one
+    definition of "who is on the team", not two drifting ones."""
     return {
         "calendar_prefs": calendario.get_prefs(request.session),
         "event_types": calendario.EVENT_TYPES,
         "slot_choices": calendario.SLOT_CHOICES,
         "reminder_choices": calendario.REMINDER_CHOICES,
         "contacts": Client.objects.all(),
-        "advisors": get_user_model().objects.filter(is_active=True).order_by("username"),
+        "advisors": agents.agent_users(),
     }
 
 
 #: CRM view key -> callable(request) -> dict. Panels without an entry need no data.
+def _usuarios_context(request) -> dict:
+    """Every account for the Usuarios table, plus the role cards' copy."""
+    return {
+        "users": usuarios.list_users(),
+        "role_choices": usuarios.ROLE_CHOICES,
+    }
+
+
 PANEL_CONTEXT = {
     "clientes": _clientes_context,
     "etiquetas": _etiquetas_context,
     "lista-clientes": _lista_clientes_context,
     "mi-calendario": _mi_calendario_context,
+    "usuarios": _usuarios_context,
 }
 
 
@@ -231,14 +250,15 @@ def _crm_context(request) -> dict:
     section template differs (see sections/crm.html and sections/campanas.html).
 
     ``?view=`` selects the active row in the secondary nav. An unknown value
-    falls back to the default rather than 404-ing, so a stale bookmark opens.
+    -- or a master-only one for someone who isn't -- falls back to the
+    default rather than 404-ing, so a stale bookmark opens.
     """
     view_key = request.GET.get("view", crm.DEFAULT_VIEW)
-    if view_key not in crm.VIEW_BY_KEY:
+    if not crm.can_view(request.user, view_key):
         view_key = crm.DEFAULT_VIEW
 
     context = {
-        "crm_sections": crm.SECTIONS,
+        "crm_sections": crm.visible_sections(request.user),
         "active_view": view_key,
         "crm_view": crm.VIEW_BY_KEY[view_key],
         "panel_template": crm.panel_template(view_key),
@@ -474,12 +494,13 @@ SECTION_CONTEXT = {
 def login_view(request):
     """The one gate in front of the whole app -- see core.middleware.
 
-    Credentials come from the environment (``core.agents``), but a successful
-    login also starts a *real* ``django.contrib.auth`` session against that
-    agent's mirror User. That is what makes the agent an identity rather than a
-    boolean: "Tu inbox" can filter ``assigned_to=request.user``, outbound
-    messages record who wrote them, and the Inbox's assignment dropdown has a
-    sensible default.
+    Accounts come from two places (``core.agents``): the APP_AGENTS
+    environment list, checked first, and the database accounts a master
+    creates. Either way a successful login starts a *real*
+    ``django.contrib.auth`` session, which is what makes the person an
+    identity rather than a boolean: "Tu inbox" can filter
+    ``assigned_to=request.user``, outbound messages record who wrote them,
+    and master-only screens know whom they're talking to.
     """
     error = None
     next_url = request.GET.get('next') or request.POST.get('next') or reverse('home')
@@ -490,16 +511,17 @@ def login_view(request):
     if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
         next_url = reverse('home')
     if request.method == 'POST':
-        agent = agents.authenticate(
-            request.POST.get('username', ''), request.POST.get('password', '')
+        user = agents.authenticate_user(
+            request, request.POST.get('username', ''), request.POST.get('password', '')
         )
-        if agent is not None:
-            # The mirror User has an unusable password, so no auth backend can
-            # verify it -- name the backend explicitly instead of going through
-            # django.contrib.auth.authenticate(), which would (correctly) fail.
+        if user is not None:
+            # An env agent's mirror row has an unusable password, so no auth
+            # backend verified it and user.backend is unset -- name the backend
+            # explicitly (harmless for database accounts, which already
+            # carry it from authenticate()).
             auth_login(
                 request,
-                agent.user,
+                user,
                 backend='django.contrib.auth.backends.ModelBackend',
             )
             # After auth_login: it cycles the session key, and the gate flag
@@ -913,6 +935,140 @@ def tag_archive(request, tag_id: int):
     return _tag_table_response(request)
 
 
+# --- Usuarios ---------------------------------------------------------------
+
+
+def _forbidden() -> HttpResponse:
+    """The answer to a non-master reaching for a master-only door. Plain
+    text on purpose: it lands in an HTMX swap target or a direct URL hit,
+    neither of which wants the full shell."""
+    return HttpResponseForbidden("Solo un usuario maestro puede hacer esto.")
+
+
+def _master_only(view):
+    """Decorator: 403 unless ``request.user`` is a master (core.agents)."""
+
+    def wrapped(request, *args, **kwargs):
+        if not agents.is_master(request.user):
+            return _forbidden()
+        return view(request, *args, **kwargs)
+
+    wrapped.__name__ = view.__name__
+    wrapped.__doc__ = view.__doc__
+    return wrapped
+
+
+def _user_table_response(request, error=None):
+    """The re-rendered #user-table region every user mutation answers with.
+
+    Errors still travel as a 200 (the region re-renders with the banner, as
+    the Etiquetas page does), but with two additions for the four-field
+    create dialog: the message is also swapped out-of-band into the dialog
+    itself, and the X-Form-Error header tells shell.js to leave the dialog
+    open -- nobody should retype a whole form over a taken username.
+    """
+    context = _usuarios_context(request)
+    context["user_error"] = error
+    html = render_to_string("partials/crm/user_table.html", context, request=request)
+    html += render_to_string(
+        "partials/crm/user_form_error.html", {"user_error": error, "oob": True}
+    )
+    response = HttpResponse(html)
+    if error:
+        response["X-Form-Error"] = "1"
+    return response
+
+
+def _managed_user_or_404(user_id: int):
+    """The target of a user mutation -- app accounts only. Staff rows belong
+    to /admin (see core.agents.can_log_in) and are never rendered here, so a
+    pk naming one is a hand-crafted request: it gets the same 404 as a pk
+    that doesn't exist."""
+    return get_object_or_404(get_user_model(), pk=user_id, is_staff=False)
+
+
+@_master_only
+def user_create(request):
+    """Create an account from the Usuarios page's modal."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    error = None
+    try:
+        usuarios.create_user(
+            request.user,
+            request.POST.get("username", ""),
+            request.POST.get("name", ""),
+            request.POST.get("password", ""),
+            request.POST.get("role", ""),
+        )
+    except usuarios.UserError as exc:
+        error = str(exc)
+    return _user_table_response(request, error)
+
+
+@_master_only
+def user_update(request, user_id: int):
+    """Rename / change the role of one account."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    user = _managed_user_or_404(user_id)
+    error = None
+    try:
+        usuarios.update_user(
+            request.user, user, request.POST.get("name", ""), request.POST.get("role", "")
+        )
+    except usuarios.UserError as exc:
+        error = str(exc)
+    return _user_table_response(request, error)
+
+
+@_master_only
+def user_set_password(request, user_id: int):
+    """Give one account a new password."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    user = _managed_user_or_404(user_id)
+    error = None
+    try:
+        usuarios.set_password(request.user, user, request.POST.get("password", ""))
+    except usuarios.UserError as exc:
+        error = str(exc)
+    else:
+        # Changing your own password rotates the session auth hash; without
+        # this the very next request would log you out of the page you're on.
+        if user.pk == request.user.pk:
+            update_session_auth_hash(request, user)
+    return _user_table_response(request, error)
+
+
+@_master_only
+def user_set_active(request, user_id: int):
+    """Deactivate (``active=0``) or reactivate (``active=1``) one account."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    user = _managed_user_or_404(user_id)
+    error = None
+    try:
+        usuarios.set_active(request.user, user, request.POST.get("active") == "1")
+    except usuarios.UserError as exc:
+        error = str(exc)
+    return _user_table_response(request, error)
+
+
+@_master_only
+def user_delete(request, user_id: int):
+    """Hard-delete one account, after the confirm dialog."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    user = _managed_user_or_404(user_id)
+    error = None
+    try:
+        usuarios.delete_user(request.user, user)
+    except usuarios.UserError as exc:
+        error = str(exc)
+    return _user_table_response(request, error)
+
+
 def crm_panel(request, view_key: str):
     """Return just the CRM's column 3 for one secondary-nav view.
 
@@ -921,6 +1077,8 @@ def crm_panel(request, view_key: str):
     """
     if view_key not in crm.VIEW_BY_KEY:
         raise Http404(f"Unknown CRM view: {view_key!r}")
+    if not crm.can_view(request.user, view_key):
+        return _forbidden()
 
     context = {
         "active_view": view_key,

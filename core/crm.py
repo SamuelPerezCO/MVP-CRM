@@ -26,6 +26,13 @@ class View:
     label: str
     """Visible Spanish label, also used as the panel heading."""
 
+    master_only: bool = False
+    """Only masters (``User.is_superuser``, see core.agents) may open it.
+
+    Hidden from the nav for everyone else -- and, since a hidden row is not
+    a locked door, :func:`can_view` is what the views enforce.
+    """
+
 
 @dataclass(frozen=True)
 class Section:
@@ -62,10 +69,44 @@ SECTIONS = [
             View("mi-calendario", "Mi calendario"),
         ],
     ),
+    Section(
+        "equipo",
+        "Equipo",
+        "circle-user",
+        [
+            View("usuarios", "Usuarios", master_only=True),
+        ],
+    ),
 ]
 
 ALL_VIEWS = [view for section in SECTIONS for view in section.views]
 VIEW_BY_KEY = {view.key: view for view in ALL_VIEWS}
+
+
+def can_view(user, view_key: str) -> bool:
+    """Whether ``user`` may open ``view_key`` -- the one permission rule the
+    CRM has: master-only views need a master, everything else is open."""
+    view = VIEW_BY_KEY.get(view_key)
+    if view is None:
+        return False
+    if not view.master_only:
+        return True
+    return bool(
+        getattr(user, "is_authenticated", False) and getattr(user, "is_superuser", False)
+    )
+
+
+def visible_sections(user) -> list[Section]:
+    """SECTIONS as ``user`` should see them: master-only views dropped for
+    non-masters, and a section left with no views dropped with them (an
+    empty collapsible would just be a puzzling header)."""
+    visible = []
+    for section in SECTIONS:
+        views = [view for view in section.views if can_view(user, view.key)]
+        if views:
+            visible.append(Section(section.key, section.title, section.icon, views))
+    return visible
+
 
 #: Shown when the CRM section first opens.
 DEFAULT_VIEW = "clientes"
