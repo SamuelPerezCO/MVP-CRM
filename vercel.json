@@ -4,5 +4,6 @@
     "config/wsgi.py": {
       "maxDuration": 30
     }
-  }
+  },
+  "buildCommand": "if [ \"$VERCEL_ENV\" = \"preview\" ]; then echo 'preview build: skipping migrate (shares the production database)'; else python3 manage.py migrate --noinput; fi"
 }
