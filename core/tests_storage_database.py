@@ -85,6 +85,16 @@ class StoredFileViewTests(TestCase):
         self.assertEqual(response.content, b"PNGBYTES")
         self.assertEqual(response["Content-Type"], "image/png")
 
+    def test_served_bytes_cannot_run_as_a_page_on_this_origin(self):
+        # Uploaded by an agent, served unauthenticated from the app's own
+        # origin: an SVG with <script> opened directly would otherwise run
+        # with the session of whoever clicked. Sandboxed and nosniffed.
+        response = Client().get(self.url)
+        self.assertEqual(response["Content-Security-Policy"], "default-src 'none'; sandbox")
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        self.assertIn('filename="foto.png"', response["Content-Disposition"])
+        self.assertTrue(response["Content-Disposition"].startswith("inline"))
+
     def test_unknown_token_is_404_not_500(self):
         self.assertEqual(Client().get("/archivos/" + "0" * 32 + "/x.png").status_code, 404)
 

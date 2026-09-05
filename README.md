@@ -281,7 +281,7 @@ para que un fallo no deje un mensaje sin su contabilidad.
 
 ## Deploy en Vercel
 
-El proyecto usa el soporte nativo de Vercel para Django (detecta `manage.py` y el `WSGI_APPLICATION` de [config/settings.py](config/settings.py) automáticamente): conecta el repo en vercel.com o corre `vercel deploy` y no hace falta build script.
+El proyecto usa el soporte nativo de Vercel para Django (detecta `manage.py` y el `WSGI_APPLICATION` de [config/settings.py](config/settings.py) automáticamente): conecta el repo en vercel.com o corre `vercel deploy`. El único paso propio es [vercel_build.sh](vercel_build.sh) (`buildCommand` en [vercel.json](vercel.json)): corre las migraciones en cada deploy de producción y deja en el log del build el origen público que irá en los links de imagen de WhatsApp. La recolección de estáticos la sigue haciendo Vercel solo.
 
 En el dashboard del proyecto (Settings → Environment Variables) define, como mínimo:
 
@@ -290,10 +290,11 @@ En el dashboard del proyecto (Settings → Environment Variables) define, como m
 - `MESSAGING_PROVIDER` — **obligatorio**, y en producción nunca `fake`: `twilio` o `meta`, con las credenciales del proveedor elegido. Sin esta variable el despliegue falla al arrancar, a propósito.
 - `DATABASE_URL` — Postgres (por ejemplo Vercel Postgres o Neon, desde la pestaña Storage). SQLite no sirve en producción porque las funciones serverless no tienen disco persistente.
 - `ALLOWED_HOSTS` — opcional; el dominio del deploy y el alias de producción se confían automáticamente vía `VERCEL_URL` y `VERCEL_PROJECT_PRODUCTION_URL`, agrega aquí solo dominios propios (custom domains).
+- `PUBLIC_BASE_URL` — el **único** origen público, `https://` + el dominio de producción (hoy `https://mvp-crm-lake.vercel.app`). Es lo que va en el link de imagen que se le entrega a WhatsApp en una respuesta rápida con foto: Meta lo descarga desde sus servidores, sin sesión, y todos los alias del proyecto salvo el dominio de producción están detrás del SSO de Vercel — un link a cualquiera de ellos hace que el envío falle unos segundos después de aceptado. Por defecto sale de `VERCEL_PROJECT_PRODUCTION_URL`; `manage.py check` avisa si queda vacío (`core.W002`) o apunta a un alias protegido (`core.W003`), y cada build imprime el valor resuelto.
 
-Con `DATABASE_URL` configurado, corre las migraciones contra la base de producción (por ejemplo con `vercel env pull` + `python manage.py migrate` localmente, o desde una shell con las mismas variables).
+Las migraciones corren solas en cada deploy de producción ([vercel_build.sh](vercel_build.sh)); un build de preview las salta porque comparte la base de producción. Si un `migrate` falla, falla el build, y no se despliega código que consulte tablas que la base no tiene.
 
-Los archivos estáticos (`static/`) se recolectan y sirven automáticamente desde el CDN de Vercel — no requiere WhiteNoise ni configuración adicional. Los uploads de usuario (`media/`, ej. cabeceras de plantillas) sí requieren almacenamiento externo (Vercel Blob, S3, etc.) porque el filesystem de las funciones no persiste entre requests; sin eso, esa funcionalidad puntual no sobrevive en producción.
+Los archivos estáticos (`static/`) se recolectan y sirven automáticamente desde el CDN de Vercel — no requiere WhiteNoise ni configuración adicional. Los uploads de usuario (fotos de respuestas rápidas, cabeceras de plantillas, imágenes que llegan por WhatsApp) no pueden ir al filesystem de las funciones, que es de solo lectura: con un Blob store conectado (Storage → Blob; inyecta `BLOB_READ_WRITE_TOKEN`) van a Vercel Blob, y sin él van a la propia base de datos y se sirven desde `/archivos/<token>/…` ([core/storage.py](core/storage.py)). Conectar Blob después no rompe lo ya guardado.
 
 En Vercel los proveedores que funcionan tal cual son `twilio` y `meta`; `fake` no es una opción de producción — simula los envíos y no manda nada a ningún teléfono.
 

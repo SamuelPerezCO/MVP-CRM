@@ -16,6 +16,8 @@ Sections that need their own data register a context builder in
 section: it is the shell at rest, with no sidebar icon selected.
 """
 
+import posixpath
+
 from django.http import Http404, HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.conf import settings
 from django.shortcuts import get_object_or_404, redirect, render
@@ -23,6 +25,7 @@ from django.template import TemplateDoesNotExist
 from django.template.loader import get_template, render_to_string
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import content_disposition_header
 from django.utils.http import url_has_allowed_host_and_scheme
 
 import json
@@ -2738,4 +2741,15 @@ def stored_file(request, token, filename):
     # Immutable: a token addresses one set of bytes for its lifetime, so this
     # keeps Meta and the browser from re-fetching the same photo every time.
     response["Cache-Control"] = "public, max-age=31536000, immutable"
+    # These bytes were uploaded by an agent and are served from the app's own
+    # origin, unauthenticated. An SVG can carry <script>; opened directly, it
+    # would run with the session of whoever clicked the link. The sandbox
+    # directive makes anything served here inert when navigated to, and the
+    # disposition keeps the browser treating it as a file, not a page.
+    # Neither affects <img src=...> or Meta's download.
+    response["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    response["Content-Disposition"] = content_disposition_header(
+        as_attachment=False, filename=posixpath.basename(row.name)
+    )
+    response["X-Content-Type-Options"] = "nosniff"
     return response

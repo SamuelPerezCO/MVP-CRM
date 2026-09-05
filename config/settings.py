@@ -76,11 +76,15 @@ if VERCEL_PROJECT_PRODUCTION_URL:
 # env var edit. Only on Vercel (it sets VERCEL=1): locally these entries
 # would make ALLOWED_HOSTS non-empty and disable Django's DEBUG-mode
 # localhost fallback, locking the dev server out of its own machine.
+# Every alias of this project except the production domain sits behind
+# Vercel SSO (deployment protection, "all_except_custom_domains"). Named
+# here so core.W003 can refuse to hand one of them to WhatsApp.
+VERCEL_PROTECTED_ALIASES = [
+    'mvp-crm-unaneaprogramadora.vercel.app',
+    'mvp-crm-git-main-unaneaprogramadora.vercel.app',
+]
 if os.environ.get('VERCEL'):
-    ALLOWED_HOSTS += [
-        'mvp-crm-unaneaprogramadora.vercel.app',
-        'mvp-crm-git-main-unaneaprogramadora.vercel.app',
-    ]
+    ALLOWED_HOSTS += VERCEL_PROTECTED_ALIASES
 
 # Absolute https origin for URLs that leave this app and are fetched by
 # somebody else's servers -- specifically the image link handed to WhatsApp,
@@ -97,11 +101,21 @@ if os.environ.get('VERCEL'):
 # to pin it; otherwise Vercel's own production-domain variable is used, and
 # core.W002 warns if nothing at all resolved. The value is printed in the
 # build log (vercel.json) so a wrong host is visible without a send.
-PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', '').rstrip('/')
+PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', '').strip().rstrip('/')
+# Every neighbouring variable (ALLOWED_HOSTS, VERCEL_URL, ...) is written
+# without a scheme, so someone will set this one that way too. A bare host
+# would reach Meta as "mvp-crm-lake.vercel.app/archivos/..." and be
+# rejected as not a valid URI -- the same silent failure this setting
+# exists to prevent.
+if PUBLIC_BASE_URL and '://' not in PUBLIC_BASE_URL:
+    PUBLIC_BASE_URL = f'https://{PUBLIC_BASE_URL}'
 if not PUBLIC_BASE_URL and VERCEL_PROJECT_PRODUCTION_URL:
     PUBLIC_BASE_URL = f'https://{VERCEL_PROJECT_PRODUCTION_URL}'
-if not PUBLIC_BASE_URL and ALLOWED_HOSTS:
-    PUBLIC_BASE_URL = f'https://{ALLOWED_HOSTS[0]}'
+# Deliberately NO fallback to ALLOWED_HOSTS[0]. It looks helpful and is the
+# opposite: on Vercel that list always has entries (VERCEL_URL, the
+# protected aliases above, or a wildcard someone typed), so it would pick a
+# host Meta cannot fetch from and, being non-empty, keep core.W002 quiet
+# about it. Empty here means core.W002 fires at build, which is the point.
 
 CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS]
 

@@ -28,5 +28,8 @@ fi
 # from -- is visible in this log without anyone sending a message to find
 # out. diffsettings lists the setting even when it is empty; core.W002 (run
 # by migrate, above) warns loudly in that case.
-python3 manage.py diffsettings 2>/dev/null | grep PUBLIC_BASE_URL \
-  || echo "PUBLIC_BASE_URL could not be resolved"
+# diffsettings lists the setting even when it is empty, so the echo below
+# only ever means settings failed to import -- and its traceback is left on
+# stderr on purpose, so the log says why.
+python3 manage.py diffsettings | grep PUBLIC_BASE_URL \
+  || echo "diffsettings failed: settings did not import (see above)"

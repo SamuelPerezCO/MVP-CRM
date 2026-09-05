@@ -304,6 +304,24 @@ class QuickSendTests(TestCase):
         self.assertTrue(message.is_inline_image)   # the thread renders it
         row.image.delete(save=False)
 
+    @override_settings(PUBLIC_BASE_URL="https://crm.example.com")
+    def test_the_link_handed_to_the_provider_uses_the_configured_origin(self):
+        """End to end through the view, not just image_url().
+
+        The unit test on image_url() would pass while a second caller, or a
+        change to the view, rebuilt the link from the request's Host -- which
+        is exactly how four photo sends went to an SSO-protected alias and
+        failed in one evening. This pins what provider.send_image actually
+        receives, and what the thread stores, when an origin is configured.
+        """
+        row = reply(title="Promo", body="Foto", image=png())
+        with mock.patch.object(FakeProvider, "send_image", return_value="fake-img-2") as send:
+            self.client.post(self.url, {"quick_reply": row.pk}, HTTP_HOST="testserver")
+        expected = "https://crm.example.com" + row.image.url
+        self.assertEqual(send.call_args.kwargs["image_url"], expected)
+        self.assertEqual(Message.objects.get().media_url, expected)
+        row.image.delete(save=False)
+
     def test_an_inactive_or_unknown_id_sends_nothing(self):
         off = reply(is_active=False)
         for value in (off.pk, 999999):

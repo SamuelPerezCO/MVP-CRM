@@ -84,9 +84,59 @@ class PublicOriginWarningTests(TestCase):
     def test_development_is_quiet(self):
         # No production domain exists locally, and the fake provider never
         # fetches a link; a warning here would only train people to ignore it.
+        from unittest import mock
+
         from core.checks import public_origin_unresolved
 
-        self.assertEqual(public_origin_unresolved(None), [])
+        with mock.patch.dict("os.environ", {}, clear=False):
+            import os
+            os.environ.pop("VERCEL", None)
+            self.assertEqual(public_origin_unresolved(None), [])
+
+    @override_settings(DEBUG=True, TESTING=False, PUBLIC_BASE_URL="")
+    def test_a_vercel_build_that_forgot_debug_off_is_still_warned(self):
+        # DEBUG alone must not silence the one check meant for the platform.
+        from unittest import mock
+
+        from core.checks import public_origin_unresolved
+
+        with mock.patch.dict("os.environ", {"VERCEL": "1"}):
+            [warning] = public_origin_unresolved(None)
+        self.assertEqual(warning.id, "core.W002")
+
+    @override_settings(
+        DEBUG=False, TESTING=False,
+        VERCEL_PROTECTED_ALIASES=["team-alias.vercel.app"],
+    )
+    def test_an_origin_whatsapp_cannot_fetch_from_is_named(self):
+        from unittest import mock
+
+        from core.checks import public_origin_unresolved
+
+        cases = {
+            "https://team-alias.vercel.app": "behind Vercel SSO",
+            "http://crm.example.com": "not https",
+            "https://crm.example.com/app": "path or query",
+            "https://*": "not a single public host",
+        }
+        for origin, expected in cases.items():
+            with self.subTest(origin):
+                with override_settings(PUBLIC_BASE_URL=origin), mock.patch.dict(
+                    "os.environ", {"VERCEL_URL": "mvp-abc123.vercel.app"}
+                ):
+                    [warning] = public_origin_unresolved(None)
+                self.assertEqual(warning.id, "core.W003")
+                self.assertIn(expected, warning.msg)
+
+    @override_settings(DEBUG=False, TESTING=False, PUBLIC_BASE_URL="https://mvp-abc123.vercel.app")
+    def test_the_per_deployment_url_counts_as_protected(self):
+        from unittest import mock
+
+        from core.checks import public_origin_unresolved
+
+        with mock.patch.dict("os.environ", {"VERCEL_URL": "mvp-abc123.vercel.app"}):
+            [warning] = public_origin_unresolved(None)
+        self.assertEqual(warning.id, "core.W003")
 
 
 class PlaintextWarningTests(TestCase):
