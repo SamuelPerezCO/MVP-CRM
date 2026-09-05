@@ -35,3 +35,43 @@ def plaintext_env_secrets(app_configs, **kwargs):
             id="core.W001",
         )
     ]
+
+
+@register()
+def public_origin_unresolved(app_configs, **kwargs):
+    """Warn when a deployed app has no public origin to hand out.
+
+    ``PUBLIC_BASE_URL`` is what goes into the image link WhatsApp is given
+    for a quick reply; Meta fetches it from its own servers. Empty, the link
+    falls back to the request's Host -- which on Vercel is whichever alias
+    the agent logged in through, and every alias but the production domain
+    sits behind SSO. The result is a message that is accepted and then fails
+    a few seconds later with nothing in the app to say why. Surfacing the
+    gap at build time (migrate runs the checks) beats discovering it from a
+    red tick in the thread.
+
+    Quiet in development (DEBUG) and under test: neither has a production
+    domain, and the fake provider never fetches anything.
+    """
+    from django.conf import settings
+
+    if settings.DEBUG or getattr(settings, "TESTING", False):
+        return []
+    if getattr(settings, "PUBLIC_BASE_URL", ""):
+        return []
+    return [
+        Warning(
+            "PUBLIC_BASE_URL is empty: no public origin for the image links "
+            "handed to WhatsApp.",
+            hint=(
+                "Set PUBLIC_BASE_URL to the one publicly reachable origin "
+                "(the production domain, e.g. https://mvp-crm-lake.vercel.app). "
+                "Without it the link is built from the request's Host, and on "
+                "Vercel every alias except the production domain is behind SSO "
+                "-- Meta gets a login page instead of the photo, and the send "
+                "fails after the fact."
+            ),
+            id="core.W002",
+        )
+    ]
+

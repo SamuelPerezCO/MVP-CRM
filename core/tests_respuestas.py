@@ -285,6 +285,7 @@ class QuickSendTests(TestCase):
         self.assertEqual(message.body, "Atendemos de 9 a 6.")
         self.assertEqual(message.media_url, "")
 
+    @override_settings(PUBLIC_BASE_URL="")
     def test_an_image_reply_sends_the_image_with_the_text_as_caption(self):
         row = reply(title="Lista", body="Precios de hoy", image=png())
         with mock.patch.object(FakeProvider, "send_image", return_value="fake-img-1") as send:
@@ -375,7 +376,30 @@ class ImageUrlIsAbsoluteTests(TestCase):
     caught this until uploads moved into the database.
     """
 
-    def test_a_relative_storage_url_gets_the_requests_own_origin(self):
+    @override_settings(PUBLIC_BASE_URL="https://crm.example.com")
+    def test_the_configured_public_origin_beats_the_requests_host(self):
+        """The link's reader is Meta, not the agent.
+
+        Deployment protection puts every alias except the production domain
+        behind Vercel SSO. A signed-in agent reaches the app through any of
+        them, so the request Host is whichever alias they logged in through
+        -- and a link built from it sends Meta to a login page. Four sends
+        went to ``failed`` that way in one evening while two from the
+        production domain delivered, same reply, same file. The configured
+        public origin must win even when a request is right there.
+        """
+        row = reply(title="Promo", body="hola", image=png())
+        request = RequestFactory().get("/", HTTP_HOST="testserver")
+        self.assertEqual(
+            respuestas.image_url(row, request),
+            "https://crm.example.com" + row.image.url,
+        )
+        row.image.delete(save=False)
+
+    @override_settings(PUBLIC_BASE_URL="")
+    def test_the_request_host_is_only_the_fallback_with_no_origin_configured(self):
+        # Local development against the fake provider: nothing ever fetches
+        # the link, and there is no production domain to point at.
         row = reply(title="Promo", body="hola", image=png())
         request = RequestFactory().get("/", HTTP_HOST="testserver")
         self.assertEqual(

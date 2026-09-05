@@ -62,6 +62,33 @@ class HashedEnvSecretTests(TestCase):
         self.assertTrue(agents.Agent("u", HASH, "u").is_hashed)
 
 
+class PublicOriginWarningTests(TestCase):
+    """core.W002: a deployed app with no public origin for WhatsApp links."""
+
+    @override_settings(DEBUG=False, TESTING=False, PUBLIC_BASE_URL="")
+    def test_a_deployed_app_with_no_origin_is_warned(self):
+        from core.checks import public_origin_unresolved
+
+        [warning] = public_origin_unresolved(None)
+        self.assertEqual(warning.id, "core.W002")
+        self.assertIn("PUBLIC_BASE_URL", warning.msg)
+        self.assertIn("SSO", warning.hint)
+
+    @override_settings(DEBUG=False, TESTING=False, PUBLIC_BASE_URL="https://crm.example.com")
+    def test_a_configured_origin_is_quiet(self):
+        from core.checks import public_origin_unresolved
+
+        self.assertEqual(public_origin_unresolved(None), [])
+
+    @override_settings(DEBUG=True, TESTING=False, PUBLIC_BASE_URL="")
+    def test_development_is_quiet(self):
+        # No production domain exists locally, and the fake provider never
+        # fetches a link; a warning here would only train people to ignore it.
+        from core.checks import public_origin_unresolved
+
+        self.assertEqual(public_origin_unresolved(None), [])
+
+
 class PlaintextWarningTests(TestCase):
     @override_settings(APP_AGENTS="Admin:admin-pw:Admin,Otro:otra:Otro")
     def test_it_names_every_plaintext_agent(self):

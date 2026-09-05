@@ -86,9 +86,17 @@ if os.environ.get('VERCEL'):
 # somebody else's servers -- specifically the image link handed to WhatsApp,
 # which Meta rejects outright unless it is absolute ("Param image.link is not
 # a valid URI"). Only needed when files are served by this app rather than a
-# CDN; see core.storage.DatabaseStorage. A live request beats this (its Host
-# is the origin the agent actually reached, and is validated against
-# ALLOWED_HOSTS), so this is the fallback for code with no request in hand.
+# CDN; see core.storage.DatabaseStorage.
+#
+# This must be the ONE public origin, and it takes precedence over the Host
+# of whatever request is in hand. Deployment protection puts every alias of
+# this project behind Vercel SSO except the production domain; an agent
+# signed in through the team alias reaches the app fine, but a link built
+# from that Host sends Meta to a login page and the message fails after
+# the fact (see core.respuestas.image_url). Set PUBLIC_BASE_URL explicitly
+# to pin it; otherwise Vercel's own production-domain variable is used, and
+# core.W002 warns if nothing at all resolved. The value is printed in the
+# build log (vercel.json) so a wrong host is visible without a send.
 PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', '').rstrip('/')
 if not PUBLIC_BASE_URL and VERCEL_PROJECT_PRODUCTION_URL:
     PUBLIC_BASE_URL = f'https://{VERCEL_PROJECT_PRODUCTION_URL}'

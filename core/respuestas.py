@@ -110,21 +110,36 @@ def image_url(reply: QuickReply, request=None) -> str:
 
     What storage answers varies: Vercel Blob gives an absolute CDN URL and
     needs nothing done to it, while the local filesystem and
-    ``core.storage.DatabaseStorage`` both give a path rooted at "/". Those get
-    an origin attached -- from the live request when there is one, since its
-    Host is what the agent actually reached (and is checked against
-    ALLOWED_HOSTS, so it can't be spoofed into pointing somewhere else), and
-    otherwise from ``settings.PUBLIC_BASE_URL``.
+    ``core.storage.DatabaseStorage`` both give a path rooted at "/". Those
+    get an origin attached -- and *which* origin is the whole point:
+
+    The link's reader is Meta, not the agent. Vercel's deployment protection
+    puts every alias of this project behind SSO except the production domain,
+    and a signed-in teammate never notices, because their browser session
+    walks straight through. So building the link from the request's Host --
+    whichever alias the agent happened to be logged in through -- handed Meta
+    a URL that answered with a redirect to vercel.com/sso-api instead of a
+    JPEG. The send looked fine (Meta accepted it and returned an id), and the
+    message went to ``failed`` a few seconds later when Meta's fetch hit the
+    login page. Four sends in a row went that way from the team alias while
+    two from the production domain delivered, same reply, same file.
+
+    Hence the order here: ``settings.PUBLIC_BASE_URL`` -- the one public
+    origin -- first, always. The request is the fallback for a deployment
+    with no public origin configured at all (local development against the
+    fake provider, which never fetches anything).
     """
     if not reply.image:
         return ""
     url = reply.image.url
     if url.startswith(("http://", "https://")):
         return url
+    base = getattr(settings, "PUBLIC_BASE_URL", "")
+    if base:
+        return f"{base}{url}"
     if request is not None:
         return request.build_absolute_uri(url)
-    base = getattr(settings, "PUBLIC_BASE_URL", "")
     # Without an origin the link is unusable to Meta. Returning it anyway
     # would send a message whose image silently never renders; returning ""
     # sends the caption alone, which at least arrives.
-    return f"{base}{url}" if base else ""
+    return ""

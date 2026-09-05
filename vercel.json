@@ -5,5 +5,5 @@
       "maxDuration": 30
     }
   },
-  "buildCommand": "if [ \"$VERCEL_ENV\" = \"preview\" ]; then echo 'preview build: skipping migrate (shares the production database)'; else python3 manage.py migrate --noinput; fi"
+  "buildCommand": "if [ \"$VERCEL_ENV\" = \"preview\" ]; then echo 'preview build: skipping migrate (shares the production database)'; else python3 manage.py migrate --noinput; fi && { python3 manage.py diffsettings 2>/dev/null | grep PUBLIC_BASE_URL || echo 'PUBLIC_BASE_URL could not be resolved'; }"
 }
