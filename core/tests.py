@@ -362,3 +362,35 @@ class TemplateCommentLeakTests(TestCase):
         html = self.client.get(reverse("home")).content.decode()
         self.assertNotIn("{#", html)
         self.assertNotIn("#}", html)
+
+
+class StaticAssetsAreCacheBustedTests(TestCase):
+    """Every stylesheet and script must be linked with {% vstatic %}.
+
+    {% static %} emits a stable URL, so a browser and Vercel's CDN keep
+    serving the copy they cached before a fix shipped -- and Vercel's Django
+    build runs plain collectstatic with no hashed filenames, so nothing
+    upstream solves it. core/templatetags/assets.py exists for exactly this,
+    appending a hash of the file's own bytes.
+
+    Source-level rather than behavioural, for the same reason as
+    TemplateCommentLeakTests above: a page linked with {% static %} renders
+    perfectly. Nothing is wrong until someone edits the JS and the fix
+    reaches nobody who already loaded the screen -- which is not a thing an
+    assertion on the response can see. tiempos-respuesta.html did this to
+    three scripts while its sibling volumen-mensajes.html did it correctly.
+    """
+
+    def test_no_template_links_an_asset_without_the_cache_buster(self):
+        offenders = []
+        for path in sorted(pathlib.Path("templates").rglob("*.html")):
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                if "{% static " in line or "{%static " in line:
+                    offenders.append(f"{path}:{number}  {line.strip()[:80]}")
+        self.assertEqual(
+            offenders,
+            [],
+            "link these with {% vstatic %} (and {% load assets %}) so a "
+            "changed file gets a changed URL:\n" + "\n".join(offenders),
+        )
+
