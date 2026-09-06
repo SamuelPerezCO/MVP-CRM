@@ -112,3 +112,46 @@ class DebugDefaultTests(SimpleTestCase):
 
         self.assertFalse(local["SESSION_COOKIE_SECURE"])
         self.assertFalse(local["SECURE_SSL_REDIRECT"])
+
+
+class PublicOriginTests(SimpleTestCase):
+    """What goes into the image links WhatsApp fetches."""
+
+    def test_a_deployment_hands_out_the_project_s_own_domain(self):
+        self.assertEqual(resolve(VERCEL="1")["PUBLIC_BASE_URL"], "https://www.vendi.lat")
+
+    def test_it_is_the_host_that_serves_directly_not_the_apex(self):
+        # The apex 308-redirects to www. Meta fetches these from its own
+        # servers, so the origin handed out must not depend on a redirect.
+        self.assertNotEqual(resolve(VERCEL="1")["PUBLIC_BASE_URL"], "https://vendi.lat")
+
+    def test_it_no_longer_follows_whatever_vercel_calls_production(self):
+        # VERCEL_PROJECT_PRODUCTION_URL moved when the custom domain was
+        # assigned, leaving the previous value answering 400 to Meta.
+        resolved = resolve(VERCEL="1", VERCEL_PROJECT_PRODUCTION_URL="algo-nuevo.vercel.app")
+
+        self.assertEqual(resolved["PUBLIC_BASE_URL"], "https://www.vendi.lat")
+
+    def test_an_explicit_setting_still_wins(self):
+        resolved = resolve(VERCEL="1", PUBLIC_BASE_URL="https://otro.example")
+
+        self.assertEqual(resolved["PUBLIC_BASE_URL"], "https://otro.example")
+
+    def test_a_local_checkout_gets_no_origin(self):
+        # Empty is what makes core.W002 fire on a deployment; a local checkout
+        # has no public origin and should not pretend otherwise.
+        self.assertEqual(resolve()["PUBLIC_BASE_URL"], "")
+
+
+class LegacyAliasTests(SimpleTestCase):
+    def test_the_old_production_url_still_answers(self):
+        # Links to it are already out in the world; it began returning 400 on
+        # every path when the custom domain took over as production.
+        self.assertIn("mvp-crm-lake.vercel.app", resolve(VERCEL="1")["ALLOWED_HOSTS"])
+
+    def test_it_is_not_filed_as_an_sso_protected_alias(self):
+        # core.W003 reads that list to decide what must never be handed to
+        # WhatsApp, and this host reaches Django without SSO.
+        resolved = resolve(VERCEL="1")
+
+        self.assertNotIn("mvp-crm-lake.vercel.app", resolved["VERCEL_PROTECTED_ALIASES"])

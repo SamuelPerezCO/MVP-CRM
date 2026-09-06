@@ -93,6 +93,17 @@ VERCEL_PROTECTED_ALIASES = [
     'mvp-crm-git-main-unaneaprogramadora.vercel.app',
 ]
 
+# Aliases Vercel still routes here that are no longer the production URL.
+# 'mvp-crm-lake.vercel.app' was VERCEL_PROJECT_PRODUCTION_URL until the custom
+# domain took that title, at which point it fell out of ALLOWED_HOSTS and
+# started answering 400 on every path, including links already sent out. Its
+# own list rather than VERCEL_PROTECTED_ALIASES above, because it is not
+# protected -- it reaches Django without SSO -- and core.W003 reads that list
+# to decide what must never be handed to WhatsApp.
+VERCEL_LEGACY_ALIASES = [
+    'mvp-crm-lake.vercel.app',
+]
+
 # The domain the CRM is actually reached at. A custom domain appears in no
 # VERCEL_* variable, so without naming it here Django answers DisallowedHost
 # on the app's real address the moment DNS points at it -- which is exactly
@@ -102,15 +113,20 @@ VERCEL_PROTECTED_ALIASES = [
 # apex and the www host, because Vercel serves whichever one DNS sends and a
 # visitor may type either. CSRF_TRUSTED_ORIGINS is derived from ALLOWED_HOSTS
 # below, so listing them here is also what lets a form on the domain submit.
+#
+# PUBLIC_DOMAIN is the one that serves directly: the apex 308-redirects to it,
+# and a redirect is a gamble when the fetcher is Meta's server rather than a
+# browser, so it is the host handed out in links (see PUBLIC_BASE_URL below).
+PUBLIC_DOMAIN = 'www.vendi.lat'
 CUSTOM_DOMAINS = [
     'vendi.lat',
-    'www.vendi.lat',
+    PUBLIC_DOMAIN,
 ]
 
 # Vercel-only, like the aliases: locally these would make ALLOWED_HOSTS
 # non-empty and disable Django's DEBUG-mode localhost fallback.
 if os.environ.get('VERCEL'):
-    ALLOWED_HOSTS += VERCEL_PROTECTED_ALIASES + CUSTOM_DOMAINS
+    ALLOWED_HOSTS += VERCEL_PROTECTED_ALIASES + VERCEL_LEGACY_ALIASES + CUSTOM_DOMAINS
 
 # Absolute https origin for URLs that leave this app and are fetched by
 # somebody else's servers -- specifically the image link handed to WhatsApp,
@@ -135,6 +151,13 @@ PUBLIC_BASE_URL = os.environ.get('PUBLIC_BASE_URL', '').strip().rstrip('/')
 # exists to prevent.
 if PUBLIC_BASE_URL and '://' not in PUBLIC_BASE_URL:
     PUBLIC_BASE_URL = f'https://{PUBLIC_BASE_URL}'
+# The project's own domain first. It used to fall straight through to
+# VERCEL_PROJECT_PRODUCTION_URL, which is whatever Vercel currently calls the
+# production host -- and that moved when the custom domain was assigned,
+# leaving the previous value answering 400 to anything Meta fetched from it.
+# A domain the project owns does not move under it.
+if not PUBLIC_BASE_URL and os.environ.get('VERCEL'):
+    PUBLIC_BASE_URL = f'https://{PUBLIC_DOMAIN}'
 if not PUBLIC_BASE_URL and VERCEL_PROJECT_PRODUCTION_URL:
     PUBLIC_BASE_URL = f'https://{VERCEL_PROJECT_PRODUCTION_URL}'
 # Deliberately NO fallback to ALLOWED_HOSTS[0]. It looks helpful and is the
