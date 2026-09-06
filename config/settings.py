@@ -53,7 +53,16 @@ SECRET_KEY = os.environ.get(
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+#
+# The default is per-environment rather than a flat True, because a flat True
+# is what a forgotten variable inherits. On Vercel a deployment that never set
+# DEBUG served the yellow traceback page -- settings, paths and all -- to
+# anyone who could provoke an error, and, worse, silently turned off the three
+# settings derived from it below: SESSION_COOKIE_SECURE, CSRF_COOKIE_SECURE
+# and SECURE_SSL_REDIRECT. So a real deployment has to opt *in* to debug,
+# while a local checkout still runs `manage.py runserver` with no env file.
+_DEBUG_DEFAULT = 'False' if os.environ.get('VERCEL') else 'True'
+DEBUG = os.environ.get('DEBUG', _DEBUG_DEFAULT) == 'True'
 
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h.strip()]
 
@@ -83,8 +92,25 @@ VERCEL_PROTECTED_ALIASES = [
     'mvp-crm-unaneaprogramadora.vercel.app',
     'mvp-crm-git-main-unaneaprogramadora.vercel.app',
 ]
+
+# The domain the CRM is actually reached at. A custom domain appears in no
+# VERCEL_* variable, so without naming it here Django answers DisallowedHost
+# on the app's real address the moment DNS points at it -- which is exactly
+# what happened -- and keeps doing so until somebody remembers a dashboard
+# edit. Hardcoded for the same reason as the aliases above: the deployment
+# should not depend on a variable nobody will think to set again. Both the
+# apex and the www host, because Vercel serves whichever one DNS sends and a
+# visitor may type either. CSRF_TRUSTED_ORIGINS is derived from ALLOWED_HOSTS
+# below, so listing them here is also what lets a form on the domain submit.
+CUSTOM_DOMAINS = [
+    'vendi.lat',
+    'www.vendi.lat',
+]
+
+# Vercel-only, like the aliases: locally these would make ALLOWED_HOSTS
+# non-empty and disable Django's DEBUG-mode localhost fallback.
 if os.environ.get('VERCEL'):
-    ALLOWED_HOSTS += VERCEL_PROTECTED_ALIASES
+    ALLOWED_HOSTS += VERCEL_PROTECTED_ALIASES + CUSTOM_DOMAINS
 
 # Absolute https origin for URLs that leave this app and are fetched by
 # somebody else's servers -- specifically the image link handed to WhatsApp,
