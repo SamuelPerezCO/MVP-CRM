@@ -480,3 +480,83 @@ class LastMasterAndTheViewsTests(TestCase):
         )
         self.assertIn('id="user-error-master"', html)
         self.assertIn("único usuario maestro", html)
+
+
+@override_settings(APP_AGENTS=TWO_AGENTS)
+class ResetUsuariosCommandTests(TestCase):
+    """`manage.py reset_usuarios`: the clean slate before re-seeding a team.
+
+    The command exists to be run against production, so what it *doesn't*
+    do carries as much weight as what it does -- these pin both."""
+
+    def run_command(self, *args):
+        from io import StringIO
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("reset_usuarios", *args, stdout=out)
+        return out.getvalue()
+
+    def test_it_is_a_dry_run_without_yes(self):
+        app_user("lucia")
+        output = self.run_command()
+        self.assertIn("Simulación", output)
+        self.assertIn("lucia", output)
+        self.assertTrue(User.objects.filter(username="lucia").exists())
+
+    def test_yes_actually_deletes(self):
+        app_user("lucia")
+        self.run_command("--yes")
+        self.assertFalse(User.objects.filter(username="lucia").exists())
+
+    def test_django_admin_accounts_survive_by_default(self):
+        """They are the way back in when APP_AGENTS is wrong; wiping them
+        while re-seeding the team is how a deploy locks itself out."""
+        User.objects.create_superuser("djangoadmin", password="clave-larga")
+        app_user("lucia")
+        output = self.run_command("--yes")
+        self.assertTrue(User.objects.filter(username="djangoadmin").exists())
+        self.assertIn("djangoadmin", output)
+        self.assertFalse(User.objects.filter(username="lucia").exists())
+
+    def test_include_staff_takes_them_too(self):
+        User.objects.create_superuser("djangoadmin", password="clave-larga")
+        self.run_command("--yes", "--include-staff")
+        self.assertFalse(User.objects.filter(username="djangoadmin").exists())
+
+    def test_it_counts_the_attributions_it_would_null(self):
+        """The number is the whole decision -- a dry run that doesn't say
+        how much history it costs is one nobody can act on."""
+        lucia = app_user("lucia")
+        contact = Client.objects.create(phone="+573001112233")
+        Conversation.objects.create(contact=contact, assigned_to=lucia)
+        output = self.run_command()
+        self.assertIn("1  conversaciones asignadas", output)
+        self.assertIn("atribuciones se pierden", output)
+
+    def test_deleting_nulls_the_attribution_but_keeps_the_conversation(self):
+        lucia = app_user("lucia")
+        contact = Client.objects.create(phone="+573001112233")
+        conversation = Conversation.objects.create(contact=contact, assigned_to=lucia)
+        self.run_command("--yes")
+        conversation.refresh_from_db()
+        self.assertIsNone(conversation.assigned_to)   # SET_NULL, not cascade
+
+    def test_it_flags_a_row_that_is_an_env_agent(self):
+        """Its mirror returns at next login, so 'deleted' means something
+        different for it -- the report should say so rather than imply a
+        lockout."""
+        agents.agent_users()                    # materialise the mirrors
+        output = self.run_command()
+        self.assertIn("el espejo se recrea al entrar", output)
+
+    def test_an_env_agent_can_still_log_in_after_the_wipe(self):
+        agents.agent_users()
+        self.run_command("--yes")
+        self.assertEqual(User.objects.count(), 0)
+        agent = agents.authenticate("Admin", "admin-pw")
+        self.assertIsNotNone(agent)
+        self.assertEqual(agent.user.username, "Admin")   # mirror recreated
+
+    def test_it_says_so_when_there_is_nothing_to_delete(self):
+        self.assertIn("Nada que borrar", self.run_command())
