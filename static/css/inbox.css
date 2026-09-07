@@ -635,6 +635,10 @@
   color: #d64545;
 }
 
+/* A send WhatsApp took but never confirmed: a warning, not a failure -- the
+   bubble keeps its clock and the delivery receipt settles it. */
+.msg-error--pending { color: #b7791f; }
+
 /* The composer bar under the thread. */
 .composer {
   display: flex;

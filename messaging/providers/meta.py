@@ -65,6 +65,7 @@ from .types import (
     MEDIA_PLACEHOLDERS,
     InboundEvent,
     MessageStatus,
+    SendOutcomeUnknown,
     TemplateSpec,
     TemplateStatus,
     TemplateVerdict,
@@ -79,6 +80,12 @@ _GRAPH_API_VERSION = "v25.0"
 _GRAPH_BASE = "https://graph.facebook.com"
 
 _REQUEST_TIMEOUT = 10
+#: Sends get their own (connect, read) budget with a longer read leg: Graph
+#: accepts a message quickly but can take several seconds to answer under
+#: load, and a timeout here is the worst outcome a send has -- the message
+#: went out and the CRM never learned its id (``SendOutcomeUnknown``). Kept
+#: under Vercel's 30s function cap with room for the view's own DB writes.
+_SEND_TIMEOUT = (5, 20)
 #: Media resolution + download happen inline on the webhook request, which
 #: Meta expects answered fast -- a tighter budget than a send the user is
 #: waiting on. Applied per call (id lookup, then download).
@@ -305,15 +312,24 @@ class MetaProvider(MessagingProvider):
             f"{_GRAPH_BASE}/{_GRAPH_API_VERSION}/"
             f"{settings.META_PHONE_NUMBER_ID}/messages"
         )
-        response = requests.post(
-            url,
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {settings.META_ACCESS_TOKEN}",
-                "Content-Type": "application/json",
-            },
-            timeout=_REQUEST_TIMEOUT,
-        )
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {settings.META_ACCESS_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+                timeout=_SEND_TIMEOUT,
+            )
+        except requests.ReadTimeout as exc:
+            # The request left and Graph never answered: the message may have
+            # been accepted. Not a failure -- see SendOutcomeUnknown. (A
+            # ConnectTimeout never reached Graph and stays an ordinary error.)
+            logger.warning("meta send unconfirmed: read timeout to=%s", payload.get("to"))
+            raise SendOutcomeUnknown(
+                f"WhatsApp no respondió en {_SEND_TIMEOUT[1]} segundos"
+            ) from exc
 
         if response.status_code >= 400:
             # Graph puts the actionable part (invalid template, number not in

@@ -27,6 +27,22 @@ MEDIA_PLACEHOLDERS = {
 }
 
 
+class SendOutcomeUnknown(Exception):
+    """A send whose result the provider never reported.
+
+    Raised by a provider when the request reached the platform but the
+    answer did not come back -- a read timeout, typically. The message may
+    well be on its way (Meta accepts a send in well under a second and can
+    still take much longer to answer), so the caller must not call it
+    failed: ``services.send_message`` leaves the row ``queued`` and the
+    delivery receipt, when it arrives, claims the row by recipient (see
+    ``services._adopt_unconfirmed_send``).
+
+    Distinct from every other error out of a send, which all mean the
+    platform did *not* take the message: those stay plain exceptions.
+    """
+
+
 class MessageStatus(str, enum.Enum):
     """Delivery lifecycle of an outbound message.
 

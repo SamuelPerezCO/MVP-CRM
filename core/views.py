@@ -897,6 +897,16 @@ def inbox_thread(request, conversation_id: int):
     )
 
 
+#: The thread's notice for a send WhatsApp took but never confirmed
+#: (``messaging.services.SendUnconfirmed``). Deliberately not "inténtalo de
+#: nuevo": the message has most likely arrived, and a retry would send the
+#: customer a duplicate. The row keeps its clock until the receipt lands.
+_SEND_UNCONFIRMED_NOTICE = (
+    "WhatsApp no confirmó el envío a tiempo. Quedó pendiente (reloj): no lo "
+    "reenvíes, se actualizará solo cuando llegue la confirmación."
+)
+
+
 def inbox_send(request, conversation_id: int):
     """Send the composer's message, answering with the refreshed thread.
 
@@ -925,6 +935,7 @@ def inbox_send(request, conversation_id: int):
             image_url = respuestas.image_url(reply, request)
 
     send_error = None
+    send_pending = False
     if body or image_url:
         try:
             messaging_services.send_message(
@@ -935,11 +946,15 @@ def inbox_send(request, conversation_id: int):
                 "La ventana de 24 horas se cerró. Envía una plantilla "
                 "aprobada para reabrir la conversación."
             )
+        except messaging_services.SendUnconfirmed:
+            # Before SendFailed: it is a subclass, and the opposite advice.
+            send_error, send_pending = _SEND_UNCONFIRMED_NOTICE, True
         except messaging_services.SendFailed:
             send_error = "No se pudo enviar el mensaje. Inténtalo de nuevo."
 
     context = _thread_context(conversation)
     context["send_error"] = send_error
+    context["send_pending"] = send_pending
     return HttpResponse(
         render_to_string("partials/inbox/chat_messages.html", context, request=request)
     )
@@ -1096,6 +1111,7 @@ def inbox_template_send(request, conversation_id: int):
         )
 
     send_error = None
+    send_pending = False
     try:
         messaging_services.send_template(conversation, template, values, request.user)
     except (
@@ -1106,12 +1122,15 @@ def inbox_template_send(request, conversation_id: int):
         messaging_services.BudgetExceeded,
     ) as exc:
         return _template_send_rejected(request, conversation, template, values, str(exc))
+    except messaging_services.SendUnconfirmed:
+        send_error, send_pending = _SEND_UNCONFIRMED_NOTICE, True
     except messaging_services.SendFailed:
         # Same surface as a failed free-form send: the thread shows it.
         send_error = "No se pudo enviar la plantilla. Inténtalo de nuevo."
 
     context = _thread_context(conversation)
     context["send_error"] = send_error
+    context["send_pending"] = send_pending
     return HttpResponse(
         render_to_string("partials/inbox/chat_messages.html", context, request=request)
     )
