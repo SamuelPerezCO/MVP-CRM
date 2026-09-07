@@ -39,6 +39,11 @@ class MessagingProvider(ABC):
 
         Only valid inside the 24-hour customer-service window -- callers
         enforce that (see ``services.send_message``); the provider just sends.
+
+        Any exception means the platform did not take the message -- except
+        ``types.SendOutcomeUnknown``, which a provider raises when the
+        request went out and no answer came back, so the message may have
+        been sent after all. Same for ``send_template`` and ``send_image``.
         """
 
     @abstractmethod

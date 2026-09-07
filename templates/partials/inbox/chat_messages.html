@@ -3,7 +3,9 @@
   poll and what inbox_send answers with. Inbound bubbles sit left, outbound
   right; outbound carry a delivery-status icon (clock/tick/double tick).
 
-  Context: chat_messages, and optionally send_error (from a failed send)
+  Context: chat_messages, and optionally send_error (from a failed send;
+  with send_pending when the send was taken but not confirmed -- an amber
+  notice, not a red one, because the advice is *not* to retry)
 {% endcomment %}
 {% load inbox_extras %}
 
@@ -37,5 +39,5 @@
 {% endfor %}
 
 {% if send_error %}
-  <p class="msg-error" role="alert">{{ send_error }}</p>
+  <p class="msg-error{% if send_pending %} msg-error--pending{% endif %}" role="alert">{{ send_error }}</p>
 {% endif %}

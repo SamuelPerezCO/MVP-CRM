@@ -21,6 +21,7 @@ Two entry points matter:
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -31,7 +32,13 @@ from core.models import Client
 from . import pricing
 from .models import Conversation, ConversationTag, Message, Tag
 from .providers.registry import get_provider
-from .providers.types import InboundEvent, MessageStatus, TemplateStatus, status_rank
+from .providers.types import (
+    InboundEvent,
+    MessageStatus,
+    SendOutcomeUnknown,
+    TemplateStatus,
+    status_rank,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +55,19 @@ class SendWindowClosed(Exception):
 class SendFailed(Exception):
     """The provider rejected or errored on a send. The Message row is kept
     with ``status=failed`` so the thread shows what happened."""
+
+
+class SendUnconfirmed(SendFailed):
+    """The provider took the request but never said what it did with it.
+
+    A subclass of :class:`SendFailed` so existing ``except SendFailed`` sites
+    keep working, but the row is left ``queued`` rather than ``failed``: the
+    message has most likely gone out (Meta answers slowly far more often than
+    it drops a request), and a red tick plus "inténtalo de nuevo" would push
+    the agent into sending the customer a duplicate. The delivery receipt
+    settles it -- ``_apply_status_event`` claims the id-less row by recipient
+    when the receipt arrives (:func:`_adopt_unconfirmed_send`).
+    """
 
 
 class TemplateNotSendable(Exception):
@@ -128,6 +148,13 @@ def send_message(
             )
         else:
             provider_id = provider.send_text(to=conversation.contact.phone, body=body)
+    except SendOutcomeUnknown as exc:
+        # Reached the platform, no answer: the row stays queued (clock icon)
+        # for the receipt to claim. It is still the latest thing in the thread.
+        conversation.last_message_at = message.timestamp
+        conversation.save(update_fields=["last_message_at"])
+        logger.warning("send unconfirmed for conversation %s: %s", conversation.pk, exc)
+        raise SendUnconfirmed(str(exc)) from exc
     except Exception as exc:
         message.status = MessageStatus.FAILED.value
         message.save(update_fields=["status"])
@@ -221,6 +248,17 @@ def send_template(conversation: Conversation, template, values: dict, user=None)
         provider_id = provider.send_template(
             to=conversation.contact.phone, template_name=template.name, params=params
         )
+    except SendOutcomeUnknown as exc:
+        # As in send_message: queued, not failed. The quote stays on the row
+        # because the send probably went out; Meta's receipt corrects it as
+        # it corrects every other template send (_apply_pricing).
+        conversation.last_message_at = message.timestamp
+        conversation.save(update_fields=["last_message_at"])
+        logger.warning(
+            "send_template %s unconfirmed for conversation %s: %s",
+            template.name, conversation.pk, exc,
+        )
+        raise SendUnconfirmed(str(exc)) from exc
     except Exception as exc:
         message.status = MessageStatus.FAILED.value
         # A send the provider refused was never delivered, so it is never
@@ -583,6 +621,8 @@ def _apply_status_event(event: InboundEvent) -> None:
         provider_message_id=event.provider_message_id
     ).first()
     if message is None:
+        message = _adopt_unconfirmed_send(event)
+    if message is None:
         # Receipts can outrun the send's DB commit, or reference messages
         # sent outside this app. Nothing to update either way.
         logger.info("status for unknown message %s", event.provider_message_id)
@@ -606,6 +646,69 @@ def _apply_status_event(event: InboundEvent) -> None:
 
     if changed:
         message.save(update_fields=changed)
+
+
+#: How far back a receipt for an id no row carries may look for the send that
+#: lost it. The first receipt ("sent") follows a send within seconds; the
+#: window covers a slow webhook and stays short enough that a message sent to
+#: the same customer from outside the CRM cannot be pinned on an old row.
+UNCONFIRMED_SEND_WINDOW = timedelta(minutes=10)
+
+
+def _adopt_unconfirmed_send(event: InboundEvent) -> Message | None:
+    """Match a receipt whose id no row carries to the send that lost it.
+
+    A send can reach WhatsApp and still leave the CRM without the message id:
+    the provider timed out reading the answer (:class:`SendUnconfirmed`), or
+    the write after the provider call failed. The row then sits on the clock
+    while the customer reads the message, and every receipt for it is dropped
+    as unknown. This is the repair: the newest id-less *queued* outbound row
+    to the receipt's recipient, created within :data:`UNCONFIRMED_SEND_WINDOW`
+    of the receipt, takes the id. Only ``queued`` rows qualify -- a ``failed``
+    one is a send the platform refused outright, and a receipt for the same
+    customer minutes later belongs to some other message.
+
+    Returns the adopted row (status ``queued``, so the caller's forward-only
+    rule then applies the receipt's verdict on top), or ``None`` when nothing
+    qualifies: no recipient on the receipt, no such contact, no recent orphan.
+    """
+    if not event.to_number:
+        return None
+    contact = _find_contact(event.to_number)
+    if contact is None:
+        return None
+
+    received_at = event.timestamp or timezone.now()
+    orphan = (
+        Message.objects.filter(
+            conversation__contact=contact,
+            direction=Message.OUTBOUND,
+            provider_message_id__isnull=True,
+            status=MessageStatus.QUEUED.value,
+            timestamp__gte=received_at - UNCONFIRMED_SEND_WINDOW,
+        )
+        .order_by("-timestamp", "-pk")
+        .first()
+    )
+    if orphan is None:
+        return None
+
+    orphan.provider_message_id = event.provider_message_id
+    try:
+        # A savepoint: the caller runs each event inside atomic(), and an
+        # IntegrityError would otherwise poison that transaction.
+        with transaction.atomic():
+            orphan.save(update_fields=["provider_message_id"])
+    except IntegrityError:
+        # Two receipts for the same id, in concurrent webhooks, both picked
+        # this row; the other one won. Read back what it wrote.
+        return Message.objects.filter(provider_message_id=event.provider_message_id).first()
+
+    logger.warning(
+        "receipt %s adopted by message %s: its send was never confirmed",
+        event.provider_message_id, orphan.pk,
+    )
+    return orphan
 
 
 def _apply_pricing(message: Message, pricing_info: dict) -> list[str]:
@@ -730,21 +833,11 @@ def _upsert_contact(phone: str, contact_name: str, channel: str) -> Client:
     contact every time the app itself saw the same customer. New contacts are
     always written canonically, so the ambiguity does not spread.
     """
-    canonical = canonical_phone(phone)
-    # Both spellings, one query. Order the candidates so an exact hit wins
-    # when a database somehow holds both.
-    candidates = [value for value in (phone, canonical, canonical.lstrip("+")) if value]
-    contact = next(
-        (
-            found
-            for value in candidates
-            for found in Client.objects.filter(phone=value)[:1]
-        ),
-        None,
-    )
+    contact = _find_contact(phone)
     if contact is not None:
         return contact
 
+    canonical = canonical_phone(phone)
     stored = canonical or phone
     name = contact_name.strip() or stored
     return Client.objects.create(
@@ -754,6 +847,26 @@ def _upsert_contact(phone: str, contact_name: str, channel: str) -> Client:
         # +57 numbers get the Colombian flag in the CRM table; other prefixes
         # are left blank rather than guessed.
         country="CO" if stored.startswith("+57") else "",
+    )
+
+
+def _find_contact(phone: str) -> Client | None:
+    """The Client stored under ``phone`` in any of its spellings, or None.
+
+    Accepts the number as given *and* as canonical, with and without the
+    ``+``: rows also arrive from outside this app (the README's external
+    writer contract), and one that stored the raw ``wa_id`` must still be
+    found. Ordered so an exact hit wins when a database somehow holds both.
+    """
+    canonical = canonical_phone(phone)
+    candidates = [value for value in (phone, canonical, canonical.lstrip("+")) if value]
+    return next(
+        (
+            found
+            for value in candidates
+            for found in Client.objects.filter(phone=value)[:1]
+        ),
+        None,
     )
 
 

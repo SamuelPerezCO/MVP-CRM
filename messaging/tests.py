@@ -23,9 +23,10 @@ from unittest.mock import MagicMock, Mock, patch
 
 from . import services
 from .models import Conversation, ConversationTag, Message, Tag
+from .providers.fake import FakeProvider
 from .providers.meta import MetaProvider
 from .providers.registry import get_provider
-from .providers.types import InboundEvent, MessageStatus
+from .providers.types import InboundEvent, MessageStatus, SendOutcomeUnknown
 from .services import SendWindowClosed, send_message
 
 WEBHOOK_URL = "/webhooks/messaging/fake/"
@@ -290,6 +291,147 @@ class FakeStatusProgressionTests(TestCase):
         self.assertEqual(events[0].status, MessageStatus.SENT)
 
 
+class UnconfirmedSendTests(TestCase):
+    """A send that reached WhatsApp but never answered: the row stays queued,
+    and the receipt that follows claims it by recipient. This is the bug
+    where the CRM showed a red tick on a message the customer had received:
+    the provider timed out, the row was stamped failed with no id, and every
+    receipt for it was then dropped as unknown."""
+
+    PHONE = "+573000000094"
+
+    def setUp(self):
+        self.contact = Client.objects.create(first_name="Hector", phone=self.PHONE)
+        self.conversation = Conversation.objects.create(
+            contact=self.contact, last_inbound_at=timezone.now()
+        )
+
+    def send_unconfirmed(self, body="Hola Hector") -> Message:
+        with patch.object(FakeProvider, "send_text", side_effect=SendOutcomeUnknown("slow")):
+            with self.assertRaises(services.SendUnconfirmed):
+                send_message(self.conversation, body)
+        return self.conversation.messages.latest("pk")
+
+    def receipt(self, status=MessageStatus.DELIVERED, to=PHONE, **extra) -> InboundEvent:
+        return InboundEvent(
+            event_type="status", provider_message_id="wamid.LATE",
+            to_number=to, status=status, **extra,
+        )
+
+    def test_unconfirmed_send_stays_queued_with_no_id(self):
+        message = self.send_unconfirmed()
+        self.assertEqual(message.status, MessageStatus.QUEUED.value)
+        self.assertIsNone(message.provider_message_id)
+        self.conversation.refresh_from_db()
+        self.assertEqual(self.conversation.last_message_at, message.timestamp)
+
+    def test_unconfirmed_is_still_a_send_failed_for_existing_handlers(self):
+        self.assertTrue(issubclass(services.SendUnconfirmed, services.SendFailed))
+
+    def test_other_errors_still_mark_the_row_failed(self):
+        with patch.object(FakeProvider, "send_text", side_effect=RuntimeError("400")):
+            with self.assertRaises(services.SendFailed):
+                send_message(self.conversation, "Hola")
+        self.assertEqual(self.conversation.messages.get().status, "failed")
+
+    def test_receipt_for_unknown_id_adopts_the_recent_queued_row(self):
+        orphan = self.send_unconfirmed()
+
+        services.process_inbound_events([self.receipt(pricing={"category": "service"})])
+
+        orphan.refresh_from_db()
+        self.assertEqual(orphan.provider_message_id, "wamid.LATE")
+        self.assertEqual(orphan.status, "delivered")
+        self.assertEqual(orphan.meta_pricing_category, "service")
+
+    def test_receipt_matches_the_recipient_as_meta_spells_it(self):
+        """Meta's recipient_id comes through _to_e164 with a '+', but an
+        external writer may have stored the bare wa_id on the Client."""
+        Client.objects.filter(pk=self.contact.pk).update(phone=self.PHONE.lstrip("+"))
+        orphan = self.send_unconfirmed()
+
+        services.process_inbound_events([self.receipt(status=MessageStatus.SENT)])
+
+        orphan.refresh_from_db()
+        self.assertEqual(orphan.provider_message_id, "wamid.LATE")
+        self.assertEqual(orphan.status, "sent")
+
+    def test_later_receipts_for_the_adopted_id_match_normally(self):
+        orphan = self.send_unconfirmed()
+        services.process_inbound_events([self.receipt(status=MessageStatus.SENT)])
+        services.process_inbound_events([self.receipt(status=MessageStatus.READ)])
+        orphan.refresh_from_db()
+        self.assertEqual(orphan.status, "read")
+        self.assertEqual(self.conversation.messages.count(), 1)
+
+    def test_the_newest_orphan_wins(self):
+        older = self.send_unconfirmed("primero")
+        newer = self.send_unconfirmed("segundo")
+
+        services.process_inbound_events([self.receipt()])
+
+        older.refresh_from_db()
+        newer.refresh_from_db()
+        self.assertIsNone(older.provider_message_id)
+        self.assertEqual(newer.provider_message_id, "wamid.LATE")
+
+    def test_a_failed_row_is_never_adopted(self):
+        """'failed' is the platform's refusal; a receipt for the same customer
+        minutes later belongs to some other message."""
+        with patch.object(FakeProvider, "send_text", side_effect=RuntimeError("400")):
+            with self.assertRaises(services.SendFailed):
+                send_message(self.conversation, "Hola")
+        failed = self.conversation.messages.get()
+
+        services.process_inbound_events([self.receipt()])
+
+        failed.refresh_from_db()
+        self.assertIsNone(failed.provider_message_id)
+        self.assertEqual(failed.status, "failed")
+
+    def test_an_old_orphan_is_not_adopted(self):
+        orphan = self.send_unconfirmed()
+        Message.objects.filter(pk=orphan.pk).update(
+            timestamp=timezone.now() - services.UNCONFIRMED_SEND_WINDOW - timedelta(minutes=1)
+        )
+
+        services.process_inbound_events([self.receipt()])
+
+        orphan.refresh_from_db()
+        self.assertIsNone(orphan.provider_message_id)
+        self.assertEqual(orphan.status, "queued")
+
+    def test_the_window_is_measured_from_the_receipts_own_timestamp(self):
+        """Meta retries webhooks for hours; the receipt carries the time the
+        status happened, and that is what the send must be near."""
+        orphan = self.send_unconfirmed()
+        Message.objects.filter(pk=orphan.pk).update(
+            timestamp=timezone.now() - timedelta(hours=3)
+        )
+
+        services.process_inbound_events([self.receipt(
+            timestamp=timezone.now() - timedelta(hours=3) + timedelta(seconds=5)
+        )])
+
+        orphan.refresh_from_db()
+        self.assertEqual(orphan.provider_message_id, "wamid.LATE")
+
+    def test_another_customers_orphan_is_not_adopted(self):
+        orphan = self.send_unconfirmed()
+        Client.objects.create(first_name="Otra", phone="+573000000093")
+
+        services.process_inbound_events([self.receipt(to="+573000000093")])
+
+        orphan.refresh_from_db()
+        self.assertIsNone(orphan.provider_message_id)
+
+    def test_a_receipt_without_recipient_is_still_dropped(self):
+        orphan = self.send_unconfirmed()
+        services.process_inbound_events([self.receipt(to="")])
+        orphan.refresh_from_db()
+        self.assertIsNone(orphan.provider_message_id)
+
+
 class InboxUITests(TestCase):
     """The messaging data showing up through the existing Inbox screen."""
 
@@ -366,6 +508,30 @@ class InboxUITests(TestCase):
         outbound = self.conversation.messages.get(direction=Message.OUTBOUND)
         self.assertEqual(outbound.sent_by, self.user)
         self.assertTrue(outbound.provider_message_id.startswith("fake-"))
+
+    def test_unconfirmed_send_shows_a_pending_notice_not_a_failure(self):
+        self.client.force_login(self.user)
+        with patch.object(FakeProvider, "send_text", side_effect=SendOutcomeUnknown("slow")):
+            response = self.client.post(
+                reverse("inbox_send", args=[self.conversation.pk]), {"body": "Hola"}
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "no lo reenvíes")
+        self.assertContains(response, "msg-error--pending")
+        self.assertNotContains(response, "Inténtalo de nuevo")
+        outbound = self.conversation.messages.get(direction=Message.OUTBOUND)
+        self.assertEqual(outbound.status, "queued")
+        self.assertContains(response, "msg__status--queued")
+
+    def test_failed_send_still_shows_the_retry_notice(self):
+        self.client.force_login(self.user)
+        with patch.object(FakeProvider, "send_text", side_effect=RuntimeError("400")):
+            response = self.client.post(
+                reverse("inbox_send", args=[self.conversation.pk]), {"body": "Hola"}
+            )
+        self.assertContains(response, "Inténtalo de nuevo")
+        self.assertNotContains(response, "msg-error--pending")
+        self.assertContains(response, "msg__status--failed")
 
 
 # --- Tags -------------------------------------------------------------------
@@ -1021,6 +1187,24 @@ class MetaProviderTests(TestCase):
         self.assertEqual(sent["text"]["body"], "Hola desde el CRM")
         headers = mock_post.call_args.kwargs["headers"]
         self.assertEqual(headers["Authorization"], "Bearer test-token")
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_send_read_timeout_is_unconfirmed_not_failed(self, mock_post):
+        """Graph took the request and never answered: the message may be on
+        its way, so this is SendOutcomeUnknown, not a plain error."""
+        mock_post.side_effect = requests.ReadTimeout("graph is slow today")
+
+        with self.assertRaises(SendOutcomeUnknown):
+            self.provider.send_text("+573000000099", "Hola")
+        self.assertEqual(mock_post.call_args.kwargs["timeout"], (5, 20))
+
+    @patch("messaging.providers.meta.requests.post")
+    def test_send_connect_timeout_is_a_plain_failure(self, mock_post):
+        """Never reached Graph: nothing was sent, the ordinary failure path."""
+        mock_post.side_effect = requests.ConnectTimeout("no route")
+
+        with self.assertRaises(requests.ConnectTimeout):
+            self.provider.send_text("+573000000099", "Hola")
 
     @patch("messaging.providers.meta.requests.post")
     def test_send_template_builds_positional_parameters_in_order(self, mock_post):
