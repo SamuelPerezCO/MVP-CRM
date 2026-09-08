@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """Turn the workflow's result into the final PDF.
 
-Reads chapters.json (the workflow return value), fills Anexo B with the
-per-chapter verification record, orders chapters as planned (critic-added
-chapters last), and renders. A partial run is reported explicitly -- on the
+Reads chapters.json (the workflow return value) and academico.json (Part I,
+the project document), fills Anexo B with the per-chapter verification
+record, orders chapters as planned (critic-added chapters last), and renders. A partial run is reported explicitly -- on the
 cover and in Anexo B -- rather than silently shipping a short document.
 """
 import json
@@ -31,6 +31,10 @@ with open("chapters.json", encoding="utf-8") as f:
     payload = json.load(f)
 with open("front.json", encoding="utf-8") as f:
     front = json.load(f)
+# Part I (problem, objectives, requirements, data model, interface) lives in
+# its own file: it is written by hand, not by the verification workflow.
+with open("academico.json", encoding="utf-8") as f:
+    front["academic"] = json.load(f)
 
 entries = [e for e in payload.get("chapters", []) if e and e.get("chapter")]
 entries.sort(key=lambda e: ORDER.index(e["key"]) if e["key"] in ORDER else len(ORDER))
