@@ -1218,7 +1218,16 @@ def inbox_new_chat(request):
     """
     if request.method == "GET":
         client = Client.objects.filter(pk=request.GET.get("cliente") or 0).first()
-        chosen = _sendable_templates().filter(pk=request.GET.get("plantilla") or 0).first()
+        # The picker checks the first plantilla when none is named, so the
+        # body must render THAT one's variable inputs too -- otherwise a
+        # first open shows a checked radio and no inputs, and the first
+        # submit bounces on "completa las variables" for fields that were
+        # never on screen.
+        sendable = _sendable_templates()
+        chosen = (
+            sendable.filter(pk=request.GET.get("plantilla") or 0).first()
+            or sendable.first()
+        )
         return _new_chat_response(request, client, None, chosen)
     if request.method != "POST":
         return HttpResponseNotAllowed(["GET", "POST"])

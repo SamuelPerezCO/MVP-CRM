@@ -91,6 +91,17 @@ class NewChatModalTests(TestCase):
         self.assertNotIn("apagada", html)
         self.assertIn(f'value="{camila.pk}"', html)
 
+    def test_first_open_renders_the_checked_plantillas_variables(self):
+        """The picker checks the first plantilla by default, so its {{n}}
+        inputs must be there from the start (prefilled with the samples) --
+        with a single plantilla there is no change event to fetch them."""
+        client()
+        tpl = template()
+        html = self.client.get(self.URL).content.decode()
+        self.assertIn(f'name="var_{tpl.pk}_1"', html)
+        self.assertIn('value="Camila"', html)
+        self.assertIn("Datos de la plantilla", html)
+
     def test_cliente_param_preselects(self):
         camila = client()
         client("Bruno", "+525512345678")
