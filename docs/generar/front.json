@@ -1,13 +1,13 @@
 {
  "title": "MVP-CRM",
  "subtitle": "Documentación técnica",
- "author": "Equipo MVP-CRM",
+ "author": "Samuel Pérez Serna",
  "subject": "Documentación técnica del CRM omnicanal MVP-CRM (Django + htmx)",
- "version": "main @ 6089391 · 4 de septiembre de 2026",
+ "version": "Septiembre 2026 · main @ 6089391",
  "cover_lines": [
-  "Versión documentada: rama `main`, commit `6089391` (4 de septiembre de 2026). Consulta el Anexo A para los cambios posteriores.",
   "Repositorio: github.com/SamuelPerezCO/MVP-CRM",
-  "Stack: Django 6.1 · htmx · Python 3.12 · SQLite en desarrollo, PostgreSQL (Neon) en producción · Vercel."
+  "Stack: Django 6.1 · htmx · Python 3.12 · SQLite en desarrollo, PostgreSQL (Neon) en producción · Vercel.",
+  "La segunda parte describe la rama `main` en el commit `6089391`; el Anexo A lista los cambios posteriores."
  ],
  "about": [
   {
@@ -15,7 +15,7 @@
    "blocks": [
     {
      "kind": "paragraph",
-     "text": "MVP-CRM es un CRM omnicanal para comercios: una bandeja de entrada unificada para los canales de mensajería (WhatsApp, Messenger, Instagram, Facebook, TikTok), gestión de clientes, calendario, plantillas de WhatsApp, embudos de venta, catálogo de productos y estadísticas, todo dentro de un shell de una sola página con barra lateral de iconos. Este documento describe el sistema tal como está en la rama `main`, commit `6089391`, y está pensado para quien se incorpora al proyecto o necesita entender cómo funciona una pieza antes de tocarla."
+     "text": "MVP-CRM es un CRM omnicanal para comercios: una bandeja de entrada unificada para los canales de mensajería (WhatsApp, Messenger, Instagram, Facebook, TikTok), gestión de clientes, calendario, plantillas de WhatsApp, embudos de venta, catálogo de productos y estadísticas, todo dentro de un shell de una sola página con barra lateral de iconos. Este documento tiene dos partes. La primera presenta el proyecto: el problema, la pregunta que lo guía, el alcance, los objetivos, los requisitos, el modelo de datos y la interfaz. La segunda documenta el código tal como está en la rama `main`, commit `6089391`, y está pensada para quien se incorpora al proyecto o necesita entender cómo funciona una pieza antes de tocarla."
     },
     {
      "kind": "paragraph",
@@ -24,11 +24,11 @@
    ]
   },
   {
-   "heading": "Cómo se generó y cómo leerlo",
+   "heading": "Cómo leer la segunda parte",
    "blocks": [
     {
      "kind": "paragraph",
-     "text": "Cada capítulo lo redactó un lector dedicado a ese subsistema a partir del código fuente; después un verificador independiente intentó refutar cada afirmación (rutas, nombres de URL, campos, variables de entorno, valores por defecto) contrastándola con el código, y se corrigieron las discrepancias que encontró. El Anexo B resume ese proceso capítulo por capítulo. Aun así, ante cualquier duda manda el archivo citado."
+     "text": "Cada capítulo de la segunda parte se redactó a partir del código fuente y después se verificó afirmación por afirmación (rutas, nombres de URL, campos, variables de entorno, valores por defecto) contrastándola con el código, corrigiendo las discrepancias encontradas. El Anexo B resume ese proceso capítulo por capítulo. Aun así, ante cualquier duda manda el archivo citado."
     },
     {
      "kind": "bullets",
@@ -127,5 +127,7 @@
     }
    ]
   }
- ]
+ ],
+ "date": "Septiembre 2026",
+ "objective": "Desarrollar un CRM omnicanal para comercios que centralice en una sola bandeja de entrada las conversaciones de sus canales de mensajería, las vincule con la gestión de clientes, el calendario, las plantillas de WhatsApp y las estadísticas del negocio, mediante Django, htmx y PostgreSQL, y que pueda operar sobre proveedores reales de WhatsApp sin acoplar la aplicación a ninguno de ellos."
 }

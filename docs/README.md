@@ -1,10 +1,16 @@
 # Documentación técnica
 
-`MVP-CRM-documentacion-tecnica.pdf` — 133 páginas, 16 capítulos, en español.
-Describe la rama `main` en el commit **`6089391`**; el Anexo A del propio PDF
-lista los commits posteriores que **no** cubre.
+`MVP-CRM-documentacion-tecnica.pdf` — en español, dos partes, autor Samuel Pérez Serna.
 
-## Qué hay dentro
+**Parte I, documento del proyecto**: identificación del problema, pregunta de
+investigación, alcance, objetivo general y específicos, árbol de problemas,
+hipótesis de solución, requisitos funcionales y no funcionales, modelo de
+datos, mapa conceptual, interfaz (capturas reales de la aplicación) y
+bibliografía.
+
+**Parte II, documentación técnica del código**: 16 capítulos que describen la
+rama `main` en el commit **`6089391`**; el Anexo A del propio PDF lista los
+commits posteriores que **no** cubre.
 
 Capítulos 1–12: arquitectura y shell, autenticación y agentes, Inbox, la capa
 de mensajería y sus proveedores, CRM, calendario, plantillas de WhatsApp,
@@ -14,28 +20,37 @@ configuración y despliegue, y pruebas y convenciones.
 Capítulos 13–16: guía para añadir una sección o panel, glosario del dominio,
 el sistema visual (tokens y convenciones CSS) y los patrones htmx.
 
-## Cómo se generó
+## Cómo se generó la segunda parte
 
-Cada capítulo lo escribió un agente leyendo un snapshot de solo lectura del
-código; un verificador independiente intentó refutar cada afirmación concreta
-contra ese mismo código, y un corrector aplicó lo que encontró. El Anexo B del
-PDF trae el registro por capítulo: 39 correcciones y 96 omisiones cubiertas
-sobre 16 capítulos.
+Cada capítulo se redactó leyendo un snapshot de solo lectura del código y
+después se verificó afirmación por afirmación contra ese mismo código,
+corrigiendo lo que no coincidía. El Anexo B del PDF trae el registro por
+capítulo: 39 correcciones y 96 omisiones cubiertas sobre 16 capítulos.
 
 ## Cómo regenerar el PDF
 
-El contenido verificado vive en `generar/chapters.json`, así que volver a
-componer el documento no requiere re-ejecutar los agentes:
+Todo el contenido vive en `generar/`, así que recomponer el documento es un
+solo comando:
 
 ```bash
 cd docs/generar
 uv run --with reportlab python assemble.py ../MVP-CRM-documentacion-tecnica.pdf
 ```
 
-Para corregir una frase, un dato o una tabla, edita `generar/chapters.json` y
-vuelve a ejecutar ese comando. La portada, la introducción y los anexos están
-en `generar/front.json`; la maquetación (estilos, tablas, diagramas, índice y
-marcadores del PDF) en `generar/render.py`.
+- `generar/academico.json`: la Parte I (texto, tablas de requisitos, los
+  diagramas descritos como filas de cajas o entidades con relaciones, y las
+  capturas). Para corregir una frase o un requisito, edita este archivo.
+- `generar/chapters.json`: la Parte II verificada. Para corregir un dato o una
+  tabla de un capítulo, edita aquí.
+- `generar/front.json`: portada (objetivo, autor, fecha), introducción y
+  anexos.
+- `generar/render.py`: la maquetación (estilos, tablas, diagramas dibujados,
+  imágenes, índice y marcadores del PDF).
+- `generar/capturas/`: las capturas de pantalla de la sección Interfaz,
+  tomadas a 1440×900 con datos de ejemplo. Para renovarlas, arranca la app
+  con `MESSAGING_PROVIDER=fake`, crea algunos datos y vuelve a capturar cada
+  pantalla con el mismo tamaño.
 
-Documentar un commit más reciente sí exige volver a lanzar el proceso de
-lectura y verificación, y reemplazar `generar/chapters.json` con su resultado.
+Documentar un commit más reciente en la Parte II sí exige volver a lanzar el
+proceso de lectura y verificación, y reemplazar `generar/chapters.json` con su
+resultado.

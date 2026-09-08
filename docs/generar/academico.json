@@ -1,0 +1,714 @@
+{
+ "part_title": "Documento del proyecto",
+ "part_intro": "Esta primera parte presenta MVP-CRM como proyecto: el problema que resuelve, la pregunta que lo guía, su alcance y objetivos, los requisitos que cumple, su modelo de datos y su interfaz. La segunda parte documenta el código en detalle, capítulo por capítulo.",
+ "sections": [
+  {
+   "heading": "Identificación del problema",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "Los comercios pequeños y medianos de Colombia venden, cada vez más, por mensajería: WhatsApp en primer lugar, y detrás Instagram, Messenger, Facebook y TikTok. Cada uno de esos canales tiene su propia aplicación, su propia bandeja y su propia forma de avisar que alguien escribió. El vendedor atiende desde su teléfono personal, salta de una app a otra, y el historial de cada cliente queda repartido entre chats que nadie consolida."
+    },
+    {
+     "kind": "paragraph",
+     "text": "La consecuencia es doble. Por un lado, el negocio pierde clientes: un mensaje que nadie ve a tiempo es una venta que no ocurre, y cuando la conversación sigue al día siguiente ya no hay quien recuerde qué se había ofrecido. Por otro, el dueño del comercio no tiene datos: no sabe cuántas conversaciones entran por semana, cuánto tarda su equipo en responder, quién atiende a quién, ni cuánto le cuesta cada plantilla de WhatsApp que envía fuera de la ventana de 24 horas que impone Meta."
+    },
+    {
+     "kind": "paragraph",
+     "text": "Existen plataformas comerciales que resuelven esto (Treble, Leadsales, Kommo, entre otras), pero cobran por agente, en dólares y con contratos pensados para equipos de ventas grandes. Para un comercio de dos o tres personas el costo no se justifica, y el resultado es que siguen atendiendo a mano, sin CRM, sin registro y sin métricas."
+    }
+   ]
+  },
+  {
+   "heading": "Pregunta de investigación",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "A partir de lo anterior se plantea la siguiente pregunta: ¿es posible construir, con Django, htmx y una base de datos PostgreSQL desplegada en infraestructura sin servidor, un CRM omnicanal que centralice en una sola bandeja las conversaciones de un comercio, las vincule con sus clientes y sus ventas, y se conecte a los proveedores reales de WhatsApp (Meta y Twilio) sin que el resto de la aplicación dependa de cuál de ellos se use?"
+    },
+    {
+     "kind": "paragraph",
+     "text": "Esa pregunta guía tanto la arquitectura del sistema (una abstracción de proveedor que se elige con una sola variable de entorno) como su alcance (las secciones que se construyeron primero son las que responden a la necesidad más urgente del comercio: recibir, contestar y no perder conversaciones)."
+    }
+   ]
+  },
+  {
+   "heading": "Alcance",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "La aplicación está dirigida al equipo de atención y ventas de un comercio: los agentes que responden mensajes y el usuario maestro que administra al equipo. Es una aplicación web de una sola página con una barra lateral de iconos, en español, que se usa desde el navegador de escritorio."
+    },
+    {
+     "kind": "paragraph",
+     "text": "El producto cubre: una bandeja de entrada unificada (Inbox) con filtros por canal y por asignación, hilo de chat con refresco automático, compositor con la regla de la ventana de 24 horas de WhatsApp, respuestas rápidas y panel del cliente; la gestión de clientes con alta, edición, ficha, baja, búsqueda, exportación a Excel y listas; un calendario con eventos vinculados a clientes; las plantillas de WhatsApp con editor, vista previa, envío a Meta para aprobación y lectura del veredicto; un catálogo de productos; estadísticas de mensajería, ventas, etiquetas y embudos; y la administración del equipo por un usuario maestro."
+    },
+    {
+     "kind": "paragraph",
+     "text": "Queda fuera de esta versión el envío masivo de campañas, la construcción visual de chatbots y las integraciones de pago: esas secciones existen en la navegación como andamiaje con estados vacíos, y así lo documenta la segunda parte. Tampoco se construyó una aplicación móvil: la interfaz responde en pantallas de escritorio y tabletas."
+    },
+    {
+     "kind": "paragraph",
+     "text": "Tecnológicamente, el sistema se desarrolló con Python 3.12 y Django 6.1 en el servidor, htmx para los paneles dinámicos sin build de frontend, CSS y SVG propios, SQLite en desarrollo y PostgreSQL (Neon) en producción, desplegado en Vercel con los archivos de medios en Vercel Blob. La integración con WhatsApp vive detrás de una abstracción de proveedor con tres implementaciones: `fake` para desarrollo local, Twilio y la Cloud API de Meta."
+    }
+   ]
+  },
+  {
+   "heading": "Objetivo general",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "Desarrollar un CRM omnicanal para comercios que centralice en una sola bandeja de entrada las conversaciones de sus canales de mensajería, las vincule con la gestión de clientes, el calendario, las plantillas de WhatsApp y las estadísticas del negocio, mediante Django, htmx y PostgreSQL, y que pueda operar sobre proveedores reales de WhatsApp sin acoplar la aplicación a ninguno de ellos."
+    }
+   ]
+  },
+  {
+   "heading": "Objetivos específicos",
+   "blocks": [
+    {
+     "kind": "bullets",
+     "items": [
+      "Elicitar las necesidades de atención y venta por mensajería de un comercio pequeño y traducirlas en requisitos funcionales y no funcionales.",
+      "Diseñar un modelo de datos en el que el cliente sea una sola entidad compartida por la bandeja de entrada, el calendario y las listas del CRM.",
+      "Construir el shell de una sola página y la navegación declarativa que permite añadir secciones nuevas con un cambio mínimo.",
+      "Implementar la bandeja de entrada unificada con sus filtros, el hilo de chat, la regla de la ventana de 24 horas y las respuestas rápidas.",
+      "Definir una abstracción de proveedor de mensajería con un webhook firmado e idempotente, y sus implementaciones para desarrollo local, Twilio y Meta.",
+      "Desarrollar la gestión de clientes, el calendario, las plantillas de WhatsApp, el catálogo de productos y las estadísticas.",
+      "Cubrir el sistema con una suite de pruebas automatizadas que proteja las reglas de negocio y los contratos con los proveedores.",
+      "Desplegar la aplicación en producción sobre Vercel y Neon, con las herramientas de operación necesarias para salir a producción con datos limpios."
+     ]
+    }
+   ]
+  },
+  {
+   "heading": "Árbol de problemas",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "El árbol resume el problema central, las causas que lo producen (abajo) y los efectos que genera en el comercio (arriba)."
+    },
+    {
+     "kind": "diagram",
+     "layout": "layers",
+     "caption": "Árbol de problemas: efectos (arriba), problema central y causas (abajo).",
+     "rows": [
+      [
+       {
+        "text": "Mensajes sin responder y ventas que se pierden",
+        "to": [
+         0
+        ]
+       },
+       {
+        "text": "Historial del cliente disperso entre apps y teléfonos",
+        "to": [
+         0
+        ]
+       },
+       {
+        "text": "Sin métricas de volumen, tiempos ni rendimiento",
+        "to": [
+         0
+        ]
+       },
+       {
+        "text": "Costo de las plantillas de WhatsApp desconocido",
+        "to": [
+         0
+        ]
+       }
+      ],
+      [
+       {
+        "text": "Los comercios atienden sus canales de mensajería sin una herramienta que centralice conversaciones, clientes y ventas",
+        "role": "root",
+        "to": [
+         0,
+         1,
+         2,
+         3
+        ]
+       }
+      ],
+      [
+       {
+        "text": "Cada canal tiene su propia aplicación y su propia bandeja"
+       },
+       {
+        "text": "Las plataformas comerciales cobran por agente y en dólares"
+       },
+       {
+        "text": "No queda registro de quién atiende cada conversación"
+       },
+       {
+        "text": "El conocimiento del cliente vive en el teléfono del vendedor"
+       }
+      ]
+     ],
+     "arrow": "up"
+    }
+   ]
+  },
+  {
+   "heading": "Hipótesis de solución",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "Desarrollar una aplicación web con Django, htmx y PostgreSQL que reciba los mensajes de los distintos canales a través de webhooks normalizados, los presente en una sola bandeja con el cliente ya identificado, y permita responder, asignar, etiquetar, agendar y medir desde el mismo lugar, permite que un comercio pequeño atienda sus canales de mensajería con la disciplina de un CRM sin pagar una plataforma por agente, y que cambie de proveedor de WhatsApp modificando una sola variable de configuración."
+    }
+   ]
+  },
+  {
+   "heading": "Requisitos funcionales",
+   "blocks": [
+    {
+     "kind": "table",
+     "headers": [
+      "ID",
+      "Nombre del requisito",
+      "Descripción",
+      "Usuario"
+     ],
+     "rows": [
+      [
+       "RF-001",
+       "Autenticación de agentes",
+       "El sistema debe exigir inicio de sesión en toda la aplicación y reconocer como agentes a las personas definidas en la configuración o creadas por el usuario maestro.",
+       "Agentes"
+      ],
+      [
+       "RF-002",
+       "Bandeja de entrada unificada",
+       "El sistema debe listar en una sola bandeja las conversaciones de WhatsApp, Messenger, Instagram, Facebook y TikTok, con filtros por canal, por asignación (todos, tu inbox, sin asignar) y búsqueda.",
+       "Agentes"
+      ],
+      [
+       "RF-003",
+       "Recepción de mensajes",
+       "El sistema debe recibir los mensajes entrantes por el webhook del proveedor, verificar su firma, evitar duplicados por identificador del proveedor y crear o actualizar el cliente y la conversación.",
+       "Sistema"
+      ],
+      [
+       "RF-004",
+       "Envío de mensajes",
+       "El sistema debe permitir responder texto e imágenes desde el hilo, registrar quién envió cada mensaje y reflejar su estado (enviado, entregado, leído, fallido).",
+       "Agentes"
+      ],
+      [
+       "RF-005",
+       "Ventana de 24 horas",
+       "Fuera de la ventana de 24 horas desde el último mensaje del cliente, el sistema debe bloquear el texto libre y ofrecer únicamente el envío de una plantilla aprobada.",
+       "Sistema"
+      ],
+      [
+       "RF-006",
+       "Nuevo chat",
+       "El sistema debe permitir escribirle primero a un cliente del CRM y abrir la conversación resultante en la bandeja.",
+       "Agentes"
+      ],
+      [
+       "RF-007",
+       "Respuestas rápidas",
+       "El sistema debe ofrecer respuestas predefinidas de texto o imagen que se envían con un clic desde el compositor.",
+       "Agentes"
+      ],
+      [
+       "RF-008",
+       "Asignación y etiquetas",
+       "El sistema debe permitir asignar cada conversación a un agente, cambiar su estado y aplicar o quitar etiquetas, individualmente o en lote.",
+       "Agentes"
+      ],
+      [
+       "RF-009",
+       "Gestión de clientes",
+       "El sistema debe permitir crear, consultar, editar y eliminar clientes (nombre, teléfono con país, correo, canal), buscarlos, exportarlos a Excel y agruparlos en listas.",
+       "Agentes"
+      ],
+      [
+       "RF-010",
+       "Calendario",
+       "El sistema debe permitir crear, mover y eliminar eventos con tipo, responsable y cliente vinculado, en la zona horaria de Bogotá.",
+       "Agentes"
+      ],
+      [
+       "RF-011",
+       "Plantillas de WhatsApp",
+       "El sistema debe permitir crear plantillas con cabecera, cuerpo con variables, pie y botones, previsualizarlas, enviarlas a Meta para aprobación y leer el veredicto.",
+       "Agentes"
+      ],
+      [
+       "RF-012",
+       "Costo de las plantillas",
+       "El sistema debe estimar el costo de cada plantilla según la tarifa vigente de Meta y el mercado del destinatario, y corregirlo con el recibo de entrega.",
+       "Sistema"
+      ],
+      [
+       "RF-013",
+       "Catálogo de productos",
+       "El sistema debe permitir crear e importar productos con precio, categoría, marca y estado.",
+       "Agentes"
+      ],
+      [
+       "RF-014",
+       "Estadísticas",
+       "El sistema debe mostrar volumen de mensajes, tiempos de respuesta, rendimiento de agentes, perfil de clientes, ventas y etiquetas por periodo.",
+       "Usuario maestro"
+      ],
+      [
+       "RF-015",
+       "Gestión del equipo",
+       "El usuario maestro debe poder crear, editar y desactivar usuarios desde la aplicación, sin tocar la configuración ni volver a desplegar.",
+       "Usuario maestro"
+      ],
+      [
+       "RF-016",
+       "Salida a producción",
+       "El sistema debe ofrecer comandos que vacíen los datos de prueba conservando al equipo, en modo simulación por defecto.",
+       "Administrador"
+      ]
+     ],
+     "caption": "Requisitos funcionales de MVP-CRM."
+    }
+   ]
+  },
+  {
+   "heading": "Requisitos no funcionales",
+   "blocks": [
+    {
+     "kind": "table",
+     "headers": [
+      "ID",
+      "Nombre del requisito",
+      "Descripción"
+     ],
+     "rows": [
+      [
+       "RNF-001",
+       "Seguridad",
+       "Toda la aplicación exige sesión; los webhooks verifican la firma del proveedor antes de leer el cuerpo; las contraseñas de los agentes se guardan como hash; las cookies son seguras en producción y el simulador de mensajes no responde fuera de desarrollo."
+      ],
+      [
+       "RNF-002",
+       "Independencia del proveedor",
+       "Cambiar de proveedor de WhatsApp (simulador, Twilio, Meta) debe ser un cambio de una sola variable de entorno; ninguna vista, modelo o plantilla debe depender del proveedor activo."
+      ],
+      [
+       "RNF-003",
+       "Disponibilidad",
+       "La aplicación debe correr en infraestructura sin servidor (Vercel) con base de datos administrada (Neon) y almacenamiento de medios externo (Vercel Blob), de modo que no dependa de un servidor propio."
+      ],
+      [
+       "RNF-004",
+       "Usabilidad",
+       "La interfaz es una sola página con barra lateral de iconos, en español, con paneles que se actualizan sin recargar y una bandeja que se refresca sola cada pocos segundos."
+      ],
+      [
+       "RNF-005",
+       "Mantenibilidad",
+       "Añadir una sección nueva debe ser un cambio mínimo en el registro de navegación; cada regla de negocio debe estar cubierta por pruebas automatizadas y cada módulo debe documentar sus decisiones en el propio código."
+      ],
+      [
+       "RNF-006",
+       "Rendimiento",
+       "Las estadísticas se agregan en la base de datos y se cachean por periodo; la bandeja usa sondeo ligero por fragmentos htmx en lugar de recargar la página."
+      ],
+      [
+       "RNF-007",
+       "Configurabilidad",
+       "Todo lo que cambia entre entornos (base de datos, proveedor, credenciales, dominio, agentes) se define por variables de entorno documentadas en `.env.example`."
+      ],
+      [
+       "RNF-008",
+       "Interoperabilidad",
+       "La base de datos puede recibir escrituras de automatizaciones externas (por ejemplo n8n) siempre que respeten el contrato de columnas documentado, y la aplicación debe tolerar valores desconocidos sin caerse."
+      ],
+      [
+       "RNF-009",
+       "Trazabilidad",
+       "Cada mensaje enviado registra qué agente lo escribió y cada conversación conserva su historial aunque el agente se desactive."
+      ]
+     ],
+     "caption": "Requisitos no funcionales de MVP-CRM."
+    }
+   ]
+  },
+  {
+   "heading": "Modelo de datos",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "El modelo gira alrededor de una sola entidad: el cliente (`Client`). La persona con la que se chatea en el Inbox es la misma fila de la tabla Clientes del CRM, la misma que aparece en los eventos del calendario y en las listas. Cada conversación pertenece a un cliente y a un canal, y contiene los mensajes en ambas direcciones; las etiquetas se aplican a las conversaciones a través de una tabla intermedia que registra quién etiquetó y cuándo."
+    },
+    {
+     "kind": "diagram",
+     "layout": "er",
+     "caption": "Modelo de datos: entidades principales y sus relaciones. Las flechas van del lado N al lado 1.",
+     "nodes": [
+      {
+       "id": "client",
+       "title": "Client",
+       "col": 0,
+       "row": 1,
+       "fields": [
+        "first_name, last_name",
+        "phone (E.164), country",
+        "email, channel",
+        "welcomed_at"
+       ]
+      },
+      {
+       "id": "conv",
+       "title": "Conversation",
+       "col": 1,
+       "row": 1,
+       "fields": [
+        "contact → Client",
+        "channel, status",
+        "assigned_to → User",
+        "last_message_at",
+        "last_inbound_at, unread_count"
+       ]
+      },
+      {
+       "id": "msg",
+       "title": "Message",
+       "col": 2,
+       "row": 1,
+       "fields": [
+        "conversation → Conversation",
+        "direction, body, media_url",
+        "status, provider_message_id",
+        "sent_by → User",
+        "template, billed_amount"
+       ]
+      },
+      {
+       "id": "tag",
+       "title": "Tag",
+       "col": 2,
+       "row": 0,
+       "fields": [
+        "name, color",
+        "is_archived",
+        "created_by → User"
+       ]
+      },
+      {
+       "id": "ctag",
+       "title": "ConversationTag",
+       "col": 1,
+       "row": 0,
+       "fields": [
+        "conversation → Conversation",
+        "tag → Tag",
+        "tagged_by → User, tagged_at"
+       ]
+      },
+      {
+       "id": "event",
+       "title": "CalendarEvent",
+       "col": 0,
+       "row": 0,
+       "fields": [
+        "title, start, end, all_day",
+        "event_type",
+        "contact → Client",
+        "assigned_to, created_by → User"
+       ]
+      },
+      {
+       "id": "list",
+       "title": "ClientList",
+       "col": 0,
+       "row": 2,
+       "fields": [
+        "name",
+        "clients ↔ Client (M:N)",
+        "created_by"
+       ]
+      },
+      {
+       "id": "tpl",
+       "title": "MessageTemplate",
+       "col": 1,
+       "row": 2,
+       "fields": [
+        "name, category, language",
+        "header, body, footer, buttons",
+        "status, provider_template_id"
+       ]
+      },
+      {
+       "id": "product",
+       "title": "Product",
+       "col": 2,
+       "row": 2,
+       "fields": [
+        "name, price",
+        "category, brand",
+        "status"
+       ]
+      }
+     ],
+     "edges": [
+      {
+       "from": "conv",
+       "to": "client",
+       "label": "N:1"
+      },
+      {
+       "from": "msg",
+       "to": "conv",
+       "label": "N:1"
+      },
+      {
+       "from": "ctag",
+       "to": "conv",
+       "label": "N:1"
+      },
+      {
+       "from": "ctag",
+       "to": "tag",
+       "label": "N:1"
+      },
+      {
+       "from": "event",
+       "to": "client",
+       "label": "N:1"
+      },
+      {
+       "from": "list",
+       "to": "client",
+       "label": "M:N"
+      },
+      {
+       "from": "msg",
+       "to": "tpl",
+       "label": "N:1"
+      }
+     ]
+    },
+    {
+     "kind": "table",
+     "headers": [
+      "Entidad",
+      "App",
+      "Qué representa"
+     ],
+     "rows": [
+      [
+       "`Client`",
+       "core",
+       "Un cliente del comercio: nombres, teléfono en formato E.164 con país, correo y canal de origen. Es el contacto de las conversaciones, el vinculado a los eventos y el miembro de las listas."
+      ],
+      [
+       "`Conversation`",
+       "messaging",
+       "Un hilo con un cliente en un canal. Guarda estado (abierta, pendiente, resuelta), agente asignado y las marcas de tiempo que ordenan la bandeja y deciden la ventana de 24 horas."
+      ],
+      [
+       "`Message`",
+       "messaging",
+       "Un mensaje entrante o saliente: cuerpo, medio adjunto, estado de entrega, identificador del proveedor, quién lo envió, plantilla usada y costo facturado."
+      ],
+      [
+       "`Tag` y `ConversationTag`",
+       "messaging",
+       "Etiquetas con color y su aplicación a conversaciones, con quién etiquetó y cuándo."
+      ],
+      [
+       "`CalendarEvent`",
+       "core",
+       "Un evento del calendario con tipo, responsable y cliente vinculado."
+      ],
+      [
+       "`ClientList`",
+       "core",
+       "Un grupo de clientes (relación muchos a muchos)."
+      ],
+      [
+       "`MessageTemplate`",
+       "core",
+       "Una plantilla de WhatsApp con su cabecera, cuerpo con variables, pie, botones y el estado de aprobación devuelto por Meta."
+      ],
+      [
+       "`Product`",
+       "core",
+       "Un producto del catálogo con precio, categoría, marca y estado."
+      ],
+      [
+       "`QuickReply`, `MessagingSettings`, `StoredFile`",
+       "core",
+       "Respuestas rápidas del compositor, ajustes de mensajería (bienvenida, asignación automática, widget) y archivos servidos desde la base de datos. Son posteriores al snapshot que documenta la segunda parte."
+      ]
+     ],
+     "caption": "Entidades del modelo de datos y la app Django a la que pertenecen."
+    },
+    {
+     "kind": "note",
+     "text": "Las claves foráneas hacia el usuario (`assigned_to`, `sent_by`, `created_by`, `tagged_by`) admiten nulo y se ponen en nulo al borrar el usuario, de modo que desactivar o eliminar a un agente nunca borra historial. Borrar un cliente sí arrastra sus conversaciones y mensajes; los eventos del calendario sobreviven con el cliente en nulo."
+    }
+   ]
+  },
+  {
+   "heading": "Mapa conceptual",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "El mapa organiza los conceptos del sistema en tres niveles: la aplicación, sus áreas funcionales y las piezas concretas que cada área aporta."
+    },
+    {
+     "kind": "diagram",
+     "layout": "layers",
+     "caption": "Mapa conceptual de MVP-CRM.",
+     "rows": [
+      [
+       {
+        "text": "MVP-CRM: CRM omnicanal para comercios (Django + htmx + PostgreSQL)",
+        "role": "root",
+        "to": [
+         0,
+         1,
+         2,
+         3,
+         4
+        ]
+       }
+      ],
+      [
+       {
+        "text": "Inbox omnicanal",
+        "to": [
+         0
+        ]
+       },
+       {
+        "text": "Gestión de clientes (CRM)",
+        "to": [
+         1
+        ]
+       },
+       {
+        "text": "Mensajería y proveedores",
+        "to": [
+         2
+        ]
+       },
+       {
+        "text": "Catálogo y estadísticas",
+        "to": [
+         3
+        ]
+       },
+       {
+        "text": "Operación y despliegue",
+        "to": [
+         4
+        ]
+       }
+      ],
+      [
+       {
+        "text": "Conversaciones y filtros · hilo y compositor · ventana de 24 h · asignación, etiquetas y respuestas rápidas"
+       },
+       {
+        "text": "Clientes y listas · exportación a Excel · calendario con eventos por cliente · equipo y usuario maestro"
+       },
+       {
+        "text": "Webhook firmado e idempotente · proveedor fake, Twilio o Meta · plantillas, aprobación y costo por envío"
+       },
+       {
+        "text": "Mi comercio: productos e importación · estadísticas por periodo con ECharts"
+       },
+       {
+        "text": "Variables de entorno · Vercel, Neon y Vercel Blob · comandos go_live y reset · pruebas automatizadas"
+       }
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "heading": "Interfaz",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "Las siguientes capturas muestran la aplicación en funcionamiento con datos de ejemplo. La barra lateral izquierda es la navegación principal (Inbox, CRM, Embudos, Mi comercio, Campañas, Estadísticas, Integraciones y Configuración de mensajería); el área central cambia sin recargar la página."
+    },
+    {
+     "kind": "image",
+     "path": "capturas/login.png",
+     "caption": "Inicio de sesión. Toda la aplicación exige una sesión de agente."
+    },
+    {
+     "kind": "image",
+     "path": "capturas/bienvenida.png",
+     "caption": "Pantalla de bienvenida al entrar, con accesos directos a Inbox, CRM y Embudos."
+    },
+    {
+     "kind": "image",
+     "path": "capturas/inbox.png",
+     "caption": "Inbox: filtros por conversación y canal, lista de conversaciones con etiquetas y agente, hilo de chat con estados de entrega, compositor con respuestas rápidas y plantillas, y panel del cliente."
+    },
+    {
+     "kind": "image",
+     "path": "capturas/crm-clientes.png",
+     "caption": "CRM, Clientes: tabla con teléfono y bandera del país, correo, canal de origen, acceso directo a iniciar conversación y acciones de ver, editar y eliminar."
+    },
+    {
+     "kind": "image",
+     "path": "capturas/crm-calendario.png",
+     "caption": "CRM, Mi calendario: vista semanal con eventos vinculados a clientes, mini calendario y preferencias de visualización."
+    },
+    {
+     "kind": "image",
+     "path": "capturas/crm-usuarios.png",
+     "caption": "CRM, Equipo: usuarios del equipo administrados por el usuario maestro."
+    },
+    {
+     "kind": "image",
+     "path": "capturas/plantillas.png",
+     "caption": "Configuración de mensajería, Plantillas de WhatsApp: tabla por estado de aprobación, sincronización con WhatsApp y creación de plantillas."
+    },
+    {
+     "kind": "image",
+     "path": "capturas/mi-comercio.png",
+     "caption": "Mi comercio, Productos: catálogo con pestañas por estado, importación y creación."
+    },
+    {
+     "kind": "image",
+     "path": "capturas/estadisticas.png",
+     "caption": "Estadísticas de mensajería: tarjetas de volumen, tiempos de respuesta, rendimiento de agentes y perfil de clientes."
+    },
+    {
+     "kind": "image",
+     "path": "capturas/embudos.png",
+     "caption": "Embudos: panel de embudos de venta con su navegación secundaria."
+    }
+   ]
+  },
+  {
+   "heading": "Bibliografía",
+   "blocks": [
+    {
+     "kind": "bullets",
+     "items": [
+      "Django Software Foundation (2026) *Django documentation, release 6.1*. Disponible en: https://docs.djangoproject.com/en/6.1/ (consultado en septiembre de 2026).",
+      "Big Sky Software (2026) *htmx documentation*. Disponible en: https://htmx.org/docs/ (consultado en septiembre de 2026).",
+      "Python Software Foundation (2026) *Python 3.12 documentation*. Disponible en: https://docs.python.org/3.12/ (consultado en septiembre de 2026).",
+      "Meta Platforms (2026) *WhatsApp Business Platform: Cloud API*. Disponible en: https://developers.facebook.com/docs/whatsapp/cloud-api/ (consultado en septiembre de 2026).",
+      "Meta Platforms (2026) *WhatsApp Business Platform: pricing*. Disponible en: https://developers.facebook.com/docs/whatsapp/pricing/ (consultado en septiembre de 2026).",
+      "Twilio (2026) *WhatsApp Business API with Twilio*. Disponible en: https://www.twilio.com/docs/whatsapp (consultado en septiembre de 2026).",
+      "Vercel (2026) *Vercel documentation: Python runtime and Vercel Blob*. Disponible en: https://vercel.com/docs (consultado en septiembre de 2026).",
+      "Neon (2026) *Neon documentation: serverless Postgres*. Disponible en: https://neon.com/docs (consultado en septiembre de 2026).",
+      "PostgreSQL Global Development Group (2026) *PostgreSQL documentation*. Disponible en: https://www.postgresql.org/docs/ (consultado en septiembre de 2026).",
+      "Shaw, A. (2026) *FullCalendar documentation*. Disponible en: https://fullcalendar.io/docs (consultado en septiembre de 2026).",
+      "Apache Software Foundation (2026) *Apache ECharts documentation*. Disponible en: https://echarts.apache.org/en/index.html (consultado en septiembre de 2026)."
+     ]
+    }
+   ]
+  }
+ ],
+ "part2_title": "Documentación técnica del código",
+ "part2_intro": "Los capítulos que siguen documentan el código de MVP-CRM tal como está en la rama `main`, commit `6089391`. Cada capítulo cita los archivos que describe; el Anexo A lista los commits posteriores que no cubre y el Anexo B el registro de verificación."
+}
