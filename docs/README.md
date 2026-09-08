@@ -1,6 +1,15 @@
 # Documentación técnica
 
-`MVP-CRM-documentacion-tecnica.pdf` — en español, dos partes, autor Samuel Pérez Serna.
+Dos documentos, ambos en español y con Samuel Pérez Serna como autor:
+
+- `MVP-CRM-resumen.pdf` — **la versión corta** (unas 8 páginas, lenguaje
+  sencillo): qué es, qué problema resuelve, qué hace, cómo funciona por
+  dentro, cómo guarda los datos, requisitos, pantallas y cómo se ejecuta.
+  Se regenera con `cd docs/generar && uv run --with reportlab python
+  resumen.py ../MVP-CRM-resumen.pdf`; su contenido está en
+  `generar/resumen.json`.
+- `MVP-CRM-documentacion-tecnica.pdf` — **la versión completa** (150
+  páginas), descrita a continuación.
 
 **Parte I, documento del proyecto**: identificación del problema, pregunta de
 investigación, alcance, objetivo general y específicos, árbol de problemas,
