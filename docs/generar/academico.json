@@ -24,7 +24,7 @@
    "blocks": [
     {
      "kind": "paragraph",
-     "text": "A partir de lo anterior se plantea la siguiente pregunta: ¿es posible construir, con Django, htmx y una base de datos PostgreSQL desplegada en infraestructura sin servidor, un CRM omnicanal que centralice en una sola bandeja las conversaciones de un comercio, las vincule con sus clientes y sus ventas, y se conecte a los proveedores reales de WhatsApp (Meta y Twilio) sin que el resto de la aplicación dependa de cuál de ellos se use?"
+     "text": "A partir de lo anterior se plantea la siguiente pregunta: ¿es posible construir, con Django, htmx y una base de datos PostgreSQL desplegada en infraestructura sin servidor, un CRM omnicanal que centralice en una sola bandeja las conversaciones de un comercio, las vincule con sus clientes y sus ventas, y se conecte al proveedor real de WhatsApp (Meta) sin que el resto de la aplicación dependa de cuál de ellos se use?"
     },
     {
      "kind": "paragraph",
@@ -49,7 +49,7 @@
     },
     {
      "kind": "paragraph",
-     "text": "Tecnológicamente, el sistema se desarrolló con Python 3.12 y Django 6.1 en el servidor, htmx para los paneles dinámicos sin build de frontend, CSS y SVG propios, SQLite en desarrollo y PostgreSQL (Neon) en producción, desplegado en Vercel con los archivos de medios en Vercel Blob. La integración con WhatsApp vive detrás de una abstracción de proveedor con tres implementaciones: `fake` para desarrollo local, Twilio y la Cloud API de Meta."
+     "text": "Tecnológicamente, el sistema se desarrolló con Python 3.12 y Django 6.1 en el servidor, htmx para los paneles dinámicos sin build de frontend, CSS y SVG propios, SQLite en desarrollo y PostgreSQL (Neon) en producción, desplegado en Vercel con los archivos de medios en Vercel Blob. La integración con WhatsApp vive detrás de una abstracción de proveedor con dos implementaciones: `fake` para desarrollo local y la Cloud API de Meta."
     }
    ]
   },
@@ -58,7 +58,7 @@
    "blocks": [
     {
      "kind": "paragraph",
-     "text": "Desarrollar un CRM omnicanal para comercios que centralice en una sola bandeja de entrada las conversaciones de sus canales de mensajería, las vincule con la gestión de clientes, el calendario, las plantillas de WhatsApp y las estadísticas del negocio, mediante Django, htmx y PostgreSQL, y que pueda operar sobre proveedores reales de WhatsApp sin acoplar la aplicación a ninguno de ellos."
+     "text": "Desarrollar un CRM omnicanal para comercios que centralice en una sola bandeja de entrada las conversaciones de sus canales de mensajería, las vincule con la gestión de clientes, el calendario, las plantillas de WhatsApp y las estadísticas del negocio, mediante Django, htmx y PostgreSQL, y que pueda operar sobre el proveedor real de WhatsApp sin acoplar la aplicación a él."
     }
    ]
   },
@@ -72,7 +72,7 @@
       "Diseñar un modelo de datos en el que el cliente sea una sola entidad compartida por la bandeja de entrada, el calendario y las listas del CRM.",
       "Construir el shell de una sola página y la navegación declarativa que permite añadir secciones nuevas con un cambio mínimo.",
       "Implementar la bandeja de entrada unificada con sus filtros, el hilo de chat, la regla de la ventana de 24 horas y las respuestas rápidas.",
-      "Definir una abstracción de proveedor de mensajería con un webhook firmado e idempotente, y sus implementaciones para desarrollo local, Twilio y Meta.",
+      "Definir una abstracción de proveedor de mensajería con un webhook firmado e idempotente, y sus implementaciones para desarrollo local y Meta.",
       "Desarrollar la gestión de clientes, el calendario, las plantillas de WhatsApp, el catálogo de productos y las estadísticas.",
       "Cubrir el sistema con una suite de pruebas automatizadas que proteja las reglas de negocio y los contratos con los proveedores.",
       "Desplegar la aplicación en producción sobre Vercel y Neon, con las herramientas de operación necesarias para salir a producción con datos limpios."
@@ -290,7 +290,7 @@
       [
        "RNF-002",
        "Independencia del proveedor",
-       "Cambiar de proveedor de WhatsApp (simulador, Twilio, Meta) debe ser un cambio de una sola variable de entorno; ninguna vista, modelo o plantilla debe depender del proveedor activo."
+       "Cambiar de proveedor de WhatsApp (simulador o Meta) debe ser un cambio de una sola variable de entorno; ninguna vista, modelo o plantilla debe depender del proveedor activo."
       ],
       [
        "RNF-003",
@@ -615,7 +615,7 @@
         "text": "Clientes y listas · exportación a Excel · calendario con eventos por cliente · equipo y usuario maestro"
        },
        {
-        "text": "Webhook firmado e idempotente · proveedor fake, Twilio o Meta · plantillas, aprobación y costo por envío"
+        "text": "Webhook firmado e idempotente · proveedor fake o Meta · plantillas, aprobación y costo por envío"
        },
        {
         "text": "Mi comercio: productos e importación · estadísticas por periodo con ECharts"
@@ -698,7 +698,6 @@
       "Python Software Foundation (2026) *Python 3.12 documentation*. Disponible en: https://docs.python.org/3.12/ (consultado en septiembre de 2026).",
       "Meta Platforms (2026) *WhatsApp Business Platform: Cloud API*. Disponible en: https://developers.facebook.com/docs/whatsapp/cloud-api/ (consultado en septiembre de 2026).",
       "Meta Platforms (2026) *WhatsApp Business Platform: pricing*. Disponible en: https://developers.facebook.com/docs/whatsapp/pricing/ (consultado en septiembre de 2026).",
-      "Twilio (2026) *WhatsApp Business API with Twilio*. Disponible en: https://www.twilio.com/docs/whatsapp (consultado en septiembre de 2026).",
       "Vercel (2026) *Vercel documentation: Python runtime and Vercel Blob*. Disponible en: https://vercel.com/docs (consultado en septiembre de 2026).",
       "Neon (2026) *Neon documentation: serverless Postgres*. Disponible en: https://neon.com/docs (consultado en septiembre de 2026).",
       "PostgreSQL Global Development Group (2026) *PostgreSQL documentation*. Disponible en: https://www.postgresql.org/docs/ (consultado en septiembre de 2026).",
