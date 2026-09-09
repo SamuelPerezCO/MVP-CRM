@@ -1,7 +1,7 @@
 """URL map for the messaging app: just the provider webhook endpoint.
 
 Mounted under ``webhooks/messaging/`` in config.urls, giving
-``/webhooks/messaging/fake/``, ``/webhooks/messaging/twilio/``, etc.
+``/webhooks/messaging/fake/``, ``/webhooks/messaging/meta/``, etc.
 """
 
 from django.urls import path

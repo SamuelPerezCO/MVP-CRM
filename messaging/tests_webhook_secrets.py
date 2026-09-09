@@ -1,8 +1,8 @@
 """Webhook secrets fail closed.
 
 ``registry.webhook_enabled`` shuts the *simulator's* door on a real
-deployment. The real providers' doors stay open by design -- a Twilio status
-callback must still parse as Twilio halfway through a migration to Meta -- so
+deployment. The real providers' doors stay open by design -- a status callback
+must still parse with the provider that sent it halfway through a migration -- so
 for those the shared secret is the only thing in front of the database.
 
 Which makes a secret with a default a secret an attacker already has, and

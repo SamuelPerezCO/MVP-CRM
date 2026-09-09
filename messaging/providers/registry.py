@@ -1,6 +1,6 @@
 """Which provider is live, decided by settings alone.
 
-Swapping fake -> Twilio -> Meta is a one-line change to
+Swapping fake -> Meta is a one-line change to
 ``MESSAGING_PROVIDER`` (env var / settings); no code imports a concrete
 provider class except this module and the tests.
 """
@@ -12,11 +12,9 @@ from django.conf import settings
 from .base import MessagingProvider
 from .fake import FakeProvider
 from .meta import MetaProvider
-from .twilio import TwilioProvider
 
 _PROVIDERS: dict[str, type[MessagingProvider]] = {
     FakeProvider.name: FakeProvider,
-    TwilioProvider.name: TwilioProvider,
     MetaProvider.name: MetaProvider,
 }
 
@@ -25,8 +23,8 @@ def get_provider(name: str | None = None) -> MessagingProvider:
     """The active provider (``settings.MESSAGING_PROVIDER``), or a named one.
 
     The explicit ``name`` form exists for the webhook URL, which addresses a
-    provider by slug: a Twilio status callback must be parsed as Twilio even
-    if the app is mid-migration to Meta.
+    provider by slug: a status callback must be parsed by the provider that
+    sent it even if the app is mid-migration to another one.
     """
     key = name or settings.MESSAGING_PROVIDER
     try:
@@ -50,10 +48,10 @@ _DEV_ONLY = frozenset({FakeProvider.name})
 def is_enabled_provider(name: str) -> bool:
     """Whether ``name`` may answer a webhook in *this* environment.
 
-    Real providers stay routable even when another one is active: a Twilio
-    status callback for a message sent last week must still parse as Twilio
-    halfway through a migration to Meta, which is why the webhook URL names
-    the provider instead of reading the setting.
+    Real providers stay routable even when another one is active: a status
+    callback for a message sent last week must still parse with the provider
+    that sent it halfway through a migration, which is why the webhook URL
+    names the provider instead of reading the setting.
 
     The fake provider is the exception. It invents whatever the request body
     says, so on a deployment running a real provider its endpoint is simply

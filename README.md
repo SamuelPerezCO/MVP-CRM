@@ -146,8 +146,7 @@ un entorno anterior a esto sigue funcionando sin tocar nada.
 Toda la integración con WhatsApp vive en [messaging/](messaging/) detrás de una abstracción de proveedor ([messaging/providers/base.py](messaging/providers/base.py)). El proveedor activo lo decide **una sola variable**:
 
 ```
-MESSAGING_PROVIDER=twilio  # cuando haya credenciales de Twilio
-MESSAGING_PROVIDER=meta    # cuando Meta desbloquee la cuenta
+MESSAGING_PROVIDER=meta    # producción: la Cloud API de Meta
 MESSAGING_PROVIDER=fake    # solo desarrollo local: simula envíos y recibos
 ```
 
@@ -157,13 +156,13 @@ corría feliz sobre el simulador -- palomitas moviéndose en pantalla, nada
 llegando a un teléfono. Producción es clientes reales; no debe poder caer en
 el simulador por accidente.
 
-El webhook del proveedor `fake` (`/webhooks/messaging/fake/`) crea contactos y conversaciones y su única llave es `MESSAGING_FAKE_SECRET`, cuyo valor por defecto está publicado en este repositorio. Por eso solo responde donde los datos falsos tienen sentido: con `DEBUG=True` o bajo `manage.py test`. En un despliegue real devuelve 404, así que nadie puede meter clientes inventados en el Inbox ([messaging/providers/registry.py](messaging/providers/registry.py)). Los webhooks de Meta y Twilio no cambian.
+El webhook del proveedor `fake` (`/webhooks/messaging/fake/`) crea contactos y conversaciones y su única llave es `MESSAGING_FAKE_SECRET`, cuyo valor por defecto está publicado en este repositorio. Por eso solo responde donde los datos falsos tienen sentido: con `DEBUG=True` o bajo `manage.py test`. En un despliegue real devuelve 404, así que nadie puede meter clientes inventados en el Inbox ([messaging/providers/registry.py](messaging/providers/registry.py)). El webhook de Meta no cambia.
 
-Cuando lleguen credenciales reales de Twilio o Meta:
+Para conectar la cuenta real de Meta:
 
 1. Copia [.env.example](.env.example) a `.env` (está en `.gitignore`) y llena las credenciales del proveedor; expórtalas al entorno antes de `runserver` — los settings leen `os.environ` directamente.
-2. Implementa los métodos de [messaging/providers/twilio.py](messaging/providers/twilio.py) o [messaging/providers/meta.py](messaging/providers/meta.py) — el docstring de cada módulo describe exactamente qué endpoint, firma y formato de webhook usa cada uno. Nada fuera de ese archivo cambia: ni vistas, ni modelos, ni templates.
-3. Cambia `MESSAGING_PROVIDER` y registra la URL del webhook en la consola del proveedor: `https://tu-dominio/webhooks/messaging/twilio/` o `.../meta/` (Meta verifica primero con un GET; el endpoint ya responde el `hub.challenge`).
+2. El proveedor vive en [messaging/providers/meta.py](messaging/providers/meta.py) — el docstring del módulo describe exactamente qué endpoint, firma y formato de webhook usa. Para añadir otro proveedor basta un archivo hermano que implemente [messaging/providers/base.py](messaging/providers/base.py); nada fuera de ese archivo cambia: ni vistas, ni modelos, ni templates.
+3. Cambia `MESSAGING_PROVIDER=meta` y registra la URL del webhook en la consola de Meta: `https://tu-dominio/webhooks/messaging/meta/` (Meta verifica primero con un GET; el endpoint ya responde el `hub.challenge`).
 
 El webhook verifica la firma antes de tocar el payload (401 si es inválida), es idempotente por `provider_message_id` (los reintentos del proveedor no duplican mensajes) y siempre responde 200 tras autenticar, registrando errores en el log en lugar de provocar tormentas de reintentos. El envío de texto libre está bloqueado fuera de la ventana de 24 horas ([messaging/services.py](messaging/services.py)) — fuera de ella solo cabe `send_template`, igual que en la plataforma real.
 
@@ -287,7 +286,7 @@ En el dashboard del proyecto (Settings → Environment Variables) define, como m
 
 - `SECRET_KEY` — cualquier string largo y aleatorio (sin esto usa un valor de desarrollo inseguro).
 - `DEBUG=False`
-- `MESSAGING_PROVIDER` — **obligatorio**, y en producción nunca `fake`: `twilio` o `meta`, con las credenciales del proveedor elegido. Sin esta variable el despliegue falla al arrancar, a propósito.
+- `MESSAGING_PROVIDER` — **obligatorio**, y en producción nunca `fake`: `meta`, con las credenciales de la Cloud API. Sin esta variable el despliegue falla al arrancar, a propósito.
 - `DATABASE_URL` — Postgres (por ejemplo Vercel Postgres o Neon, desde la pestaña Storage). SQLite no sirve en producción porque las funciones serverless no tienen disco persistente.
 - `ALLOWED_HOSTS` — opcional; el dominio del deploy y el alias de producción se confían automáticamente vía `VERCEL_URL` y `VERCEL_PROJECT_PRODUCTION_URL`, agrega aquí solo dominios propios (custom domains).
 - `PUBLIC_BASE_URL` — el **único** origen público, `https://` + el dominio de producción (hoy `https://mvp-crm-lake.vercel.app`). Es lo que va en el link de imagen que se le entrega a WhatsApp en una respuesta rápida con foto: Meta lo descarga desde sus servidores, sin sesión, y todos los alias del proyecto salvo el dominio de producción están detrás del SSO de Vercel — un link a cualquiera de ellos hace que el envío falle unos segundos después de aceptado. Por defecto sale de `VERCEL_PROJECT_PRODUCTION_URL`; `manage.py check` avisa si queda vacío (`core.W002`) o apunta a un alias protegido (`core.W003`), y cada build imprime el valor resuelto.
@@ -296,11 +295,11 @@ Las migraciones corren solas en cada deploy de producción ([vercel_build.sh](ve
 
 Los archivos estáticos (`static/`) se recolectan y sirven automáticamente desde el CDN de Vercel — no requiere WhiteNoise ni configuración adicional. Los uploads de usuario (fotos de respuestas rápidas, cabeceras de plantillas, imágenes que llegan por WhatsApp) no pueden ir al filesystem de las funciones, que es de solo lectura: con un Blob store conectado (Storage → Blob; inyecta `BLOB_READ_WRITE_TOKEN`) van a Vercel Blob, y sin él van a la propia base de datos y se sirven desde `/archivos/<token>/…` ([core/storage.py](core/storage.py)). Conectar Blob después no rompe lo ya guardado.
 
-En Vercel los proveedores que funcionan tal cual son `twilio` y `meta`; `fake` no es una opción de producción — simula los envíos y no manda nada a ningún teléfono.
+En Vercel el proveedor que funciona tal cual es `meta`; `fake` no es una opción de producción — simula los envíos y no manda nada a ningún teléfono.
 
 ### Seguridad del webhook
 
-La URL del webhook nombra al proveedor (`/webhooks/messaging/<proveedor>/`) para que, durante una migración, un callback de Twilio se siga interpretando como Twilio aunque el proveedor activo ya sea Meta. Dos consecuencias que conviene tener presentes:
+La URL del webhook nombra al proveedor (`/webhooks/messaging/<proveedor>/`) para que, durante una migración entre proveedores, cada callback se siga interpretando con el proveedor que lo envió aunque el activo ya sea otro. Dos consecuencias que conviene tener presentes:
 
 - El endpoint del proveedor `fake` **solo responde donde `MESSAGING_PROVIDER=fake`**. En un despliegue real devuelve 404: sin ese candado sería una forma anónima de escribir clientes inventados en la base de datos de producción, indistinguibles después de los reales.
 - Cada proveedor real *sí* sigue siendo alcanzable siempre, así que su secreto es lo único que lo protege. Ninguno tiene valor por defecto: `META_APP_SECRET` y `MESSAGING_FAKE_SECRET` rechazan todo mientras estén vacíos. Un secreto escrito en el repositorio no protege nada.
@@ -319,7 +318,7 @@ Cada sección tiene su propio archivo de tests en [core/](core/) (`tests.py`, `t
 |---|---|
 | [config/](config/) | Settings y URLs del proyecto |
 | [core/](core/) | Vistas, modelos, navegación y datos de cada sección |
-| [messaging/](messaging/) | Conversaciones, mensajes, webhook y proveedores (fake/twilio/meta) |
+| [messaging/](messaging/) | Conversaciones, mensajes, webhook y proveedores (fake/meta) |
 | [templates/sections/](templates/sections/) | Pantalla completa de cada sección |
 | [templates/partials/](templates/partials/) | Fragmentos que htmx intercambia |
 | [static/](static/) | CSS por sección y `shell.js` |
