@@ -2,12 +2,12 @@
 
 Dos documentos, ambos en español y con Samuel Pérez Serna como autor:
 
-- `MVP-CRM-resumen.pdf` — **la versión corta** (unas 8 páginas, lenguaje
+- `MVP-CRM-documentacion.pdf` — **la versión breve** (unas 8 páginas, lenguaje
   sencillo): qué es, qué problema resuelve, qué hace, cómo funciona por
   dentro, cómo guarda los datos, requisitos, pantallas y cómo se ejecuta.
   Se regenera con `cd docs/generar && uv run --with reportlab python
-  resumen.py ../MVP-CRM-resumen.pdf`; su contenido está en
-  `generar/resumen.json`.
+  documentacion.py ../MVP-CRM-documentacion.pdf`; su contenido está en
+  `generar/documentacion.json`.
 - `MVP-CRM-documentacion-tecnica.pdf` — **la versión completa** (150
   páginas), descrita a continuación.
 

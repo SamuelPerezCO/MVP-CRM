@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-"""Render the short, plain-language summary of MVP-CRM to PDF.
+"""Render the short, plain-language documentation of MVP-CRM to PDF.
 
-Reads resumen.json (one file: cover, sections, diagrams and which screenshots
+Reads documentacion.json (one file: cover, sections, diagrams and which screenshots
 to show) and reuses the styles and block renderers from render.py, so both
 documents look alike. No table of contents, no numbered chapters: the point
 is to fit in about ten pages.
 
-    uv run --with reportlab python resumen.py ../MVP-CRM-resumen.pdf
+    uv run --with reportlab python documentacion.py ../MVP-CRM-documentacion.pdf
 """
 import json
 import re
@@ -26,7 +26,7 @@ BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
 
 
 def fmt_simple(text):
-    """fmt() plus **bold** and *italic*, which the summary uses freely."""
+    """fmt() plus **bold** and *italic*, which this document uses freely."""
     text = fmt(text, italics=False)
     text = BOLD_RE.sub(r"<b>\1</b>", text)
     return render.ITALIC_RE.sub(r"<i>\1</i>", text)
@@ -59,7 +59,7 @@ def blocks(section_blocks):
             parts = [Spacer(1, 4), d, Paragraph(fmt(b.get("caption", "")), S["caption"])]
             out.append(KeepTogether(parts))
         elif b.get("kind") in ("paragraph", "bullets"):
-            # Route through fmt_simple so **bold** works in the summary.
+            # Route through fmt_simple so **bold** works here.
             if b["kind"] == "paragraph":
                 out.append(Paragraph(fmt_simple(b.get("text", "")), S["body"]))
             else:
@@ -103,8 +103,8 @@ def build(front, out_path):
 
 
 if __name__ == "__main__":
-    out = sys.argv[1] if len(sys.argv) > 1 else "MVP-CRM-resumen.pdf"
-    with open("resumen.json", encoding="utf-8") as f:
+    out = sys.argv[1] if len(sys.argv) > 1 else "MVP-CRM-documentacion.pdf"
+    with open("documentacion.json", encoding="utf-8") as f:
         front = json.load(f)
     build(front, out)
     print("wrote", out)
