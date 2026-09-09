@@ -104,7 +104,7 @@
       "Diseñar la base de datos de modo que el cliente sea uno solo: el mismo en el chat, en el calendario y en las listas.",
       "Construir la pantalla principal y una forma sencilla de añadir secciones nuevas.",
       "Hacer la bandeja de entrada: filtros, hilo de chat, la regla de las 24 horas y las respuestas rápidas.",
-      "Conectar WhatsApp a través de una pieza intercambiable, para poder usar un simulador en desarrollo, Twilio o Meta en producción.",
+      "Conectar WhatsApp a través de una pieza intercambiable, para poder usar un simulador en desarrollo y Meta en producción.",
       "Añadir la gestión de clientes, el calendario, las plantillas, el catálogo y las estadísticas.",
       "Escribir pruebas automáticas que protejan las reglas importantes.",
       "Publicarlo en internet sobre Vercel y Neon, con comandos para arrancar en limpio."
@@ -172,7 +172,7 @@
      "caption": "El camino de un mensaje, desde que el cliente escribe hasta que el vendedor responde.",
      "steps": [
       "El cliente escribe por WhatsApp",
-      "Meta o Twilio avisan a la app (webhook)",
+      "Meta avisa a la app (webhook)",
       "La app verifica la firma y guarda el mensaje",
       "El Inbox lo muestra al agente en segundos",
       "El agente responde y la app lo envía por el mismo proveedor"
@@ -185,7 +185,7 @@
     {
      "kind": "bullets",
      "items": [
-      "**Proveedores de mensajería.** Toda la conexión con WhatsApp está encerrada en una pieza que se elige con una sola variable de configuración: `fake` (un simulador para desarrollar sin credenciales), `twilio` o `meta`. Cambiar de proveedor no toca pantallas, modelos ni reglas.",
+      "**Proveedores de mensajería.** Toda la conexión con WhatsApp está encerrada en una pieza que se elige con una sola variable de configuración: `fake` (un simulador para desarrollar sin credenciales) o `meta`. Cambiar de proveedor no toca pantallas, modelos ni reglas.",
       "**Webhook seguro.** Cuando el proveedor avisa de un mensaje nuevo, la app comprueba primero que el aviso venga firmado por él. Si el mismo aviso llega dos veces, el mensaje se guarda una sola vez.",
       "**Un solo cliente.** La persona que escribe en el chat es la misma fila de la tabla Clientes, la misma del calendario y la misma de las listas. No hay copias.",
       "**Agentes.** Las cuentas del equipo se definen en la configuración del servidor (con contraseña cifrada) o las crea el usuario maestro desde la app. Cada mensaje enviado guarda quién lo escribió.",
@@ -405,7 +405,7 @@
       [
        "RNF-02",
        "Proveedor intercambiable",
-       "Cambiar de WhatsApp simulado a Twilio o Meta es cambiar una variable."
+       "Cambiar de WhatsApp simulado a Meta es cambiar una variable."
       ],
       [
        "RNF-03",
@@ -465,7 +465,7 @@
     },
     {
      "kind": "paragraph",
-     "text": "El `.env` de ejemplo ya trae el proveedor simulado, así que se puede probar todo sin credenciales de WhatsApp. Para producción se define `MESSAGING_PROVIDER=meta` o `twilio`, la base de datos de Neon y las credenciales del proveedor, y Vercel hace el resto. Antes de conectar el número real, el comando `go_live` deja la aplicación vacía y conserva solo al equipo."
+     "text": "El `.env` de ejemplo ya trae el proveedor simulado, así que se puede probar todo sin credenciales de WhatsApp. Para producción se define `MESSAGING_PROVIDER=meta`, la base de datos de Neon y las credenciales del proveedor, y Vercel hace el resto. Antes de conectar el número real, el comando `go_live` deja la aplicación vacía y conserva solo al equipo."
     },
     {
      "kind": "paragraph",
@@ -482,8 +482,7 @@
       "Django Software Foundation (2026) *Django documentation, release 6.1*. https://docs.djangoproject.com/en/6.1/",
       "Big Sky Software (2026) *htmx documentation*. https://htmx.org/docs/",
       "Meta Platforms (2026) *WhatsApp Business Platform: Cloud API y pricing*. https://developers.facebook.com/docs/whatsapp/",
-      "Twilio (2026) *WhatsApp Business API with Twilio*. https://www.twilio.com/docs/whatsapp",
-      "Vercel (2026) *Vercel documentation*. https://vercel.com/docs · Neon (2026) *Neon documentation*. https://neon.com/docs"
+       "Vercel (2026) *Vercel documentation*. https://vercel.com/docs · Neon (2026) *Neon documentation*. https://neon.com/docs"
      ]
     }
    ]
