@@ -172,7 +172,7 @@
      "caption": "El camino de un mensaje, desde que el cliente escribe hasta que el vendedor responde.",
      "steps": [
       "El cliente escribe por WhatsApp",
-      "Meta o Twilio avisan a la app (webhook)",
+      "Meta avisa a la app (webhook)",
       "La app verifica la firma y guarda el mensaje",
       "El Inbox lo muestra al agente en segundos",
       "El agente responde y la app lo envía por el mismo proveedor"
