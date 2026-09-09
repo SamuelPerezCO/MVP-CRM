@@ -1,4 +1,4 @@
-"""Tests for agents: the env-configured list, the login it backs, and the
+"""Tests for agents: the env seed, the database logins it feeds, and the
 Inbox's per-conversation assignment.
 
 Credentials are pinned with ``override_settings`` rather than read from
@@ -55,7 +55,7 @@ class ConfiguredAgentsTests(TestCase):
             self.assertEqual(agents.configured_agents()[0].secret, "una clave larga")
 
     def test_authenticate_matches_the_right_agent(self):
-        self.assertEqual(agents.authenticate("Samuel", "1234").display_name, "Samuel")
+        self.assertEqual(agents.authenticate("Samuel", "1234").first_name, "Samuel")
         self.assertEqual(agents.authenticate("Admin", "admin-pw").username, "Admin")
 
     def test_authenticate_rejects_wrong_password_and_unknown_user(self):
@@ -96,30 +96,74 @@ class LegacyCredentialFallbackTests(TestCase):
 
 
 @override_settings(APP_AGENTS=TWO_AGENTS, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD="")
-class AgentUserMirrorTests(TestCase):
-    def test_mirror_rows_are_created_on_demand_in_env_order(self):
+class SeedImportTests(TestCase):
+    """APP_AGENTS is a one-time seed: rows are created from it, and from then
+    on the database owns them."""
+
+    def test_seed_rows_are_created_on_first_listing(self):
         users = agents.agent_users()
         self.assertEqual([u.username for u in users], ["Admin", "Samuel"])
         self.assertEqual(users[1].first_name, "Samuel")
+        for user in users:
+            with self.subTest(user.username):
+                self.assertTrue(user.has_usable_password())
+                self.assertTrue(agents.is_master(user))
 
-    def test_mirrors_are_reused_not_duplicated(self):
+    def test_import_is_idempotent(self):
         first = agents.agent_users()
         second = agents.agent_users()
         self.assertEqual([u.pk for u in first], [u.pk for u in second])
         self.assertEqual(get_user_model().objects.count(), 2)
 
-    def test_mirror_cannot_authenticate_through_the_orm(self):
-        """The env list is the only way in -- the User row is just an assignee."""
+    def test_an_imported_row_holds_the_real_password(self):
+        """The row IS the login now -- Django's own hasher verifies it."""
         user = agents.agent_users()[1]
-        self.assertFalse(user.has_usable_password())
-        self.assertFalse(user.check_password("1234"))
+        self.assertTrue(user.check_password("1234"))
+        self.assertFalse(user.check_password("admin-pw"))
 
-    def test_an_agent_dropped_from_the_env_stops_being_listed(self):
+    def test_a_password_changed_in_the_database_wins_over_the_env(self):
+        samuel = agents.agent_users()[1]
+        samuel.set_password("clave-nueva-db")
+        samuel.save()
+        self.assertIsNone(agents.authenticate("Samuel", "1234"))
+        self.assertIsNotNone(agents.authenticate("Samuel", "clave-nueva-db"))
+        # A later listing does not re-import over it.
+        agents.agent_users()
+        self.assertIsNotNone(agents.authenticate("Samuel", "clave-nueva-db"))
+
+    def test_an_agent_dropped_from_the_env_keeps_their_login(self):
         agents.agent_users()
         with override_settings(APP_AGENTS="Admin:admin-pw:Admin"):
-            self.assertEqual([u.username for u in agents.agent_users()], ["Admin"])
-        # ...but the row survives, so conversations assigned to them keep a name.
-        self.assertTrue(get_user_model().objects.filter(username="Samuel").exists())
+            self.assertEqual(
+                [u.username for u in agents.agent_users()], ["Admin", "Samuel"]
+            )
+            self.assertIsNotNone(agents.authenticate("Samuel", "1234"))
+
+    def test_a_deactivated_seed_agent_stays_out_whatever_the_env_says(self):
+        samuel = agents.agent_users()[1]
+        agents.set_user_active(samuel, False)
+        self.assertIsNone(agents.authenticate("Samuel", "1234"))
+        self.assertEqual([u.username for u in agents.agent_users()], ["Admin"])
+
+    def test_a_mirror_row_is_converted_in_place(self):
+        """A row from before the database owned logins: same id afterwards,
+        so everything attributed to it stays attributed."""
+        mirror = get_user_model().objects.create(username="Samuel", first_name="Samu")
+        mirror.set_unusable_password()
+        mirror.save()
+        agents.agent_users()
+        samuel = get_user_model().objects.get(username="Samuel")
+        self.assertEqual(samuel.pk, mirror.pk)
+        self.assertTrue(samuel.check_password("1234"))
+        self.assertEqual(samuel.first_name, "Samu")      # a name it had is kept
+        self.assertTrue(agents.is_master(samuel))
+        self.assertEqual(get_user_model().objects.count(), 2)
+
+    def test_the_seed_can_be_removed_once_imported(self):
+        agents.agent_users()
+        with override_settings(APP_AGENTS=""):
+            self.assertIsNotNone(agents.authenticate("Admin", "admin-pw"))
+            self.assertEqual(len(agents.agent_users()), 2)
 
     def test_no_agents_configured_yields_no_options(self):
         with override_settings(APP_AGENTS=""):
@@ -247,16 +291,14 @@ class ConversationAssignmentTests(TestCase):
             f'<option value="{self.samuel.pk}" selected>Samuel</option>', html
         )
 
-    def test_an_assignee_dropped_from_the_env_still_shows_as_assigned(self):
+    def test_a_deactivated_assignee_still_shows_as_assigned(self):
         """A <select> with no matching option silently shows its first entry --
         which would claim an assigned chat is "Sin asignar"."""
         self.conversation.assigned_to = self.samuel
         self.conversation.save(update_fields=["assigned_to"])
 
-        with override_settings(APP_AGENTS="Admin:admin-pw:Admin"):
-            response = self.client.get(
-                reverse("inbox_chat", args=[self.conversation.pk])
-            )
+        agents.set_user_active(self.samuel, False)
+        response = self.client.get(reverse("inbox_chat", args=[self.conversation.pk]))
         self.assertInHTML(
             f'<option value="{self.samuel.pk}" selected>Samuel</option>',
             response.content.decode(),
@@ -401,12 +443,14 @@ class HashedEnvLoginTests(TestCase):
             self.assertRedirects(response, reverse("home"), fetch_redirect_response=False)
             self.assertTrue(self.client.session.get(SESSION_KEY))
 
-    def test_a_hashed_agent_still_cannot_log_in_through_the_database(self):
-        """The mirror row keeps an unusable password: the env is the one door."""
+    def test_the_env_hash_becomes_the_rows_password_as_is(self):
+        """No rehash on import: the row carries the very hash the env holds,
+        and from then on Django's own check verifies it."""
+        encoded = self.entries.split(",")[0].split(":")[1]
         with self.settings():
-            mirror = agents.authenticate("Admin", "clave-de-admin").user
-            self.assertFalse(mirror.has_usable_password())
-            self.assertFalse(mirror.check_password("clave-de-admin"))
+            admin = agents.authenticate("Admin", "clave-de-admin")
+            self.assertEqual(admin.password, encoded)
+            self.assertTrue(admin.check_password("clave-de-admin"))
 
     def test_non_ascii_passwords_survive_hashing(self):
         with override_settings(
@@ -495,7 +539,7 @@ class HashearClaveCommandTests(TestCase):
         self.assertNotIn("clave-segura-1", entry)
         with override_settings(APP_AGENTS=entry, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD=""):
             self.assertEqual([a.username for a in agents.configured_agents()], ["Samuel"])
-            self.assertEqual(agents.authenticate("Samuel", "clave-segura-1").display_name, "Samuel")
+            self.assertEqual(agents.authenticate("Samuel", "clave-segura-1").first_name, "Samuel")
 
     def test_without_a_username_it_prints_only_the_hash(self):
         encoded = self.run_command("--password", "clave-segura-1")

@@ -1,7 +1,8 @@
 """Turn a password into the hash that goes in ``APP_AGENTS``.
 
-``APP_AGENTS`` entries carry a password *hash*, so the environment never holds
-a working credential (see core/agents.py). This is what produces one:
+``APP_AGENTS`` seeds the first masters into the database (see core/agents.py)
+and its entries carry a password *hash*, so the environment never holds a
+working credential. This is what produces one:
 
     python manage.py hashear_clave Samuel --name Samuel
 

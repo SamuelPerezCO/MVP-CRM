@@ -1,9 +1,9 @@
 {% comment %}
   The team table -- the swappable region inside #user-table.
 
-  Env-configured agents carry an "Entorno" pill and no edit controls: their
-  login lives in APP_AGENTS. Deactivated users sink to the bottom, muted,
-  with a Restaurar action. A visible notice line (unlike the Clientes
+  Every row is editable by a master -- seeded agents included, once
+  imported the database owns them. Deactivated users sink to the bottom,
+  muted, with a Restaurar action. A visible notice line (unlike the Clientes
   page's sr-only one) because "you can't deactivate yourself" is something
   the master needs to read.
 
@@ -20,7 +20,6 @@
       <th scope="col">Nombre</th>
       <th scope="col">Usuario</th>
       <th scope="col">Rol</th>
-      <th scope="col">Origen</th>
       <th scope="col">Estado</th>
       {% if can_manage %}<th scope="col" class="table__actions-col">Acciones</th>{% endif %}
     </tr>
@@ -41,14 +40,10 @@
           {% endif %}
         </td>
         <td class="table__muted">
-          {% if row.is_env %}Entorno (APP_AGENTS){% else %}Creado en la app{% endif %}
-        </td>
-        <td class="table__muted">
           {% if row.user.is_active %}Activo{% else %}Desactivado{% endif %}
         </td>
         {% if can_manage %}
           <td class="table__actions-col">
-            {% if not row.is_env %}
               <div class="row-actions">
                 {% if row.user.is_active %}
                   <button type="button" class="icon-btn icon-btn--bare"
@@ -81,12 +76,11 @@
                   </button>
                 {% endif %}
               </div>
-            {% endif %}
           </td>
         {% endif %}
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="table__muted">No hay usuarios configurados.</td></tr>
+      <tr><td colspan="5" class="table__muted">No hay usuarios configurados.</td></tr>
     {% endfor %}
   </tbody>
 </table>

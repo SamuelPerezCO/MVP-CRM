@@ -140,7 +140,7 @@ class GoLiveTests(TestCase):
 
     @override_settings(APP_AGENTS=ONE_AGENT)
     def test_an_env_configured_agent_is_kept(self):
-        agents.agent_users()  # materializes the mirror row, as the Inbox does
+        agents.agent_users()  # imports the seed row, as the Inbox does
         run("--yes")
         self.assertTrue(get_user_model().objects.filter(username="Samuel").exists())
 

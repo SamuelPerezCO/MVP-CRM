@@ -28,12 +28,13 @@ runs against production and there is no undo):
 
 Who counts as "the team", and therefore survives:
 
-* anyone listed in ``APP_AGENTS`` (:func:`core.agents.is_env_agent`)
-* anyone created from CRM > Equipo > Usuarios, i.e. holding a real password
-  (:func:`core.agents.is_app_user`)
+* anyone holding a real password (:func:`core.agents.is_app_user`): created
+  from CRM > Equipo > Usuarios, or seeded from ``APP_AGENTS`` -- the seed is
+  imported into real rows first (:func:`core.agents.import_env_agents`), so
+  a master named only in the environment survives too
 * any Django superuser
 
-Every other ``User`` row is an assignee-only mirror -- the ``asesor`` fixture,
+Every other ``User`` row is an assignee-only row -- the ``asesor`` fixture,
 or a name a seed script invented -- and goes. Deactivated teammates are kept:
 deactivation is the Usuarios page's version of deleting, a decision it already
 recorded, and their name still belongs on the record of who did what.
@@ -94,6 +95,10 @@ class Command(BaseCommand):
         keep_catalog = options["keep_catalog"]
 
         User = get_user_model()
+        # Seeded agents become real rows before the split, or a master who
+        # exists only in APP_AGENTS would read as a fixture and be dropped.
+        agents.import_env_agents()
+        seeded = {agent.username for agent in agents.configured_agents()}
         # Resolved before anything is deleted: `keep` is what defines the
         # survivors, and after the delete the queryset would be evaluated
         # against rows that no longer exist.
@@ -132,8 +137,8 @@ class Command(BaseCommand):
             for user in keep:
                 name = user.get_full_name() or user.username
                 flags = []
-                if agents.is_env_agent(user):
-                    flags.append("APP_AGENTS")
+                if user.username in seeded:
+                    flags.append("semilla APP_AGENTS")
                 if agents.is_master(user):
                     flags.append("maestro")
                 if not user.is_active:
@@ -201,10 +206,10 @@ class Command(BaseCommand):
 def _split_team(users) -> tuple[list, list]:
     """Split ``users`` into (team, fixtures).
 
-    A row is the team's if the environment lists it, if CRM > Equipo >
-    Usuarios created it, or if it is a Django superuser. Anything else exists
-    only to be pointed at by ``assigned_to``: an env mirror whose entry is
-    gone, or a name a seed invented.
+    A row is the team's if it holds a real password (CRM > Equipo > Usuarios
+    created it, or it was seeded from the environment and imported) or if it
+    is a Django superuser. Anything else exists only to be pointed at by
+    ``assigned_to``: a name a seed script invented.
 
     The demo advisor is named explicitly rather than inferred.
     :func:`core.agents.is_app_user` reads "has a real password" as "a person
@@ -218,8 +223,7 @@ def _split_team(users) -> tuple[list, list]:
     keep, drop = [], []
     for user in users:
         is_team = user.username != DEMO_USERNAME and (
-            agents.is_env_agent(user)
-            or user.is_superuser
+            user.is_superuser
             # Named here rather than left to is_app_user, which excludes staff
             # on purpose (a /admin account is not the Usuarios page's to hand
             # out). Right for a screen that resets passwords, wrong for a

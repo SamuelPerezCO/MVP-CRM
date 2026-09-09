@@ -87,9 +87,22 @@ Crea tu cuenta en **CRM > Equipo > Usuarios** *antes* de correrlo con `--yes`: s
 
 Un **agente** es a la vez un login y un asignatario: la misma identidad que
 pasa la puerta de entrada es la que puede aparecer como responsable de una
-conversación en el Inbox. La lista vive en el entorno, no en la base de datos
-— agregar un compañero es editar una variable y volver a desplegar, sin
-pantalla de gestión de usuarios ni registro:
+conversación en el Inbox. Todos son usuarios de Django con contraseña real, y
+**la base de datos es la única fuente de verdad**: quién entra, con qué
+contraseña, si es maestro y si sigue activo se gestiona desde CRM > Equipo >
+Usuarios, sin tocar el entorno ni volver a desplegar
+([core/agents.py](core/agents.py)).
+
+Al iniciar sesión se abre una sesión real de `django.contrib.auth` como ese
+usuario. Eso es lo que hace que el filtro "Tu inbox" funcione y que cada
+mensaje enviado registre quién lo escribió. En el Inbox, el desplegable junto
+al estado de la conversación ("Abierta") cambia el agente asignado y guarda al
+instante; "Sin asignar" la devuelve a la bandeja común.
+
+### El primer maestro: la semilla `APP_AGENTS`
+
+Una base recién creada no tiene a nadie, y la pantalla de Usuarios solo la
+abre un maestro. `APP_AGENTS` es la semilla con la que entran los primeros:
 
 ```
 APP_AGENTS=Admin:pbkdf2_sha256$1500000$SALT$HASH=:Admin,Samuel:pbkdf2_sha256$1500000$SALT$HASH=:Samuel
@@ -110,36 +123,43 @@ avisa de cada agente que siga así (`core.W001`): quien pueda leer el entorno
 (el panel de Vercel, un log de CI, un `.env` compartido) tiene un login válido.
 Ni el hash ni la contraseña pueden llevar `:` ni `,`, que son los separadores.
 
-Al iniciar sesión se abre una sesión real de `django.contrib.auth` contra un
-`User` espejo de ese agente ([core/agents.py](core/agents.py)), creado bajo
-demanda y con contraseña inutilizable: existe para que `assigned_to` y
-`sent_by` tengan a quién apuntar, nunca para autenticar — el entorno sigue
-siendo la única vía de entrada. Eso es lo que hace que el filtro "Tu inbox"
-funcione y que cada mensaje enviado registre quién lo escribió.
+Cada entrada se **importa una sola vez** a la base de datos: antes de cada
+inicio de sesión (y de cada listado) el CRM crea la fila que falte con ese
+hash, ese nombre y el rol de maestro. Una fila que ya tenga contraseña propia
+no se toca: a partir de ahí manda la base de datos, así que una contraseña
+cambiada en la app se conserva, un usuario desactivado sigue fuera aunque el
+entorno lo nombre, y la variable puede borrarse cuando el equipo ya está
+dentro. Las filas espejo de la versión anterior (sin contraseña utilizable) se
+convierten en el sitio, con el mismo id, así que las conversaciones y
+mensajes atribuidos a ellas no pierden a su responsable.
 
-En el Inbox, el desplegable junto al estado de la conversación ("Abierta")
-cambia el agente asignado y guarda al instante; "Sin asignar" la devuelve a la
-bandeja común.
+Si `APP_AGENTS` no está definida se usa el par antiguo
+`APP_LOGIN_USERNAME`/`APP_LOGIN_PASSWORD` como semilla de un solo agente. Sin
+ninguna de las dos, o cuando ya no queda ningún maestro que pueda entrar:
 
-### Usuarios creados en la app (usuario maestro)
+```
+python manage.py crear_maestro Samuel --name Samuel
+```
 
-Los agentes de `APP_AGENTS` son los **maestros**: desde CRM > Equipo >
-Usuarios pueden crear al resto del equipo sin tocar el entorno ni volver a
-desplegar. Un usuario creado ahí es un `User` de Django con contraseña real:
-inicia sesión por el mismo formulario, aparece en el desplegable de
-asignación y en "Tu inbox", y puede marcarse también como maestro. Los
-usuarios se desactivan (nunca se borran): su historial de conversaciones y
-mensajes sigue apuntando a ellos. Los agentes del entorno se muestran en la
-misma tabla pero solo se editan en `APP_AGENTS` ([core/agents.py](core/agents.py)).
+crea el maestro directamente en la base de datos (pide la contraseña por
+terminal). Sobre un usuario que ya existe no falla: le restablece la
+contraseña, lo restaura si estaba desactivado y lo hace maestro.
+
+### Usuarios (maestros y agentes)
+
+Desde CRM > Equipo > Usuarios un **maestro** crea al resto del equipo. Un
+usuario creado ahí inicia sesión por el mismo formulario, aparece en el
+desplegable de asignación y en "Tu inbox", y puede marcarse también como
+maestro. Los usuarios se desactivan (nunca se borran): su historial de
+conversaciones y mensajes sigue apuntando a ellos. Los agentes que entraron
+por la semilla se editan igual que los demás. El último maestro que pueda
+iniciar sesión no puede degradarse ni desactivarse: sin él nadie podría
+volver a administrar el equipo.
 
 El rol maestro vive en el grupo `Maestros` de Django, no en `is_staff`: ese
 flag significa "puede entrar a /admin/", que es otra pregunta — el login
 `asesor` que dejó el antiguo generador lo tiene y no por eso administra el
 equipo.
-
-Si `APP_AGENTS` no está definida se usa el par antiguo
-`APP_LOGIN_USERNAME`/`APP_LOGIN_PASSWORD` como lista de un solo agente, así que
-un entorno anterior a esto sigue funcionando sin tocar nada.
 
 ## Mensajería: cambiar de proveedor
 

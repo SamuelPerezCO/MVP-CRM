@@ -304,10 +304,9 @@ def _exportaciones_context(request) -> dict:
 
 
 def _usuarios_context(request) -> dict:
-    """The team: every agent (env-configured and app-created), plus the
-    deactivated app users so a master can restore one. ``can_manage`` is
-    what shows the create/edit controls -- the page is read-only for
-    everyone else."""
+    """The team: every active agent, plus the deactivated ones so a master
+    can restore them. ``can_manage`` is what shows the create/edit controls
+    -- the page is read-only for everyone else."""
     User = get_user_model()
     active = agents.agent_users()
     active_ids = {user.pk for user in active}
@@ -319,15 +318,11 @@ def _usuarios_context(request) -> dict:
     master_ids = set(
         User.objects.filter(groups__name=agents.MASTER_GROUP).values_list("pk", flat=True)
     )
-    env_names = {agent.username for agent in agents.configured_agents()}
     return {
         "team": [
             {
                 "user": user,
-                "is_env": user.username in env_names,
-                "is_master": (
-                    user.username in env_names or user.is_superuser or user.pk in master_ids
-                ),
+                "is_master": user.is_superuser or user.pk in master_ids,
             }
             for user in active + inactive
         ],
@@ -710,12 +705,12 @@ SECTION_CONTEXT = {
 def login_view(request):
     """The one gate in front of the whole app -- see core.middleware.
 
-    Credentials come from the environment (``core.agents``), but a successful
-    login also starts a *real* ``django.contrib.auth`` session against that
-    agent's mirror User. That is what makes the agent an identity rather than a
-    boolean: "Tu inbox" can filter ``assigned_to=request.user``, outbound
-    messages record who wrote them, and the Inbox's assignment dropdown has a
-    sensible default.
+    Credentials are checked against the database (``core.agents``, which
+    imports the environment's seed agents first), and a successful login
+    starts a *real* ``django.contrib.auth`` session as that User. That is
+    what makes the agent an identity rather than a boolean: "Tu inbox" can
+    filter ``assigned_to=request.user``, outbound messages record who wrote
+    them, and the Inbox's assignment dropdown has a sensible default.
     """
     error = None
     next_url = request.GET.get('next') or request.POST.get('next') or reverse('home')
@@ -726,16 +721,16 @@ def login_view(request):
     if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
         next_url = reverse('home')
     if request.method == 'POST':
-        agent = agents.authenticate(
+        user = agents.authenticate(
             request.POST.get('username', ''), request.POST.get('password', '')
         )
-        if agent is not None:
-            # The mirror User has an unusable password, so no auth backend can
-            # verify it -- name the backend explicitly instead of going through
-            # django.contrib.auth.authenticate(), which would (correctly) fail.
+        if user is not None:
+            # core.agents.authenticate already verified the password (and
+            # applied the app's own rules: active, not a /admin account), so
+            # name the backend rather than run Django's authenticate() again.
             auth_login(
                 request,
-                agent.user,
+                user,
                 backend='django.contrib.auth.backends.ModelBackend',
             )
             # After auth_login: it cycles the session key, and the gate flag
@@ -1794,11 +1789,6 @@ def usuario_form(request, user_id: int | None = None):
         return _user_saved_response(
             request, f"{user.username} es una cuenta de Django admin; no se gestiona aquí."
         )
-    if user is not None and agents.is_env_agent(user):
-        return _user_saved_response(
-            request, f"{user.username} se configura en el entorno (APP_AGENTS), no aquí."
-        )
-
     if request.method == "POST":
         state = _user_form_state(request.POST)
         errors = _validate_user_form(state, editing=user is not None)
