@@ -404,12 +404,12 @@ MAILERS = {
 
 
 # Messaging
-# Which provider backs sending and webhooks: 'fake' | 'twilio' | 'meta'.
+# Which provider backs sending and webhooks: 'fake' | 'meta'.
 # Swapping to a real provider is this one variable plus its credentials below
 # (see .env.example). Values come from the environment so no credential ever
 # lands in this file. `manage.py test` always forces 'fake' (see TESTING
 # above), even when a developer's own .env is set to a real provider -- tests
-# must not depend on a live Twilio/Meta connection to pass. Outside
+# must not depend on a live Meta connection to pass. Outside
 # tests the variable is required -- see the check below.
 
 MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER', '')
@@ -422,7 +422,7 @@ MESSAGING_PROVIDER = 'fake' if TESTING else os.environ.get('MESSAGING_PROVIDER',
 # explicitly in .env (see .env.example).
 if not MESSAGING_PROVIDER:
     raise ImproperlyConfigured(
-        "MESSAGING_PROVIDER is not set. Choose 'twilio' or 'meta' for a real "
+        "MESSAGING_PROVIDER is not set. Choose 'meta' for a real "
         "WhatsApp line, or 'fake' for local development only "
         "(see .env.example)."
     )
@@ -436,7 +436,7 @@ if not MESSAGING_PROVIDER:
 # every outbound message crashed and every webhook 404'd. It fails at startup
 # now, which is the difference between a deploy that refuses and a CRM that
 # quietly stops talking to customers.
-MESSAGING_PROVIDERS = ('fake', 'twilio', 'meta')
+MESSAGING_PROVIDERS = ('fake', 'meta')
 
 if MESSAGING_PROVIDER not in MESSAGING_PROVIDERS:
     raise ImproperlyConfigured(
@@ -486,11 +486,6 @@ MESSAGING_MONTHLY_BUDGET = os.environ.get('MESSAGING_MONTHLY_BUDGET', '')
 MESSAGING_SERVICE_FREE_ALLOWANCE = os.environ.get(
     'MESSAGING_SERVICE_FREE_ALLOWANCE', '1000'
 )
-
-# Twilio (unused until providers/twilio.py is implemented).
-TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
-TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')
-TWILIO_WHATSAPP_FROM = os.environ.get('TWILIO_WHATSAPP_FROM', '')
 
 # Meta Cloud API (providers/meta.py). META_APP_SECRET signs incoming
 # webhooks and META_VERIFY_TOKEN answers Meta's subscribe handshake --

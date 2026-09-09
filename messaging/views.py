@@ -1,7 +1,7 @@
 """The webhook endpoint providers deliver to.
 
-One URL per provider -- ``/webhooks/messaging/<provider>/`` -- so a Twilio
-callback is always parsed as Twilio regardless of which provider is active
+One URL per provider -- ``/webhooks/messaging/<provider>/`` -- so a
+callback is always parsed by the provider that sent it regardless of which one is active
 for *sending* (relevant mid-migration).
 
 Contract with providers:

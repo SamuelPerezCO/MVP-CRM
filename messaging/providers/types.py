@@ -1,7 +1,7 @@
 """Provider-agnostic value types.
 
-Every provider's webhook payload -- Twilio's form-encoded POST, Meta's nested
-JSON, the fake provider's flat JSON -- is normalized into these before the rest
+Every provider's webhook payload -- Meta's nested JSON, the fake provider's
+flat JSON -- is normalized into these before the rest
 of the app sees it. Nothing outside ``providers/`` should ever touch a raw
 provider payload.
 """
@@ -48,7 +48,7 @@ class MessageStatus(str, enum.Enum):
 
     Values are stored verbatim in ``Message.status``. The order here is the
     canonical progression; :func:`status_rank` turns it into a comparison so
-    out-of-order webhook deliveries (Twilio retries, Meta batching) can never
+    out-of-order webhook deliveries (provider retries, Meta batching) can never
     move a message *backwards* -- e.g. a late "delivered" after "read".
     """
 
@@ -172,7 +172,7 @@ class InboundEvent:
 
     from_number: str = ""
     """Sender in E.164 (``+57316...``). Providers that prefix an address
-    scheme (Twilio's ``whatsapp:+57...``) strip it in ``parse_webhook``."""
+    scheme (such as ``whatsapp:+57...``) strip it in ``parse_webhook``."""
 
     to_number: str = ""
     """Our number, E.164. Unused while the app has a single inbox; kept so

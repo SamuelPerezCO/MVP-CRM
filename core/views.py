@@ -2489,7 +2489,7 @@ def plantilla_editor(request):
             else:
                 # Saved locally first, submitted second: a Meta hiccup must
                 # not cost the editor's work. On a provider without a
-                # catalogue (fake, Twilio) this is a no-op and the
+                # catalogue (fake) this is a no-op and the
                 # plantilla simply stays a local Pendiente record.
                 notice = None
                 try:

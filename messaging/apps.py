@@ -5,7 +5,7 @@ class MessagingConfig(AppConfig):
     """The messaging layer: conversations, messages and provider integrations.
 
     Deliberately separate from ``core`` (the UI shell): everything that talks
-    to WhatsApp/Meta/Twilio lives here, so swapping or adding a provider never
+    to WhatsApp/Meta lives here, so swapping or adding a provider never
     touches a view or template.
     """
 

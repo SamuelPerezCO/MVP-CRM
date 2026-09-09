@@ -1,9 +1,7 @@
 """The provider interface every integration implements.
 
-The contract is shaped so the two real targets fit without changes:
+The contract is shaped so the real target fits without changes:
 
-* **Twilio** -- form-encoded webhooks, ``X-Twilio-Signature`` (HMAC-SHA1 over
-  URL + sorted params), Basic-auth REST API, ``whatsapp:+57...`` addressing.
 * **Meta Cloud API** -- JSON webhooks, ``X-Hub-Signature-256`` (HMAC-SHA256
   over the raw body), Bearer-token Graph API, a ``phone_number_id`` per line,
   and a one-off GET verification handshake (``hub.challenge``).
@@ -11,8 +9,8 @@ The contract is shaped so the two real targets fit without changes:
 Hence the choices below:
 
 * ``parse_webhook``/``verify_signature`` take the raw Django ``request``, not
-  a parsed dict -- Twilio needs form params, Meta needs the *raw bytes* for
-  its HMAC, and both need headers.
+  a parsed dict -- Meta needs the *raw bytes* for its HMAC plus the headers,
+  and a form-encoded provider would need ``request.POST``.
 * ``send_*`` take bare E.164 numbers; any addressing scheme (``whatsapp:``)
   is the provider's private business.
 * ``handshake`` exists because Meta verifies the endpoint with a GET before
@@ -27,7 +25,7 @@ from .types import InboundEvent, TemplateSpec, TemplateVerdict
 
 
 class MessagingProvider(ABC):
-    """One messaging backend (WhatsApp via Twilio, Meta Cloud API, fake...)."""
+    """One messaging backend (Meta Cloud API, fake...)."""
 
     #: Registry key and URL slug: ``/webhooks/messaging/<name>/``.
     name: str = ""
@@ -83,20 +81,20 @@ class MessagingProvider(ABC):
 
         Checked *before* the body is trusted in any way; a ``False`` is
         answered with 401 and no processing. Each provider brings its own
-        scheme (Twilio HMAC-SHA1, Meta HMAC-SHA256 over the raw body)."""
+        scheme (Meta: HMAC-SHA256 over the raw body)."""
 
     def handshake(self, request) -> str | None:
         """Answer a GET verification challenge, or ``None`` if the provider
         has no such thing. Meta sends ``hub.mode=subscribe`` with a
-        ``hub.challenge`` to echo; Twilio never GETs the webhook."""
+        ``hub.challenge`` to echo; other providers never GET the webhook."""
         return None
 
     # --- Template catalogue (optional) ---------------------------------------
     #
     # Only the official Cloud API keeps a catalogue of templates that must be
     # submitted and approved before ``send_template`` will accept them. The
-    # defaults below are the "no catalogue" answer, so Twilio (templates are
-    # approved in its console) and the fake provider inherit them untouched --
+    # defaults below are the "no catalogue" answer, so the fake provider
+    # inherits them untouched --
     # same stance as ``handshake``.
 
     def create_template(self, spec: TemplateSpec) -> str | None:
