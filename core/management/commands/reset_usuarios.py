@@ -1,20 +1,17 @@
 """Delete every user row -- the clean slate before re-seeding the team.
 
 Written for the moment when the login list has accumulated leftovers (demo
-seeds, a teammate who left, mirrors of agents no longer in ``APP_AGENTS``)
-and you want the database to hold exactly the people you are about to
-configure and nobody else.
+seeds, a teammate who left, agents seeded from an ``APP_AGENTS`` long since
+rewritten) and you want the database to hold exactly the people you are
+about to configure and nobody else.
 
-What this deletes is *rows*, not logins. The two are not the same thing here:
-
-* Env agents (``APP_AGENTS``) keep their credentials in the environment. Their
-  ``User`` rows are mirrors, recreated on demand at next login (see
-  ``core.agents.agent_users``). Deleting them is therefore not a lockout --
-  the mirror comes back. It *is* still destructive; see below.
-* Users created from CRM > Equipo > Usuarios keep a real password in the
-  database. Deleting those rows is the only way to actually remove them, and
-  it is permanent -- the Usuarios page deliberately offers deactivation
-  instead.
+The database owns every login (see ``core.agents``), so deleting a row is
+deleting that person's access -- permanent, which is why the Usuarios page
+deliberately offers deactivation instead. The one exception is a username
+still named in ``APP_AGENTS``: the seed is imported again at the next login,
+with the env's hash and a *new* id, so for them this is a reset to the
+environment's password rather than a lockout. It is still destructive; see
+below.
 
 **Deleting a row erases attribution, everywhere.** Every FK to a user is
 ``on_delete=SET_NULL``, so nothing cascades -- no conversation, message or
@@ -40,9 +37,10 @@ against a *production* database and there is no undo:
 
 Django admin accounts (``is_staff``/``is_superuser``) are **kept** unless
 ``--include-staff`` is passed. Those are /admin logins this CRM does not
-manage (see ``core.agents._is_app_user``), and they are the escape hatch that
-gets you back in when ``APP_AGENTS`` is wrong. Removing them by accident
-while re-seeding the team is how a deployment locks itself out completely.
+manage (see ``core.agents._is_app_user``), and they are one escape hatch
+that gets you back in after a wipe (``manage.py crear_maestro`` is the
+other). Removing them by accident while re-seeding the team is how a
+deployment locks itself out completely.
 """
 
 from __future__ import annotations
@@ -123,9 +121,9 @@ class Command(BaseCommand):
         for user in doomed:
             marks = []
             if user.username in env_usernames:
-                # The mirror comes back at next login, but its id does not:
-                # everything it was attributed with is nulled regardless.
-                marks.append("en APP_AGENTS, el espejo se recrea al entrar")
+                # The seed is imported again at next login, but the id is
+                # new: everything it was attributed with is nulled regardless.
+                marks.append("en APP_AGENTS, se vuelve a importar al entrar")
             if not user.is_active:
                 marks.append("inactivo")
             suffix = f"  ({'; '.join(marks)})" if marks else ""
@@ -161,9 +159,9 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"\n{len(ids)} usuario(s) eliminados."))
         self.stdout.write(
-            "Los agentes de APP_AGENTS recuperan su fila al iniciar sesión; "
-            "los usuarios creados en la app hay que volverlos a crear desde "
-            "CRM > Equipo > Usuarios."
+            "Los usuarios que siga nombrando APP_AGENTS se importan de nuevo al "
+            "iniciar sesión; el resto hay que volverlos a crear desde "
+            "CRM > Equipo > Usuarios o con manage.py crear_maestro."
         )
 
     def _report_kept(self, kept_staff) -> None:

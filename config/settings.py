@@ -207,13 +207,14 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = (
 )
 SECURE_HSTS_PRELOAD = os.environ.get('SECURE_HSTS_PRELOAD', 'False') == 'True'
 
-# Who can log in, and who a conversation can be assigned to -- the same list
-# either way (see core/agents.py for the format and the reasoning). Comma-
-# separated `username:hash:Nombre` entries, e.g.
+# Seed for the first master users. Logins live in the database (see
+# core/agents.py); this list is imported into it -- once per username -- so
+# a fresh deployment has someone who can open CRM > Equipo > Usuarios.
+# Comma-separated `username:hash:Nombre` entries, e.g.
 #   APP_AGENTS=Admin:pbkdf2_sha256$1500000$SALT$HASH=:Admin
 # The middle field is a password hash, not a password -- generate one with
-# `manage.py hashear_clave`. Blank means the gate can never be satisfied (see
-# core.middleware), rather than an empty/empty login working.
+# `manage.py hashear_clave`. Blank is fine once the team is in the database
+# (`manage.py crear_maestro` creates the first master without it).
 APP_AGENTS = os.environ.get('APP_AGENTS', '')
 
 # The pre-agents single pair, kept as a fallback so an environment that only

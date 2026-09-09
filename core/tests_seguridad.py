@@ -1,4 +1,4 @@
-"""Tests for the login gate's harder edges: hashed APP_AGENTS secrets, the
+"""Tests for the login gate's harder edges: hashed APP_AGENTS seeds, the
 non-ASCII crash, and the doors a Usuarios master must not be able to open."""
 
 from io import StringIO
@@ -185,14 +185,14 @@ class AdminAccountsAreNotTeammatesTests(TestCase):
         self.assertNotIn(self.staff, agents.agent_users())
 
     def test_it_is_not_listed_on_the_usuarios_page(self):
-        self.client.force_login(agents.authenticate("Admin", "admin-pw").user)
+        self.client.force_login(agents.authenticate("Admin", "admin-pw"))
         html = self.client.get(
             reverse("section", args=["crm"]), {"view": "usuarios"}
         ).content.decode()
         self.assertNotIn("djangoadmin", html)
 
     def test_its_password_cannot_be_reset_from_here(self):
-        self.client.force_login(agents.authenticate("Admin", "admin-pw").user)
+        self.client.force_login(agents.authenticate("Admin", "admin-pw"))
         response = self.client.post(
             reverse("usuario_update", args=[self.staff.pk]),
             {"display_name": "x", "password": "nueva-clave", "password2": "nueva-clave"},
@@ -225,8 +225,9 @@ class LastMasterGuardTests(TestCase):
         self.assertFalse(agents.is_master(one))
 
     @override_settings(APP_AGENTS="Admin:admin-pw:Admin")
-    def test_env_agents_satisfy_the_guard(self):
-        # APP_AGENTS always names someone who can administer the team.
+    def test_seeded_agents_satisfy_the_guard(self):
+        # The seed is imported as a master with a real password before the
+        # count, so it names someone who can administer the team.
         solo = agents.create_user("jefe", "clave-larga", "Jefe", master=True)
         agents.update_user(solo, "Jefe", master=False)
         self.assertFalse(agents.is_master(solo))

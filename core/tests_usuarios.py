@@ -1,4 +1,4 @@
-"""Tests for CRM > Equipo > Usuarios: app-created users next to the env
+"""Tests for CRM > Equipo > Usuarios: app-created users next to the seeded
 agents, the master rule, and the login/assignment paths they plug into."""
 
 from django.contrib.auth import get_user_model
@@ -41,8 +41,8 @@ class AgentsWithDbUsersTests(TestCase):
         agents.update_user(lucia, "Lucía", False)
         self.assertFalse(agents.is_master(lucia))
 
-    def test_env_agents_are_masters_and_app_users_are_not_by_default(self):
-        admin = agents.authenticate("Admin", "admin-pw").user
+    def test_seeded_agents_are_masters_and_app_users_are_not_by_default(self):
+        admin = agents.authenticate("Admin", "admin-pw")
         lucia = app_user()
         self.assertTrue(agents.is_master(admin))
         self.assertFalse(agents.is_master(lucia))
@@ -52,46 +52,46 @@ class AgentsWithDbUsersTests(TestCase):
         app_user()
         agent = agents.authenticate("lucia", "clave-larga")
         self.assertIsNotNone(agent)
-        self.assertEqual(agent.user.username, "lucia")
-        self.assertEqual(agent.display_name, "Lucía")
+        self.assertEqual(agent.username, "lucia")
+        self.assertEqual(agent.first_name, "Lucía")
         self.assertIsNone(agents.authenticate("lucia", "otra"))
 
-    def test_env_usernames_only_log_in_with_the_env_password(self):
-        # The mirror row has an unusable password; the DB step can't be
-        # used to sneak past the env list.
-        mirror = agents.authenticate("Admin", "admin-pw").user
-        mirror.set_password("db-pw")
-        mirror.save()
-        self.assertIsNone(agents.authenticate("Admin", "db-pw"))
-        self.assertIsNotNone(agents.authenticate("Admin", "admin-pw"))
+    def test_a_password_changed_in_the_app_beats_the_env(self):
+        # Once imported, the row is the login: the env's old hash is history.
+        admin = agents.authenticate("Admin", "admin-pw")
+        agents.update_user(admin, "Admin", True, "clave-nueva-db")
+        self.assertIsNotNone(agents.authenticate("Admin", "clave-nueva-db"))
+        self.assertIsNone(agents.authenticate("Admin", "admin-pw"))
 
     def test_deactivated_users_cannot_log_in(self):
         lucia = app_user()
         agents.set_user_active(lucia, False)
         self.assertIsNone(agents.authenticate("lucia", "clave-larga"))
 
-    def test_agent_users_lists_env_first_then_app_users(self):
+    def test_agent_users_lists_everyone_active_by_name(self):
         app_user("zoe", name="Zoe")
         app_user("ana", name="Ana")
         User.objects.create(username="seed-no-password")   # no usable password
         off = app_user("off", name="Off")
         agents.set_user_active(off, False)
         names = [user.username for user in agents.agent_users()]
-        self.assertEqual(names, ["Admin", "Samuel", "ana", "zoe"])
+        self.assertEqual(names, ["Admin", "ana", "Samuel", "zoe"])
 
-    def test_create_user_refuses_taken_and_env_usernames(self):
+    def test_create_user_refuses_taken_and_seed_usernames(self):
         app_user()
         with self.assertRaises(agents.UsernameTaken):
             app_user("Lucia")           # case-insensitive
         with self.assertRaises(agents.UsernameTaken):
-            app_user("Samuel")          # env name, even before its mirror exists
+            app_user("Samuel")          # seed name, even before its row exists
 
-    def test_env_mirrors_cannot_be_edited_or_deactivated_here(self):
-        admin = agents.authenticate("Admin", "admin-pw").user
-        with self.assertRaises(ValueError):
-            agents.update_user(admin, "Otro", False)
-        with self.assertRaises(ValueError):
-            agents.set_user_active(admin, False)
+    def test_seeded_agents_are_edited_like_anyone_else(self):
+        admin = agents.authenticate("Admin", "admin-pw")
+        agents.update_user(admin, "Administrador", True, "otra-clave-larga")
+        admin.refresh_from_db()
+        self.assertEqual(admin.first_name, "Administrador")
+        self.assertIsNotNone(agents.authenticate("Admin", "otra-clave-larga"))
+        agents.set_user_active(admin, False)     # Samuel remains a master
+        self.assertIsNone(agents.authenticate("Admin", "otra-clave-larga"))
 
     def test_update_user_can_reset_the_password(self):
         lucia = app_user()
@@ -130,7 +130,7 @@ class UsuariosPageTests(TestCase):
     def login_as(self, username, password):
         # TESTING keeps the gate open; force_login sets request.user, which
         # is what the master check reads.
-        self.client.force_login(agents.authenticate(username, password).user)
+        self.client.force_login(agents.authenticate(username, password))
 
     def test_the_nav_has_the_equipo_section(self):
         html = self.client.get(reverse("section", args=["crm"])).content.decode()
@@ -146,12 +146,13 @@ class UsuariosPageTests(TestCase):
         self.assertIn("Solo un usuario maestro", html)
         self.assertNotIn("+ Crear usuario", html)
 
-    def test_masters_see_the_create_button_and_the_env_rows(self):
+    def test_masters_see_the_create_button_and_the_seeded_rows(self):
         self.login_as("Admin", "admin-pw")
         html = self.client.get(PAGE).content.decode()
         self.assertIn("+ Crear usuario", html)
-        self.assertIn("Entorno (APP_AGENTS)", html)
+        self.assertIn("Samuel", html)
         self.assertIn("Maestro", html)
+        self.assertNotIn("APP_AGENTS", html)     # no "Origen" column any more
         self.assertNotIn("Solo un usuario maestro", html)
 
     def test_agents_get_the_list_read_only(self):
@@ -253,15 +254,23 @@ class UsuariosPageTests(TestCase):
         jefe.refresh_from_db()
         self.assertTrue(jefe.is_active)
 
-    def test_env_agents_cannot_be_edited_from_the_page(self):
+    def test_seeded_agents_are_edited_from_the_page_like_anyone(self):
         self.login_as("Admin", "admin-pw")
-        samuel = agents.authenticate("Samuel", "1234").user
-        response = self.client.get(reverse("usuario_update", args=[samuel.pk]))
-        self.assertContains(response, "se configura en el entorno")
+        samuel = agents.authenticate("Samuel", "1234")
+        html = self.client.get(reverse("usuario_update", args=[samuel.pk])).content.decode()
+        self.assertIn('value="Samuel"', html)
+        self.assertIn(f'aria-label="Editar Samuel"', self.client.get(PAGE).content.decode())
+        self.client.post(
+            reverse("usuario_update", args=[samuel.pk]),
+            {"display_name": "Samuel P.", "master": "1", "password": "clave-nueva",
+             "password2": "clave-nueva"},
+        )
+        self.assertIsNotNone(agents.authenticate("Samuel", "clave-nueva"))
+        self.assertIsNone(agents.authenticate("Samuel", "1234"))
         response = self.client.post(reverse("usuario_active", args=[samuel.pk]), {"active": "0"})
-        self.assertContains(response, "se configura en el entorno")
+        self.assertContains(response, "Usuario desactivado")
         samuel.refresh_from_db()
-        self.assertTrue(samuel.is_active)
+        self.assertFalse(samuel.is_active)
 
     def test_non_masters_are_refused_with_403(self):
         lucia = app_user()
@@ -343,8 +352,8 @@ class LastMasterTests(TestCase):
         self.assertFalse(jefa.is_active)
 
     def test_a_master_with_no_usable_password_does_not_count(self):
-        """A mirror left behind by an agent dropped from APP_AGENTS is a
-        master on paper with no way in -- not a stand-in for a real one."""
+        """A row a script left with no password is a master on paper with no
+        way in -- not a stand-in for a real one."""
         jefa = app_user("jefa", master=True)
         fantasma = app_user("fantasma", master=True)
         fantasma.set_unusable_password()
@@ -366,10 +375,10 @@ class LastMasterTests(TestCase):
 
 
 @override_settings(APP_AGENTS=TWO_AGENTS, APP_LOGIN_USERNAME="", APP_LOGIN_PASSWORD="")
-class EnvGuaranteesAMasterTests(TestCase):
-    def test_the_last_db_master_may_go_when_the_env_supplies_one(self):
-        """APP_AGENTS entries are always masters and always able to log in,
-        so the set can never empty while one is configured."""
+class SeededMastersCountTests(TestCase):
+    def test_the_last_app_master_may_go_when_the_seed_supplies_one(self):
+        """Seed entries are imported as masters with a real password before
+        the count, so they keep the set from emptying."""
         jefa = app_user("jefa", master=True)
         agents.update_user(jefa, "Jefa", False)
         self.assertFalse(agents.is_master(User.objects.get(username="jefa")))
@@ -542,21 +551,88 @@ class ResetUsuariosCommandTests(TestCase):
         conversation.refresh_from_db()
         self.assertIsNone(conversation.assigned_to)   # SET_NULL, not cascade
 
-    def test_it_flags_a_row_that_is_an_env_agent(self):
-        """Its mirror returns at next login, so 'deleted' means something
-        different for it -- the report should say so rather than imply a
-        lockout."""
-        agents.agent_users()                    # materialise the mirrors
+    def test_it_flags_a_row_that_is_still_seeded(self):
+        """The seed is imported again at next login, so 'deleted' means
+        something different for it -- the report should say so rather than
+        imply a lockout."""
+        agents.agent_users()                    # import the seed
         output = self.run_command()
-        self.assertIn("el espejo se recrea al entrar", output)
+        self.assertIn("se vuelve a importar al entrar", output)
 
-    def test_an_env_agent_can_still_log_in_after_the_wipe(self):
+    def test_a_seeded_agent_can_still_log_in_after_the_wipe(self):
         agents.agent_users()
         self.run_command("--yes")
         self.assertEqual(User.objects.count(), 0)
         agent = agents.authenticate("Admin", "admin-pw")
         self.assertIsNotNone(agent)
-        self.assertEqual(agent.user.username, "Admin")   # mirror recreated
+        self.assertEqual(agent.username, "Admin")   # re-imported from the env
+        self.assertEqual(User.objects.count(), 2)
 
     def test_it_says_so_when_there_is_nothing_to_delete(self):
         self.assertIn("Nada que borrar", self.run_command())
+
+
+@override_settings(**NO_ENV)
+class CrearMaestroCommandTests(TestCase):
+    """`manage.py crear_maestro`: the way in with no seed and no master."""
+
+    def run_command(self, *args, **kwargs):
+        from io import StringIO
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("crear_maestro", *args, stdout=out, **kwargs)
+        return out.getvalue()
+
+    def test_it_creates_a_master_who_can_log_in(self):
+        output = self.run_command("samuel", name="Samuel", password="clave-larga")
+        self.assertIn("creado", output)
+        samuel = agents.authenticate("samuel", "clave-larga")
+        self.assertIsNotNone(samuel)
+        self.assertEqual(samuel.first_name, "Samuel")
+        self.assertTrue(agents.is_master(samuel))
+
+    def test_on_an_existing_user_it_resets_promotes_and_restores(self):
+        lucia = app_user()
+        app_user("jefa", master=True)
+        agents.set_user_active(lucia, False)
+        output = self.run_command("lucia", password="clave-nueva-1")
+        self.assertIn("restablecida", output)
+        self.assertIn("restaurado", output)
+        lucia.refresh_from_db()
+        self.assertTrue(lucia.is_active)
+        self.assertTrue(agents.is_master(lucia))
+        self.assertEqual(lucia.first_name, "Lucía")      # name kept
+        self.assertIsNotNone(agents.authenticate("lucia", "clave-nueva-1"))
+        self.assertIsNone(agents.authenticate("lucia", "clave-larga"))
+
+    def test_it_prompts_when_no_password_is_given(self):
+        from unittest.mock import patch
+
+        with patch(
+            "core.management.commands.crear_maestro.ask_password",
+            return_value="clave-larga",
+        ):
+            self.run_command("samuel")
+        self.assertIsNotNone(agents.authenticate("samuel", "clave-larga"))
+
+    def test_it_applies_the_password_floor(self):
+        from django.core.management import CommandError
+
+        with self.assertRaisesMessage(CommandError, "al menos 8"):
+            self.run_command("samuel", password="corta")
+        self.assertFalse(User.objects.filter(username="samuel").exists())
+
+    def test_a_django_admin_account_is_refused(self):
+        from django.core.management import CommandError
+
+        User.objects.create_superuser("root", password="clave-larga")
+        with self.assertRaisesMessage(CommandError, "Django admin"):
+            self.run_command("root", password="otra-clave-larga")
+        self.assertTrue(User.objects.get(username="root").check_password("clave-larga"))
+
+    def test_a_username_with_separators_is_refused(self):
+        from django.core.management import CommandError
+
+        with self.assertRaisesMessage(CommandError, "espacios"):
+            self.run_command("con espacio", password="clave-larga")
