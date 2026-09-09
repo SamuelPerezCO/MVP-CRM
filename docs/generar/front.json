@@ -129,5 +129,5 @@
   }
  ],
  "date": "Septiembre 2026",
- "objective": "Desarrollar un CRM omnicanal para comercios que centralice en una sola bandeja de entrada las conversaciones de sus canales de mensajería, las vincule con la gestión de clientes, el calendario, las plantillas de WhatsApp y las estadísticas del negocio, mediante Django, htmx y PostgreSQL, y que pueda operar sobre proveedores reales de WhatsApp sin acoplar la aplicación a ninguno de ellos."
+ "objective": "Desarrollar un CRM omnicanal para comercios que centralice en una sola bandeja de entrada las conversaciones de sus canales de mensajería, las vincule con la gestión de clientes, el calendario, las plantillas de WhatsApp y las estadísticas del negocio, mediante Django, htmx y PostgreSQL, y que pueda operar sobre el proveedor real de WhatsApp sin acoplar la aplicación a él."
 }
