@@ -1,25 +1,23 @@
 {
- "title": "MVP-CRM",
+ "title": "Vendi",
  "subtitle": "Documentación técnica",
- "author": "Samuel Pérez Serna",
  "date": "Septiembre 2026",
  "version": "Septiembre 2026",
- "subject": "Documentación técnica del CRM omnicanal MVP-CRM",
- "objective": "Construir una aplicación web donde un comercio pequeño atienda en un solo lugar los mensajes que le llegan por WhatsApp, Instagram, Messenger, Facebook y TikTok, tenga a sus clientes organizados, agende sus tareas y vea cómo va su equipo, sin pagar una plataforma cara ni depender de un proveedor de WhatsApp en particular.",
+ "subject": "Documentación técnica de Vendi, el CRM a la medida de Tratamientos LB S.A.S.",
  "cover_lines": [
-  "Repositorio: github.com/SamuelPerezCO/MVP-CRM"
+  "Prototipo a la medida de Tratamientos LB S.A.S. · Fase 1"
  ],
  "sections": [
   {
-   "heading": "Qué es MVP-CRM",
+   "heading": "Qué es Vendi",
    "blocks": [
     {
      "kind": "paragraph",
-     "text": "MVP-CRM es una aplicación web para comercios que venden por chat. Junta en una sola pantalla los mensajes que llegan por WhatsApp, Instagram, Messenger, Facebook y TikTok, y al lado guarda la información del cliente que escribe: su nombre, su teléfono, por dónde llegó y qué se ha hablado con él. Desde esa misma pantalla el vendedor responde, se reparte las conversaciones con sus compañeros, les pone etiquetas y agenda tareas."
+     "text": "Vendi es un CRM hecho a la medida de **Tratamientos LB S.A.S.** No es un producto genérico para cualquier comercio: nace de una necesidad puntual de la empresa, que quiere dejar de depender de Mercately, la plataforma de terceros con la que atiende hoy a sus clientes."
     },
     {
      "kind": "paragraph",
-     "text": "Está pensada para equipos de dos a diez personas. Se usa desde el navegador, en español, y se parece a las plataformas comerciales de este tipo (Treble, Leadsales, Kommo) pero sin cobro por agente."
+     "text": "Vendi junta en una sola pantalla los mensajes que llegan por WhatsApp, Instagram, Messenger, Facebook y TikTok, y al lado guarda la ficha de cada cliente. Desde ahí el equipo responde, se reparte las conversaciones, las etiqueta, usa respuestas rápidas con texto e imagen, agenda citas y revisa las estadísticas. Todo se usa desde el navegador y en español."
     }
    ]
   },
@@ -28,11 +26,20 @@
    "blocks": [
     {
      "kind": "paragraph",
-     "text": "Un comercio que vende por mensajería suele atender desde el celular del vendedor. Cada red social tiene su propia app, así que hay que estar saltando entre cinco bandejas distintas. Cuando el vendedor está ocupado, un mensaje se queda sin responder y esa venta se pierde. Cuando otra persona del equipo retoma la conversación, no sabe qué se le había ofrecido al cliente. Y el dueño nunca tiene números: cuántos mensajes llegan, cuánto tardan en responderlos, quién atiende a quién."
+     "text": "Tratamientos LB ya tiene sus canales organizados en Mercately. Mercately funciona: junta los chats, guarda el historial y muestra métricas. El problema no es lo que hace, sino **lo que cuesta** y lo que no deja controlar a la empresa:"
+    },
+    {
+     "kind": "bullets",
+     "items": [
+      "**Precios altos.** La suscripción es mensual, se paga en dólares y sube con cada agente o función que se agrega. Es el punto principal: la empresa paga cada mes por algo que puede tener propio.",
+      "**Los datos no son de la empresa.** Clientes, conversaciones y mensajes quedan en los servidores de Mercately; usarlos o sacarlos depende de lo que la plataforma permita.",
+      "**Soporte ajeno.** Cuando algo falla o se necesita un cambio, hay que esperar al soporte del proveedor.",
+      "**Techo de escalamiento.** Crecer significa pagar un plan más caro o aceptar los límites del plan actual."
+     ]
     },
     {
      "kind": "paragraph",
-     "text": "Además, WhatsApp tiene una regla: si el cliente lleva más de 24 horas sin escribir, ya no se le puede mandar un mensaje libre, solo una plantilla aprobada por Meta, y cada plantilla cuesta dinero. Sin una herramienta que lleve esa cuenta, el comercio no sabe cuánto está gastando."
+     "text": "Vendi quita esa dependencia: la empresa tiene su propio CRM, con sus datos en su propia base de datos, soporte directo y sin costos por agente."
     },
     {
      "kind": "diagram",
@@ -42,19 +49,19 @@
      "rows": [
       [
        {
-        "text": "Mensajes sin responder y ventas perdidas",
+        "text": "Costos mensuales altos que crecen con cada agente",
         "to": [
          0
         ]
        },
        {
-        "text": "Nadie sabe qué se habló con cada cliente",
+        "text": "Los datos de clientes y mensajes quedan en servidores de Mercately",
         "to": [
          0
         ]
        },
        {
-        "text": "El dueño no tiene números del negocio",
+        "text": "Soporte y crecimiento limitados por el proveedor",
         "to": [
          0
         ]
@@ -62,7 +69,7 @@
       ],
       [
        {
-        "text": "El comercio atiende sus chats sin una herramienta que junte conversaciones, clientes y ventas",
+        "text": "Tratamientos LB depende de Mercately, un CRM de terceros, para atender a sus clientes",
         "role": "root",
         "to": [
          0,
@@ -73,13 +80,13 @@
       ],
       [
        {
-        "text": "Cada red tiene su propia app y su propia bandeja"
+        "text": "Todo vive en la aplicación de Mercately con costos elevados"
        },
        {
-        "text": "Las plataformas existentes cobran por agente y en dólares"
+        "text": "Mercately cobra por agente y en dólares"
        },
        {
-        "text": "Todo vive en el celular del vendedor"
+        "text": "La empresa no controla su propia base de datos de mensajes"
        }
       ]
      ]
@@ -91,7 +98,7 @@
    "blocks": [
     {
      "kind": "paragraph",
-     "text": "El objetivo general fue construir un CRM omnicanal para comercios: una sola bandeja para todos los canales, conectada con los clientes, el calendario, las plantillas de WhatsApp y las estadísticas, hecha con Django, htmx y PostgreSQL, y que pueda cambiar de proveedor de WhatsApp sin reescribir la aplicación."
+     "text": "El objetivo fue construir un CRM propio para Tratamientos LB que reemplace a Mercately: una sola bandeja para todos los canales, conectada con los clientes, el calendario, las respuestas rápidas y las estadísticas, con los datos en una base de datos de la empresa y sin pagar por cada agente."
     },
     {
      "kind": "paragraph",
@@ -100,14 +107,39 @@
     {
      "kind": "bullets",
      "items": [
-      "Entender qué necesita un comercio pequeño para atender y vender por chat, y escribirlo como requisitos.",
+      "Entender cómo atiende hoy el equipo en Mercately y qué necesita para hacerlo igual o mejor.",
       "Diseñar la base de datos de modo que el cliente sea uno solo: el mismo en el chat, en el calendario y en las listas.",
-      "Construir la pantalla principal y una forma sencilla de añadir secciones nuevas.",
-      "Hacer la bandeja de entrada: filtros, hilo de chat, la regla de las 24 horas y las respuestas rápidas.",
-      "Conectar WhatsApp a través de una pieza intercambiable, para poder usar un simulador en desarrollo y Meta en producción.",
-      "Añadir la gestión de clientes, el calendario, las plantillas, el catálogo y las estadísticas.",
-      "Escribir pruebas automáticas que protejan las reglas importantes.",
-      "Publicarlo en internet sobre Vercel y Neon, con comandos para arrancar en limpio."
+      "Construir la pantalla principal y la bandeja de entrada con sus entornos, etiquetas y asignación.",
+      "Conectar WhatsApp con la Cloud API de Meta, con un simulador para desarrollar sin gastar mensajes reales.",
+      "Añadir la gestión de clientes, el calendario, las respuestas rápidas, los usuarios y las estadísticas.",
+      "Publicarlo en internet sobre servicios gratuitos mientras dura el MVP."
+     ]
+    }
+   ]
+  },
+  {
+   "heading": "Avance de la Fase 1",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "Estos son los puntos que se propusieron para la Fase 1. **Todos están terminados.**"
+    },
+    {
+     "kind": "checklist",
+     "items": [
+      "CRUD de clientes: crear, ver, editar y eliminar",
+      "Enviar mensajes a clientes nuevos",
+      "Creación de la interfaz",
+      "Etiquetado de conversaciones",
+      "Estadísticas",
+      "Respuestas rápidas optimizadas con imagen",
+      "Creación de 3 entornos: Todos, Tu inbox y Sin asignar",
+      "Asignación de agente",
+      "Descargar la base de datos de clientes en Excel",
+      "Calendario con el cliente en cada evento",
+      "Respuestas rápidas funcionales",
+      "Creación de usuarios: un usuario maestro que crea más usuarios",
+      "Documentación de la Fase 1"
      ]
     }
    ]
@@ -124,38 +156,34 @@
      "rows": [
       [
        "Inbox",
-       "Ver todas las conversaciones en una lista, filtrarlas por canal o por quién las atiende, abrir el chat, responder con texto o imágenes, usar respuestas rápidas, asignar la conversación a un compañero y ponerle etiquetas. Si pasaron más de 24 horas desde el último mensaje del cliente, solo deja enviar una plantilla."
+       "Ver todas las conversaciones en una lista, separarlas en los entornos Todos, Tu inbox y Sin asignar, filtrarlas por canal o etiqueta, abrir el chat, responder con texto o imágenes, asignar la conversación a un compañero y etiquetarla."
       ],
       [
-       "Clientes (CRM)",
-       "Crear, buscar, editar y borrar clientes; ver su teléfono con la bandera del país, su correo y por qué canal llegó; exportar la lista a Excel; agrupar clientes en listas; escribirle a un cliente por primera vez desde su ficha."
+       "Nuevo chat",
+       "Escribirle primero a un cliente que todavía no ha escrito, con una plantilla aprobada por Meta."
+      ],
+      [
+       "Clientes",
+       "Crear, ver, editar, buscar y eliminar clientes; ver su teléfono con la bandera del país, su correo y su canal; descargar toda la base en Excel."
       ],
       [
        "Calendario",
-       "Agendar llamadas, entregas o recordatorios, cada uno con un cliente y un responsable, en la hora de Colombia."
+       "Agendar citas y recordatorios, cada uno con su cliente y su responsable, en la hora de Colombia."
       ],
       [
-       "Equipo",
-       "El usuario maestro crea, edita y desactiva a los demás usuarios desde la aplicación. Nadie se borra: su historial se conserva."
+       "Respuestas rápidas",
+       "Guardar mensajes que se repiten (horario, dirección, lista de precios), con o sin imagen, y enviarlos desde el chat con un clic."
       ],
       [
-       "Plantillas de WhatsApp",
-       "Escribir plantillas con encabezado, cuerpo con variables, pie y botones; ver cómo quedarán; mandarlas a Meta para aprobación y consultar si fueron aceptadas o rechazadas. La app calcula cuánto cuesta cada envío."
-      ],
-      [
-       "Mi comercio",
-       "Llevar el catálogo de productos con precio, categoría, marca y estado, uno a uno o importados."
+       "Usuarios",
+       "El usuario maestro crea, edita y desactiva a los demás usuarios. Nadie se borra: su historial se conserva."
       ],
       [
        "Estadísticas",
-       "Ver cuántos mensajes llegan por canal y por hora, cuánto tarda el equipo en responder, cuánto trabaja cada agente y qué tipo de clientes escriben."
-      ],
-      [
-       "Embudos y Campañas",
-       "Existen como pantallas iniciales para organizar el proceso de venta y las campañas; todavía no tienen funciones completas."
+       "Ver cuántos mensajes llegan por canal y por día, cuánto tarda el equipo en responder y cuánto trabaja cada agente."
       ]
      ],
-     "caption": "Las secciones de la aplicación, en el orden de la barra lateral."
+     "caption": "Las secciones de la Fase 1. Embudos, Campañas, Mi comercio y Plantillas de WhatsApp existen como base para las fases siguientes."
     }
    ]
   },
@@ -164,34 +192,28 @@
    "blocks": [
     {
      "kind": "paragraph",
-     "text": "La aplicación tiene un servidor escrito en Python con Django y una interfaz que se actualiza por partes gracias a htmx, sin necesidad de compilar nada del lado del navegador. Todo ocurre en una sola página: al hacer clic en un icono de la barra lateral, el servidor devuelve solo el trozo de pantalla que cambia."
+     "text": "Vendi tiene un servidor escrito en Python con Django y una interfaz que se actualiza por partes gracias a htmx, sin compilar nada del lado del navegador. Todo ocurre en una sola página: al hacer clic en un icono de la barra lateral, el servidor devuelve solo el trozo de pantalla que cambia."
     },
     {
      "kind": "diagram",
      "layout": "flow",
-     "caption": "El camino de un mensaje, desde que el cliente escribe hasta que el vendedor responde.",
+     "caption": "El camino de un mensaje, desde que el cliente escribe hasta que el equipo responde.",
      "steps": [
       "El cliente escribe por WhatsApp",
       "Meta avisa a la app (webhook)",
       "La app verifica la firma y guarda el mensaje",
       "El Inbox lo muestra al agente en segundos",
-      "El agente responde y la app lo envía por el mismo proveedor"
+      "El agente responde y la app lo envía por Meta"
      ]
-    },
-    {
-     "kind": "paragraph",
-     "text": "Las piezas principales son estas:"
     },
     {
      "kind": "bullets",
      "items": [
-      "**Proveedores de mensajería.** Toda la conexión con WhatsApp está encerrada en una pieza que se elige con una sola variable de configuración: `fake` (un simulador para desarrollar sin credenciales) o `meta`. Cambiar de proveedor no toca pantallas, modelos ni reglas.",
-      "**Webhook seguro.** Cuando el proveedor avisa de un mensaje nuevo, la app comprueba primero que el aviso venga firmado por él. Si el mismo aviso llega dos veces, el mensaje se guarda una sola vez.",
-      "**Un solo cliente.** La persona que escribe en el chat es la misma fila de la tabla Clientes, la misma del calendario y la misma de las listas. No hay copias.",
-      "**Agentes.** Las cuentas del equipo se definen en la configuración del servidor (con contraseña cifrada) o las crea el usuario maestro desde la app. Cada mensaje enviado guarda quién lo escribió.",
-      "**Base de datos.** SQLite mientras se desarrolla en el computador; PostgreSQL en Neon cuando está publicada. Las imágenes que llegan por chat se guardan en Vercel Blob.",
-      "**Publicación.** Corre en Vercel. Todo lo que cambia entre el computador y producción (base de datos, proveedor, credenciales, dominio) va en variables de entorno documentadas en `.env.example`.",
-      "**Pruebas.** Más de veinte módulos de pruebas automáticas cubren las reglas de negocio, los webhooks de cada proveedor y las pantallas."
+      "**Proveedor de mensajería.** La conexión con WhatsApp está encerrada en una pieza que se elige con una variable: `fake` (un simulador para desarrollar sin credenciales) o `meta` (la Cloud API real).",
+      "**Webhook seguro.** Cuando Meta avisa de un mensaje nuevo, la app comprueba primero que el aviso venga firmado por Meta. Si el mismo aviso llega dos veces, el mensaje se guarda una sola vez.",
+      "**Un solo cliente.** La persona que escribe en el chat es la misma fila de la tabla Clientes, la misma del calendario y la misma de las listas.",
+      "**Usuarios.** Todas las cuentas viven en la base de datos. El usuario maestro crea a los demás desde la app, y cada mensaje enviado guarda quién lo escribió.",
+      "**Pruebas.** Más de mil pruebas automáticas cuidan las reglas del negocio, el webhook y las pantallas."
      ]
     }
    ]
@@ -201,13 +223,34 @@
    "blocks": [
     {
      "kind": "paragraph",
-     "text": "Todo gira alrededor del cliente. Cada cliente puede tener varias conversaciones (una por canal), cada conversación tiene muchos mensajes, y a las conversaciones se les ponen etiquetas. Los eventos del calendario y las listas apuntan al mismo cliente. Las plantillas y los productos son tablas aparte."
+     "text": "Todo gira alrededor del cliente. Cada cliente puede tener varias conversaciones, cada conversación tiene muchos mensajes, lleva etiquetas y está asignada a un usuario. Los eventos del calendario y las listas apuntan al mismo cliente."
     },
     {
      "kind": "diagram",
      "layout": "er",
      "caption": "Las tablas principales y cómo se relacionan. La flecha apunta a la tabla de la que depende.",
      "nodes": [
+      {
+       "id": "event",
+       "title": "Evento de calendario",
+       "col": 0,
+       "row": 0,
+       "fields": [
+        "título, inicio, fin, tipo",
+        "cliente → Cliente",
+        "responsable"
+       ]
+      },
+      {
+       "id": "tag",
+       "title": "Etiqueta",
+       "col": 2,
+       "row": 0,
+       "fields": [
+        "nombre, color",
+        "aplicada a conversaciones"
+       ]
+      },
       {
        "id": "client",
        "title": "Cliente",
@@ -227,7 +270,7 @@
        "fields": [
         "cliente → Cliente",
         "canal, estado",
-        "agente asignado",
+        "agente asignado → Usuario",
         "fecha del último mensaje"
        ]
       },
@@ -241,28 +284,7 @@
         "texto o imagen",
         "entrante o saliente",
         "estado: enviado, entregado, leído",
-        "quién lo envió, costo"
-       ]
-      },
-      {
-       "id": "tag",
-       "title": "Etiqueta",
-       "col": 2,
-       "row": 0,
-       "fields": [
-        "nombre, color",
-        "aplicada a conversaciones"
-       ]
-      },
-      {
-       "id": "event",
-       "title": "Evento de calendario",
-       "col": 0,
-       "row": 0,
-       "fields": [
-        "título, inicio, fin, tipo",
-        "cliente → Cliente",
-        "responsable"
+        "quién lo envió"
        ]
       },
       {
@@ -276,24 +298,25 @@
        ]
       },
       {
-       "id": "tpl",
-       "title": "Plantilla de WhatsApp",
+       "id": "user",
+       "title": "Usuario",
        "col": 1,
        "row": 2,
        "fields": [
-        "nombre, categoría, idioma",
-        "encabezado, cuerpo, pie, botones",
-        "estado de aprobación en Meta"
+        "usuario y contraseña cifrada",
+        "nombre visible",
+        "maestro o agente, activo"
        ]
       },
       {
-       "id": "product",
-       "title": "Producto",
+       "id": "reply",
+       "title": "Respuesta rápida",
        "col": 2,
        "row": 2,
        "fields": [
-        "nombre, precio",
-        "categoría, marca, estado"
+        "título, texto",
+        "imagen (opcional)",
+        "activa o escondida"
        ]
       }
      ],
@@ -324,9 +347,9 @@
        "label": "muchas a muchas"
       },
       {
-       "from": "msg",
-       "to": "tpl",
-       "label": "usa"
+       "from": "conv",
+       "to": "user",
+       "label": "asignada a"
       }
      ]
     }
@@ -337,7 +360,11 @@
    "blocks": [
     {
      "kind": "paragraph",
-     "text": "Lo que la aplicación debe hacer (requisitos funcionales) y cómo debe comportarse (requisitos no funcionales), resumido."
+     "text": "**Requisitos funcionales:** son las cosas que la plataforma tiene que HACER para funcionar. Ejemplo: enviar un mensaje a un cliente."
+    },
+    {
+     "kind": "paragraph",
+     "text": "**Requisitos no funcionales:** son las características de CÓMO está hecha la plataforma. Ejemplo: que sea segura y que no se caiga."
     },
     {
      "kind": "table",
@@ -350,22 +377,22 @@
       [
        "RF-01",
        "Inicio de sesión",
-       "Nadie entra sin una cuenta de agente."
+       "Nadie entra sin una cuenta de usuario."
       ],
       [
        "RF-02",
        "Bandeja unificada",
-       "Todos los canales en una lista, con filtros por canal y por responsable."
+       "Todos los canales en una lista, con los entornos Todos, Tu inbox y Sin asignar."
       ],
       [
        "RF-03",
        "Recibir y enviar",
-       "Los mensajes entran por el webhook del proveedor y las respuestas salen por el mismo proveedor, con su estado de entrega."
+       "Los mensajes entran por el webhook de Meta y las respuestas salen por Meta, con su estado de entrega."
       ],
       [
        "RF-04",
-       "Ventana de 24 horas",
-       "Pasadas 24 horas sin respuesta del cliente, solo se pueden enviar plantillas."
+       "Clientes nuevos",
+       "Se le puede escribir primero a un cliente con una plantilla aprobada."
       ],
       [
        "RF-05",
@@ -375,7 +402,7 @@
       [
        "RF-06",
        "Clientes",
-       "Crear, editar, buscar, borrar, exportar a Excel y agrupar en listas."
+       "Crear, ver, editar, eliminar, buscar y descargar en Excel."
       ],
       [
        "RF-07",
@@ -384,33 +411,33 @@
       ],
       [
        "RF-08",
-       "Plantillas",
-       "Crear, previsualizar, enviar a Meta y saber su costo."
+       "Respuestas rápidas",
+       "Mensajes guardados, con o sin imagen, que se envían con un clic."
       ],
       [
        "RF-09",
        "Estadísticas",
-       "Volumen, tiempos de respuesta, rendimiento por agente."
+       "Volumen de mensajes, tiempos de respuesta y rendimiento por agente."
       ],
       [
        "RF-10",
-       "Equipo",
-       "El usuario maestro administra a los demás usuarios."
+       "Usuarios",
+       "El usuario maestro crea y administra a los demás usuarios."
       ],
       [
        "RNF-01",
        "Seguridad",
-       "Sesión obligatoria, webhooks firmados, contraseñas cifradas, simulador apagado en producción."
+       "Sesión obligatoria, webhook firmado, contraseñas cifradas y simulador apagado en producción."
       ],
       [
        "RNF-02",
-       "Proveedor intercambiable",
-       "Cambiar de WhatsApp simulado a Meta es cambiar una variable."
+       "Datos propios",
+       "Toda la información queda en una base de datos de la empresa."
       ],
       [
        "RNF-03",
-       "Sin servidor propio",
-       "Corre en Vercel con base de datos en Neon y archivos en Vercel Blob."
+       "Bajo costo",
+       "Durante el MVP corre sobre servicios gratuitos, sin pagar por agente."
       ],
       [
        "RNF-04",
@@ -420,7 +447,7 @@
       [
        "RNF-05",
        "Fácil de mantener",
-       "Añadir una sección es una línea; las reglas tienen pruebas automáticas."
+       "Añadir una sección es una línea de código y las reglas tienen pruebas automáticas."
       ]
      ],
      "caption": "Requisitos funcionales (RF) y no funcionales (RNF)."
@@ -431,24 +458,155 @@
    "heading": "Pantallas",
    "blocks": [
     {
-     "kind": "image",
-     "path": "capturas/inbox.png",
-     "caption": "Inbox: la lista de conversaciones a la izquierda, el chat en el centro y la ficha del cliente a la derecha."
+     "kind": "paragraph",
+     "text": "Cada captura tiene recuadros rojos con un número. Debajo de la imagen, la lista explica qué es cada parte."
     },
     {
-     "kind": "image",
-     "path": "capturas/crm-clientes.png",
-     "caption": "Clientes: la tabla con teléfono, correo, canal y acciones."
+     "kind": "shot",
+     "screen": "bienvenida",
+     "title": "Pantalla de inicio",
+     "notes": {
+      "barra": "Barra lateral: el menú principal. Cada icono abre una sección (Inbox, CRM, Estadísticas, Configuración).",
+      "accesos": "Accesos directos a las secciones más usadas."
+     }
     },
     {
-     "kind": "image",
-     "path": "capturas/crm-calendario.png",
-     "caption": "Calendario: la semana con los eventos y el cliente de cada uno."
+     "kind": "shot",
+     "screen": "inbox",
+     "title": "Inbox",
+     "notes": {
+      "nuevo-chat": "Nuevo chat: para escribirle primero a un cliente que todavía no ha escrito.",
+      "entornos": "Los 3 entornos: Todos (todas las conversaciones), Tu inbox (solo las tuyas) y Sin asignar (las que nadie ha tomado).",
+      "lista": "Lista de conversaciones: cada fila es un cliente, con su canal, el agente asignado, sus etiquetas y hace cuánto escribió.",
+      "etiquetas": "Etiquetas de la conversación, para clasificarla (Interesado, Cita agendada, Soporte).",
+      "asignacion": "Asignación de agente: elige qué persona del equipo atiende esta conversación.",
+      "chat": "El chat: lo que escribe el cliente a la izquierda y lo que responde el equipo a la derecha, con su estado de entrega.",
+      "respuestas": "Botones para enviar una respuesta rápida o una plantilla con un clic.",
+      "ficha": "Ficha del cliente: teléfono, estado, agente asignado y etiquetas."
+     }
     },
     {
-     "kind": "image",
-     "path": "capturas/plantillas.png",
-     "caption": "Plantillas de WhatsApp: una pestaña por estado de aprobación."
+     "kind": "subheading",
+     "text": "Cómo funciona la lista de conversaciones"
+    },
+    {
+     "kind": "bullets",
+     "items": [
+      "Cuando un cliente escribe, Meta le avisa a Vendi y Vendi guarda el mensaje en la conversación de ese cliente. Si no existía, la crea.",
+      "La conversación con el mensaje más reciente sube al primer lugar de la lista.",
+      "Cada pocos segundos la página le pregunta al servidor si hay novedades y redibuja solo esa columna, así la lista se mantiene al día sin recargar la página.",
+      "Los entornos, los canales y las etiquetas solo cambian qué filas devuelve el servidor: Tu inbox, por ejemplo, trae únicamente las conversaciones asignadas al usuario que inició sesión.",
+      "Al hacer clic en una fila se abre su chat y su ficha a la derecha, también sin recargar."
+     ]
+    },
+    {
+     "kind": "shot",
+     "screen": "inbox-respuestas",
+     "title": "Respuestas rápidas dentro del chat",
+     "notes": {
+      "selector": "Selector de respuestas rápidas: aparece al pulsar el botón y muestra las respuestas guardadas.",
+      "con-imagen": "Una respuesta rápida con imagen: el texto y la foto se envían juntos con un solo clic.",
+      "imagen-enviada": "La imagen ya enviada al cliente dentro del chat."
+     }
+    },
+    {
+     "kind": "shot",
+     "screen": "nuevo-chat",
+     "title": "Nuevo chat",
+     "notes": {
+      "dialogo": "Ventana de Nuevo chat: se elige al cliente y se le envía el primer mensaje con una plantilla aprobada por Meta.",
+      "buscar": "Buscador para encontrar al cliente por nombre o teléfono."
+     }
+    },
+    {
+     "kind": "shot",
+     "screen": "crm-clientes",
+     "title": "Clientes",
+     "notes": {
+      "crear": "Crear cliente.",
+      "buscar": "Buscar por nombre, teléfono o correo.",
+      "excel": "Acciones: desde aquí se descarga la base de datos de clientes en Excel.",
+      "tabla": "Tabla de clientes con teléfono y bandera del país, correo y canal.",
+      "conversar": "Iniciar conversación: abre el Nuevo chat con ese cliente.",
+      "acciones": "Ver, editar y eliminar al cliente."
+     }
+    },
+    {
+     "kind": "shot",
+     "screen": "crm-calendario",
+     "title": "Calendario",
+     "notes": {
+      "crear": "Crear un evento nuevo.",
+      "mini": "Mini calendario para saltar a otra fecha.",
+      "semana": "La semana con todas las citas.",
+      "evento": "Cada evento muestra la hora, el título y el cliente vinculado."
+     }
+    },
+    {
+     "kind": "shot",
+     "screen": "respuestas-rapidas",
+     "title": "Configuración de respuestas rápidas",
+     "notes": {
+      "crear": "Crear una respuesta rápida nueva.",
+      "tabla": "Las respuestas rápidas guardadas, con su texto.",
+      "miniatura": "Miniatura de la imagen que acompaña la respuesta.",
+      "activa": "Interruptor para mostrarla o esconderla del chat sin borrarla."
+     }
+    },
+    {
+     "kind": "shot",
+     "screen": "crm-usuarios",
+     "title": "Usuarios",
+     "notes": {
+      "crear": "Crear usuario: solo el usuario maestro puede hacerlo.",
+      "tabla": "Los usuarios del equipo.",
+      "maestro": "Maestro: puede crear y administrar a los demás usuarios.",
+      "acciones": "Editar o desactivar al usuario; nunca se borra, así su historial se conserva."
+     }
+    },
+    {
+     "kind": "shot",
+     "screen": "estadisticas",
+     "title": "Estadísticas",
+     "notes": {
+      "periodo": "Selector del periodo que se quiere revisar.",
+      "indicadores": "Los números principales del periodo, de un vistazo.",
+      "grafica": "Gráfica del volumen de mensajes."
+     }
+    }
+   ]
+  },
+  {
+   "heading": "Servicios en los que corre el CRM",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "En este momento Vendi corre sobre **servicios gratuitos**. Todos se usan para desarrollar el MVP:"
+    },
+    {
+     "kind": "table",
+     "headers": [
+      "Servicio",
+      "Para qué se usa",
+      "Plan"
+     ],
+     "rows": [
+      [
+       "Vercel",
+       "Hosting: publica la aplicación en internet, sirve sus archivos y guarda las imágenes.",
+       "Gratuito"
+      ],
+      [
+       "Neon",
+       "Base de datos PostgreSQL: clientes, conversaciones, mensajes y usuarios.",
+       "Gratuito"
+      ]
+     ],
+     "caption": "Servicios del MVP."
+    },
+    {
+     "kind": "paragraph",
+     "text": "Cuando el uso real supere los límites de esos planes, los dos servicios permiten pasar a un plan pago sin cambiar el código."
     }
    ]
   },
@@ -457,19 +615,15 @@
    "blocks": [
     {
      "kind": "paragraph",
-     "text": "En un computador, con Python 3.12 instalado, basta con crear un entorno virtual, instalar las dependencias, copiar `.env.example` a `.env`, aplicar las migraciones y arrancar el servidor:"
+     "text": "En un computador con Python 3.12, se crea un entorno virtual, se instalan las dependencias, se copia `.env.example` a `.env`, se aplican las migraciones, se crea el primer usuario maestro y se arranca el servidor:"
     },
     {
      "kind": "code",
-     "text": "python -m venv venv\nsource venv/bin/activate\npip install -r requirements.txt\ncp .env.example .env\npython manage.py migrate\npython manage.py runserver"
+     "text": "python -m venv venv\nsource venv/bin/activate\npip install -r requirements.txt\ncp .env.example .env\npython manage.py migrate\npython manage.py crear_maestro admin\npython manage.py runserver"
     },
     {
      "kind": "paragraph",
-     "text": "El `.env` de ejemplo ya trae el proveedor simulado, así que se puede probar todo sin credenciales de WhatsApp. Para producción se define `MESSAGING_PROVIDER=meta`, la base de datos de Neon y las credenciales del proveedor, y Vercel hace el resto. Antes de conectar el número real, el comando `go_live` deja la aplicación vacía y conserva solo al equipo."
-    },
-    {
-     "kind": "paragraph",
-     "text": "Las pruebas se corren con `python manage.py test`."
+     "text": "El `.env` de ejemplo ya trae el simulador de mensajes, así que se puede probar todo sin credenciales de WhatsApp. En producción se define `MESSAGING_PROVIDER=meta`, la base de datos de Neon y las credenciales de Meta, y Vercel publica cada cambio. Las pruebas se corren con `python manage.py test`."
     }
    ]
   },
@@ -482,7 +636,8 @@
       "Django Software Foundation (2026) *Django documentation, release 6.1*. https://docs.djangoproject.com/en/6.1/",
       "Big Sky Software (2026) *htmx documentation*. https://htmx.org/docs/",
       "Meta Platforms (2026) *WhatsApp Business Platform: Cloud API y pricing*. https://developers.facebook.com/docs/whatsapp/",
-       "Vercel (2026) *Vercel documentation*. https://vercel.com/docs · Neon (2026) *Neon documentation*. https://neon.com/docs"
+      "Vercel (2026) *Vercel documentation*. https://vercel.com/docs",
+      "Neon (2026) *Neon documentation*. https://neon.com/docs"
      ]
     }
    ]

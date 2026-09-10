@@ -311,7 +311,7 @@ class PlantillaEditorTests(TestCase):
             "header_text": "",
             "body": "Hola {{1}}, bienvenido a {{2}}.",
             "sample_1": "Ana",
-            "sample_2": "MVP CRM",
+            "sample_2": "Vendi",
             "footer": "Responde STOP para salir",
             "button_kind": "none",
         }
@@ -350,7 +350,7 @@ class PlantillaEditorTests(TestCase):
         self.assertEqual(response.status_code, 200)
         template = MessageTemplate.objects.get(name="bienvenida_1")
         self.assertEqual(template.status, "pendiente")
-        self.assertEqual(template.body_sample_values, ["Ana", "MVP CRM"])
+        self.assertEqual(template.body_sample_values, ["Ana", "Vendi"])
         self.assertEqual(template.buttons, [])
         # The response is the Plantillas panel, not the editor again.
         self.assertContains(response, "plantillas__toolbar")

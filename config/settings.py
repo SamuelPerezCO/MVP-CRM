@@ -227,7 +227,7 @@ APP_LOGIN_PASSWORD = os.environ.get('APP_LOGIN_PASSWORD', '')
 # reachable privacy policy and data-deletion URL to publish the app; these
 # two values are what those pages name as the responsible party, so set them
 # to the real business before pointing Meta at the URLs.
-LEGAL_ENTITY_NAME = os.environ.get('LEGAL_ENTITY_NAME', 'MVP CRM')
+LEGAL_ENTITY_NAME = os.environ.get('LEGAL_ENTITY_NAME', 'Vendi')
 LEGAL_CONTACT_EMAIL = os.environ.get('LEGAL_CONTACT_EMAIL', 'sernasamuelperez@gmail.com')
 
 

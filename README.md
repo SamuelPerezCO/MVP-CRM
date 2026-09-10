@@ -1,6 +1,6 @@
-# MVP-CRM
+# Vendi
 
-MVP de un CRM omnicanal para comercios, inspirado en plataformas tipo Treble/Leadsales: una bandeja de entrada unificada para los canales de mensajería (WhatsApp, Messenger, Instagram, Facebook, TikTok), gestión de clientes y embudos de venta, todo dentro de un shell de una sola página con barra lateral de iconos.
+Vendi es un CRM omnicanal hecho a la medida de **Tratamientos LB S.A.S.** para dejar de depender de Mercately, el CRM de terceros que usa hoy: una bandeja de entrada unificada para los canales de mensajería (WhatsApp, Messenger, Instagram, Facebook, TikTok), gestión de clientes, calendario, respuestas rápidas y estadísticas, todo dentro de un shell de una sola página con barra lateral de iconos. La empresa gana control sobre sus propios datos, soporte directo y crecimiento sin el techo ni los costos por agente de una plataforma externa.
 
 ## Funcionalidades
 
@@ -297,6 +297,17 @@ UPDATE messaging_conversation
 
 Envuelve cliente → conversación → mensaje → `UPDATE` en una sola transacción,
 para que un fallo no deje un mensaje sin su contabilidad.
+
+## Servicios en los que corre el CRM
+
+En este momento Vendi corre sobre **servicios gratuitos**, suficientes para desarrollar y validar el MVP:
+
+| Servicio | Para qué se usa | Plan |
+|---|---|---|
+| [Vercel](https://vercel.com) | Hosting de la aplicación: publica cada cambio de `main`, sirve los archivos estáticos y guarda las imágenes en Vercel Blob | Gratuito |
+| [Neon](https://neon.com) | Base de datos PostgreSQL de producción: clientes, conversaciones, mensajes y usuarios | Gratuito |
+
+Cuando el uso real supere los límites de esos planes, ambos servicios permiten pasar a un plan pago sin cambiar el código: basta con actualizar la cuenta.
 
 ## Deploy en Vercel
 
