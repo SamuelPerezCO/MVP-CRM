@@ -165,6 +165,25 @@ def checklist_flowables(b):
     return [t, Spacer(1, 8)]
 
 
+def fixed_table_flowables(b):
+    """A table whose column widths come from the JSON (fractions of the page),
+    for columns like folder paths that must never wrap mid-name."""
+    widths = [AVAIL * f for f in b["widths"]]
+    data = [[Paragraph(fmt(h), S["cell_head"]) for h in b["headers"]]]
+    data += [[Paragraph(fmt(c), S["cell"]) for c in row] for row in b["rows"]]
+    t = Table(data, colWidths=widths, repeatRows=1, style=TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), render.HEAD_BG),
+        ("GRID", (0, 0), (-1, -1), 0.4, RULE),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+    ]))
+    out = [t]
+    if b.get("caption"):
+        out.append(Paragraph(fmt(b["caption"]), S["caption"]))
+    return out
+
+
 def blocks(section_blocks, recuadros):
     out = []
     for b in section_blocks:
@@ -183,6 +202,8 @@ def blocks(section_blocks, recuadros):
             out += checklist_flowables(b)
         elif kind == "shot":
             out += shot_flowables(b, recuadros)
+        elif kind == "table" and b.get("widths"):
+            out += fixed_table_flowables(b)
         else:
             out += block_flowables(b)
     return out
