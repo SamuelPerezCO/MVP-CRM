@@ -89,6 +89,9 @@ if VERCEL_PROJECT_PRODUCTION_URL:
 # Vercel SSO (deployment protection, "all_except_custom_domains"). Named
 # here so core.W003 can refuse to hand one of them to WhatsApp.
 VERCEL_PROTECTED_ALIASES = [
+    'vendi-unaneaprogramadora.vercel.app',
+    'vendi-git-main-unaneaprogramadora.vercel.app',
+    # The names Vercel generated before the project was renamed to vendi.
     'mvp-crm-unaneaprogramadora.vercel.app',
     'mvp-crm-git-main-unaneaprogramadora.vercel.app',
 ]
