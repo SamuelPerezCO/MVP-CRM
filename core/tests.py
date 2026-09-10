@@ -265,12 +265,12 @@ class WelcomeScreenTests(TestCase):
 
     def test_hero_copy_renders(self):
         response = self.client.get(reverse("home"))
-        self.assertContains(response, "Bienvenido a MVP-CRM")
+        self.assertContains(response, "Bienvenido a Vendi")
         self.assertContains(response, "Gestiona tus conversaciones, clientes y ventas")
         self.assertContains(response, "welcome__logo")
 
     def test_title_names_the_screen(self):
-        self.assertContains(self.client.get(reverse("home")), "<title>Bienvenido · MVP CRM</title>")
+        self.assertContains(self.client.get(reverse("home")), "<title>Bienvenido · Vendi</title>")
 
     def test_shortcuts_link_to_their_sections(self):
         html = self.client.get(reverse("home")).content.decode()

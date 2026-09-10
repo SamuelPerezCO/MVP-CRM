@@ -93,7 +93,7 @@
   // Keep the tab title in step with whatever section is showing.
   function syncTitle() {
     var heading = document.querySelector("#content .page-head__title");
-    if (heading) document.title = heading.textContent.trim() + " · MVP CRM";
+    if (heading) document.title = heading.textContent.trim() + " · Vendi";
   }
 
   document.addEventListener("htmx:afterSwap", syncTitle);

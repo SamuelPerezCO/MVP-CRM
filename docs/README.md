@@ -1,65 +1,31 @@
-# Documentación técnica
+# Documentación
 
-Dos documentos, ambos en español y con Samuel Pérez Serna como autor:
-
-- `MVP-CRM-documentacion.pdf` — **la versión breve** (unas 8 páginas, lenguaje
-  sencillo): qué es, qué problema resuelve, qué hace, cómo funciona por
-  dentro, cómo guarda los datos, requisitos, pantallas y cómo se ejecuta.
-  Se regenera con `cd docs/generar && uv run --with reportlab python
-  documentacion.py ../MVP-CRM-documentacion.pdf`; su contenido está en
-  `generar/documentacion.json`.
-- `MVP-CRM-documentacion-tecnica.pdf` — **la versión completa** (150
-  páginas), descrita a continuación.
-
-**Parte I, documento del proyecto**: identificación del problema, pregunta de
-investigación, alcance, objetivo general y específicos, árbol de problemas,
-hipótesis de solución, requisitos funcionales y no funcionales, modelo de
-datos, mapa conceptual, interfaz (capturas reales de la aplicación) y
-bibliografía.
-
-**Parte II, documentación técnica del código**: 16 capítulos que describen la
-rama `main` en el commit **`6089391`**; el Anexo A del propio PDF lista los
-commits posteriores que **no** cubre.
-
-Capítulos 1–12: arquitectura y shell, autenticación y agentes, Inbox, la capa
-de mensajería y sus proveedores, CRM, calendario, plantillas de WhatsApp,
-estadísticas, las secciones menores, el modelo de datos y sus migraciones,
-configuración y despliegue, y pruebas y convenciones.
-
-Capítulos 13–16: guía para añadir una sección o panel, glosario del dominio,
-el sistema visual (tokens y convenciones CSS) y los patrones htmx.
-
-## Cómo se generó la segunda parte
-
-Cada capítulo se redactó leyendo un snapshot de solo lectura del código y
-después se verificó afirmación por afirmación contra ese mismo código,
-corrigiendo lo que no coincidía. El Anexo B del PDF trae el registro por
-capítulo: 39 correcciones y 96 omisiones cubiertas sobre 16 capítulos.
+`Vendi-documentacion.pdf` es la documentación de la Fase 1 de Vendi, el CRM a
+la medida de Tratamientos LB S.A.S. Está en español y en lenguaje sencillo:
+qué es, el problema que resuelve frente a Mercately, lo que se logró en la
+Fase 1, qué hace la aplicación, cómo funciona por dentro, cómo guarda los
+datos, los requisitos, las pantallas señaladas con recuadros rojos, los
+servicios en los que corre y cómo se ejecuta.
 
 ## Cómo regenerar el PDF
 
-Todo el contenido vive en `generar/`, así que recomponer el documento es un
-solo comando:
-
 ```bash
 cd docs/generar
-uv run --with reportlab python assemble.py ../MVP-CRM-documentacion-tecnica.pdf
+uv run --with reportlab python documentacion.py ../Vendi-documentacion.pdf
 ```
 
-- `generar/academico.json`: la Parte I (texto, tablas de requisitos, los
-  diagramas descritos como filas de cajas o entidades con relaciones, y las
-  capturas). Para corregir una frase o un requisito, edita este archivo.
-- `generar/chapters.json`: la Parte II verificada. Para corregir un dato o una
-  tabla de un capítulo, edita aquí.
-- `generar/front.json`: portada (objetivo, autor, fecha), introducción y
-  anexos.
-- `generar/render.py`: la maquetación (estilos, tablas, diagramas dibujados,
-  imágenes, índice y marcadores del PDF).
-- `generar/capturas/`: las capturas de pantalla de la sección Interfaz,
-  tomadas a 1440×900 con datos de ejemplo. Para renovarlas, arranca la app
-  con `MESSAGING_PROVIDER=fake`, crea algunos datos y vuelve a capturar cada
-  pantalla con el mismo tamaño.
+- `generar/documentacion.json`: todo el contenido (texto, tablas, lista de
+  avance, diagramas y qué pantallas mostrar con sus recuadros). Para cambiar
+  una frase, edita este archivo y vuelve a correr el comando.
+- `generar/documentacion.py`: arma el documento.
+- `generar/render.py`: estilos, tablas, diagramas e imágenes que usa el
+  documento.
+- `generar/capturas/`: las capturas de pantalla (1440×900) y, en
+  `recuadros.json`, la posición de cada recuadro rojo. Para renovarlas,
+  arranca la app con `MESSAGING_PROVIDER=fake`, crea algunos datos de ejemplo
+  y vuelve a capturar con `capturar.py`, que guarda las imágenes y las
+  posiciones juntas.
 
-Documentar un commit más reciente en la Parte II sí exige volver a lanzar el
-proceso de lectura y verificación, y reemplazar `generar/chapters.json` con su
-resultado.
+Los archivos `academico.json`, `chapters.json`, `front.json` y `assemble.py`
+son las fuentes de la documentación técnica extensa, que ya no se publica en
+el repositorio.
