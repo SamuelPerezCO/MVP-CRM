@@ -611,6 +611,205 @@
    ]
   },
   {
+   "heading": "Qué contiene cada carpeta",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "Así está organizado el código en el repositorio. Un **panel** es la parte de la pantalla que cambia al elegir una opción del menú."
+    },
+    {
+     "kind": "table",
+     "headers": [
+      "Carpeta",
+      "Qué contiene"
+     ],
+     "rows": [
+      [
+       "`config/`",
+       "Configuración de Django: ajustes, URLs y arranque."
+      ],
+      [
+       "`core/`",
+       "La app principal: vistas, modelos y lógica de cada sección."
+      ],
+      [
+       "`core/management/`",
+       "Contenedor de los comandos de consola de core."
+      ],
+      [
+       "`core/management/commands/`",
+       "Comandos: crear_maestro, hashear_clave y reset_usuarios."
+      ],
+      [
+       "`core/migrations/`",
+       "Cambios de la base de datos de core."
+      ],
+      [
+       "`core/templatetags/`",
+       "Filtros propios que usan las plantillas HTML."
+      ],
+      [
+       "`docs/`",
+       "La documentación en PDF."
+      ],
+      [
+       "`docs/generar/`",
+       "Contenido y scripts que arman el PDF."
+      ],
+      [
+       "`docs/generar/capturas/`",
+       "Capturas de pantalla y posición de los recuadros rojos."
+      ],
+      [
+       "`messaging/`",
+       "Mensajería: conversaciones, mensajes, webhook y costos de Meta."
+      ],
+      [
+       "`messaging/management/`",
+       "Contenedor de los comandos de consola de mensajería."
+      ],
+      [
+       "`messaging/management/commands/`",
+       "Comandos: go_live, meta_spend, reset_conversations y sync_template_status."
+      ],
+      [
+       "`messaging/migrations/`",
+       "Cambios de la base de datos de mensajería."
+      ],
+      [
+       "`messaging/providers/`",
+       "Conexión con WhatsApp: Meta y el simulador fake."
+      ],
+      [
+       "`static/`",
+       "Archivos que el navegador descarga tal cual."
+      ],
+      [
+       "`static/css/`",
+       "Estilos de cada sección."
+      ],
+      [
+       "`static/js/`",
+       "JavaScript propio: navegación, calendario y gráficas."
+      ],
+      [
+       "`static/js/vendor/`",
+       "Librerías externas: htmx, FullCalendar y ECharts."
+      ],
+      [
+       "`templates/`",
+       "HTML base de la app y pantalla de inicio de sesión."
+      ],
+      [
+       "`templates/icons/`",
+       "Iconos SVG de la interfaz."
+      ],
+      [
+       "`templates/icons/brands/`",
+       "Logos de los canales: WhatsApp, Instagram, Messenger, Facebook y TikTok."
+      ],
+      [
+       "`templates/icons/flags/`",
+       "Banderas de país para los teléfonos."
+      ],
+      [
+       "`templates/illustrations/`",
+       "Ilustraciones de las pantallas vacías."
+      ],
+      [
+       "`templates/legal/`",
+       "Páginas públicas de privacidad y eliminación de datos."
+      ],
+      [
+       "`templates/partials/`",
+       "Piezas HTML compartidas: barra lateral, menús y pie."
+      ],
+      [
+       "`templates/partials/automatizaciones/`",
+       "Piezas de la sección Automatizaciones."
+      ],
+      [
+       "`templates/partials/automatizaciones/panels/`",
+       "Paneles de Automatizaciones."
+      ],
+      [
+       "`templates/partials/comercio/`",
+       "Piezas de la sección Mi comercio."
+      ],
+      [
+       "`templates/partials/comercio/panels/`",
+       "Paneles de Mi comercio: productos, crear e importar."
+      ],
+      [
+       "`templates/partials/crm/`",
+       "Piezas de clientes, eventos y etiquetas."
+      ],
+      [
+       "`templates/partials/crm/panels/`",
+       "Paneles del CRM: clientes, calendario, listas y usuarios."
+      ],
+      [
+       "`templates/partials/crm/usuarios/`",
+       "Tabla y formulario de usuarios."
+      ],
+      [
+       "`templates/partials/embudos/`",
+       "Piezas de la sección Embudos."
+      ],
+      [
+       "`templates/partials/embudos/panels/`",
+       "Paneles de Embudos."
+      ],
+      [
+       "`templates/partials/estadisticas/`",
+       "Piezas de la sección Estadísticas."
+      ],
+      [
+       "`templates/partials/estadisticas/cards/`",
+       "Detalle de cada tarjeta: volumen y tiempos de respuesta."
+      ],
+      [
+       "`templates/partials/estadisticas/panels/`",
+       "Paneles de Estadísticas."
+      ],
+      [
+       "`templates/partials/inbox/`",
+       "Piezas del Inbox: lista, chat, ficha, Nuevo chat y respuestas rápidas."
+      ],
+      [
+       "`templates/partials/mensajeria/`",
+       "Piezas de Configuración de mensajería."
+      ],
+      [
+       "`templates/partials/mensajeria/panels/`",
+       "Paneles de mensajería: plantillas, bienvenida y asignación."
+      ],
+      [
+       "`templates/partials/mensajeria/respuestas/`",
+       "Tabla y formulario de respuestas rápidas."
+      ],
+      [
+       "`templates/partials/plantillas/`",
+       "Vista previa de una plantilla de WhatsApp."
+      ],
+      [
+       "`templates/partials/tags/`",
+       "Selector y etiquetas de colores."
+      ],
+      [
+       "`templates/sections/`",
+       "La pantalla completa de cada sección."
+      ]
+     ],
+     "caption": "Carpetas del repositorio de Vendi.",
+     "widths": [
+      0.5,
+      0.5
+     ]
+    }
+   ]
+  },
+  {
    "heading": "Cómo se ejecuta",
    "blocks": [
     {

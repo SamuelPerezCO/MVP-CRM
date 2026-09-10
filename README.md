@@ -343,13 +343,53 @@ python manage.py test
 
 Cada sección tiene su propio archivo de tests en [core/](core/) (`tests.py`, `tests_crm.py`, `tests_embudos.py`, etc.); la capa de mensajería (idempotencia del webhook, rechazo de firmas, ventana de 24h) se prueba en [messaging/tests.py](messaging/tests.py).
 
-## Estructura
+## Qué contiene cada carpeta
 
-| Ruta | Qué contiene |
+Un *panel* es la parte de la pantalla que cambia al elegir una opción del menú.
+
+| Carpeta | Qué contiene |
 |---|---|
-| [config/](config/) | Settings y URLs del proyecto |
-| [core/](core/) | Vistas, modelos, navegación y datos de cada sección |
-| [messaging/](messaging/) | Conversaciones, mensajes, webhook y proveedores (fake/meta) |
-| [templates/sections/](templates/sections/) | Pantalla completa de cada sección |
-| [templates/partials/](templates/partials/) | Fragmentos que htmx intercambia |
-| [static/](static/) | CSS por sección y `shell.js` |
+| [config/](config/) | Configuración de Django: ajustes, URLs y arranque. |
+| [core/](core/) | La app principal: vistas, modelos y lógica de cada sección. |
+| [core/management/](core/management/) | Contenedor de los comandos de consola de core. |
+| [core/management/commands/](core/management/commands/) | Comandos: crear_maestro, hashear_clave y reset_usuarios. |
+| [core/migrations/](core/migrations/) | Cambios de la base de datos de core. |
+| [core/templatetags/](core/templatetags/) | Filtros propios que usan las plantillas HTML. |
+| [docs/](docs/) | La documentación en PDF. |
+| [docs/generar/](docs/generar/) | Contenido y scripts que arman el PDF. |
+| [docs/generar/capturas/](docs/generar/capturas/) | Capturas de pantalla y posición de los recuadros rojos. |
+| [messaging/](messaging/) | Mensajería: conversaciones, mensajes, webhook y costos de Meta. |
+| [messaging/management/](messaging/management/) | Contenedor de los comandos de consola de mensajería. |
+| [messaging/management/commands/](messaging/management/commands/) | Comandos: go_live, meta_spend, reset_conversations y sync_template_status. |
+| [messaging/migrations/](messaging/migrations/) | Cambios de la base de datos de mensajería. |
+| [messaging/providers/](messaging/providers/) | Conexión con WhatsApp: Meta y el simulador fake. |
+| [static/](static/) | Archivos que el navegador descarga tal cual. |
+| [static/css/](static/css/) | Estilos de cada sección. |
+| [static/js/](static/js/) | JavaScript propio: navegación, calendario y gráficas. |
+| [static/js/vendor/](static/js/vendor/) | Librerías externas: htmx, FullCalendar y ECharts. |
+| [templates/](templates/) | HTML base de la app y pantalla de inicio de sesión. |
+| [templates/icons/](templates/icons/) | Iconos SVG de la interfaz. |
+| [templates/icons/brands/](templates/icons/brands/) | Logos de los canales: WhatsApp, Instagram, Messenger, Facebook y TikTok. |
+| [templates/icons/flags/](templates/icons/flags/) | Banderas de país para los teléfonos. |
+| [templates/illustrations/](templates/illustrations/) | Ilustraciones de las pantallas vacías. |
+| [templates/legal/](templates/legal/) | Páginas públicas de privacidad y eliminación de datos. |
+| [templates/partials/](templates/partials/) | Piezas HTML compartidas: barra lateral, menús y pie. |
+| [templates/partials/automatizaciones/](templates/partials/automatizaciones/) | Piezas de la sección Automatizaciones. |
+| [templates/partials/automatizaciones/panels/](templates/partials/automatizaciones/panels/) | Paneles de Automatizaciones. |
+| [templates/partials/comercio/](templates/partials/comercio/) | Piezas de la sección Mi comercio. |
+| [templates/partials/comercio/panels/](templates/partials/comercio/panels/) | Paneles de Mi comercio: productos, crear e importar. |
+| [templates/partials/crm/](templates/partials/crm/) | Piezas de clientes, eventos y etiquetas. |
+| [templates/partials/crm/panels/](templates/partials/crm/panels/) | Paneles del CRM: clientes, calendario, listas y usuarios. |
+| [templates/partials/crm/usuarios/](templates/partials/crm/usuarios/) | Tabla y formulario de usuarios. |
+| [templates/partials/embudos/](templates/partials/embudos/) | Piezas de la sección Embudos. |
+| [templates/partials/embudos/panels/](templates/partials/embudos/panels/) | Paneles de Embudos. |
+| [templates/partials/estadisticas/](templates/partials/estadisticas/) | Piezas de la sección Estadísticas. |
+| [templates/partials/estadisticas/cards/](templates/partials/estadisticas/cards/) | Detalle de cada tarjeta: volumen y tiempos de respuesta. |
+| [templates/partials/estadisticas/panels/](templates/partials/estadisticas/panels/) | Paneles de Estadísticas. |
+| [templates/partials/inbox/](templates/partials/inbox/) | Piezas del Inbox: lista, chat, ficha, Nuevo chat y respuestas rápidas. |
+| [templates/partials/mensajeria/](templates/partials/mensajeria/) | Piezas de Configuración de mensajería. |
+| [templates/partials/mensajeria/panels/](templates/partials/mensajeria/panels/) | Paneles de mensajería: plantillas, bienvenida y asignación. |
+| [templates/partials/mensajeria/respuestas/](templates/partials/mensajeria/respuestas/) | Tabla y formulario de respuestas rápidas. |
+| [templates/partials/plantillas/](templates/partials/plantillas/) | Vista previa de una plantilla de WhatsApp. |
+| [templates/partials/tags/](templates/partials/tags/) | Selector y etiquetas de colores. |
+| [templates/sections/](templates/sections/) | La pantalla completa de cada sección. |

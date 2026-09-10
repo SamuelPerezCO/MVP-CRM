@@ -5,7 +5,7 @@ la medida de Tratamientos LB S.A.S. Está en español y en lenguaje sencillo:
 qué es, el problema que resuelve frente a Mercately, lo que se logró en la
 Fase 1, qué hace la aplicación, cómo funciona por dentro, cómo guarda los
 datos, los requisitos, las pantallas señaladas con recuadros rojos, los
-servicios en los que corre y cómo se ejecuta.
+servicios en los que corre, qué contiene cada carpeta y cómo se ejecuta.
 
 ## Cómo regenerar el PDF
 
