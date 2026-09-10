@@ -110,7 +110,7 @@
       "Entender cómo atiende hoy el equipo en Mercately y qué necesita para hacerlo igual o mejor.",
       "Diseñar la base de datos de modo que el cliente sea uno solo: el mismo en el chat, en el calendario y en las listas.",
       "Construir la pantalla principal y la bandeja de entrada con sus entornos, etiquetas y asignación.",
-      "Conectar WhatsApp con la Cloud API de Meta, con un simulador para desarrollar sin gastar mensajes reales.",
+      "Conectar WhatsApp con la Cloud API de Meta.",
       "Añadir la gestión de clientes, el calendario, las respuestas rápidas, los usuarios y las estadísticas.",
       "Publicarlo en internet sobre servicios gratuitos mientras dura el MVP."
      ]
@@ -209,7 +209,7 @@
     {
      "kind": "bullets",
      "items": [
-      "**Proveedor de mensajería.** La conexión con WhatsApp está encerrada en una pieza que se elige con una variable: `fake` (un simulador para desarrollar sin credenciales) o `meta` (la Cloud API real).",
+      "**Proveedor de mensajería.** La conexión con WhatsApp está encerrada en una sola pieza que usa la Cloud API de Meta.",
       "**Webhook seguro.** Cuando Meta avisa de un mensaje nuevo, la app comprueba primero que el aviso venga firmado por Meta. Si el mismo aviso llega dos veces, el mensaje se guarda una sola vez.",
       "**Un solo cliente.** La persona que escribe en el chat es la misma fila de la tabla Clientes, la misma del calendario y la misma de las listas.",
       "**Usuarios.** Todas las cuentas viven en la base de datos. El usuario maestro crea a los demás desde la app, y cada mensaje enviado guarda quién lo escribió.",
@@ -427,7 +427,7 @@
       [
        "RNF-01",
        "Seguridad",
-       "Sesión obligatoria, webhook firmado, contraseñas cifradas y simulador apagado en producción."
+       "Sesión obligatoria, webhook firmado y contraseñas cifradas."
       ],
       [
        "RNF-02",
@@ -678,7 +678,7 @@
       ],
       [
        "`messaging/providers/`",
-       "Conexión con WhatsApp: Meta y el simulador fake."
+       "Conexión con WhatsApp a través de Meta."
       ],
       [
        "`static/`",
@@ -822,7 +822,7 @@
     },
     {
      "kind": "paragraph",
-     "text": "El `.env` de ejemplo ya trae el simulador de mensajes, así que se puede probar todo sin credenciales de WhatsApp. En producción se define `MESSAGING_PROVIDER=meta`, la base de datos de Neon y las credenciales de Meta, y Vercel publica cada cambio. Las pruebas se corren con `python manage.py test`."
+     "text": "En producción se define `MESSAGING_PROVIDER=meta`, la base de datos de Neon y las credenciales de Meta, y Vercel publica cada cambio. Las pruebas se corren con `python manage.py test`."
     }
    ]
   },
